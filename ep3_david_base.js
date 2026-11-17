@@ -195,79 +195,148 @@ const DAVID_VICTORY_RHYTHM  = [
   0.65, 0.65, 1.35, 0.95
 ];
 
-// 모바일·PC 브라우저에서 인자하고 따뜻한 한국어 남성 성우 음성을 출력하는 선택기
-let _cachedKoreanMaleVoice = null;
-function pickBestKoreanMaleVoice() {
-  if (!('speechSynthesis' in window)) return { voice: null, isDedicatedMale: false };
-  const voices = window.speechSynthesis.getVoices() || [];
-  const koVoices = voices.filter(v => v.lang && (v.lang.toLowerCase().includes('ko') || v.lang.toLowerCase().includes('kr')));
-  if (koVoices.length === 0) return { voice: null, isDedicatedMale: false };
+// 에피소드 3 오프닝 및 엔딩 암전 내레이션용 오리지널 한국어 남성 성우 음성(MP3) 매핑
+const DAVID_MALE_VOICE_AUDIO_MAP = {
+  '내가 이새의 아들 다윗을 만나니': 'assets/voice/ep3_open_1.mp3',
+  '내 마음에 맞는 사람이라 내 뜻을 다 이루리라': 'assets/voice/ep3_open_2.mp3',
+  '보라 날이 이르리니 내가 다윗에게 한 의로운 가지를 일으킬 것이라 그가 왕이 되어 지혜롭게 다스리며 세상에서 정의와 공의를 행할 것이며': 'assets/voice/ep3_end_1.mp3',
+  '아브라함과 다윗의 자손 예수 그리스도의 계보라': 'assets/voice/ep3_end_2.mp3'
+};
 
-  const isAndroid = /Android/i.test(navigator.userAgent || '');
-  // 1순위: 명시적 남성 음성 키워드 (InJoon, Hyunsu, Minsu, kpb, kod, SMTl02/04 등)
-  const maleKeywords = /injoon|hyunsu|bongjin|gookmin|minsu|jinsu|kpb|kod|smtl02|smtl04|male|man|남성|남자/i;
-  const femaleKeywords = /sunhi|jiyeon|yuna|sora|heami|kpa|kpc|smtl01|female|woman|여성|여자/i;
+const _maleVoiceRawBufferCache = {};
+const _maleVoiceDecodedBufferCache = {};
+let _activeMaleVoiceSource = null;
+let _activeMaleVoiceHtmlAudio = null;
+let _isMaleVoicePlaying = false;
 
-  const explicitMale = koVoices.find(v => maleKeywords.test(v.name) || maleKeywords.test(v.voiceURI || ''));
-  if (explicitMale) {
-    // 안드로이드 크롬/웹뷰는 OS TTS 브리지 특성상 utter.voice 지정이 무시되고 기본(여성) 엔진이 쓰이는 경우가 많으므로
-    // 안드로이드에서는 전용 남성 보이스로 간주하지 않고 낮은 남성 바리톤 피치(0.56)를 강제 적용함
-    return { voice: explicitMale, isDedicatedMale: !isAndroid };
+function preloadDavidMaleVoiceAssets() {
+  Object.values(DAVID_MALE_VOICE_AUDIO_MAP).forEach(url => {
+    if (_maleVoiceRawBufferCache[url]) return;
+    _maleVoiceRawBufferCache[url] = fetch(url)
+      .then(res => (res.ok ? res.arrayBuffer() : null))
+      .catch(() => null);
+  });
+}
+preloadDavidMaleVoiceAssets();
+
+function stopActiveMaleVoiceAudio() {
+  _isMaleVoicePlaying = false;
+  if (_activeMaleVoiceSource) {
+    try {
+      _activeMaleVoiceSource.onended = null;
+      _activeMaleVoiceSource.stop();
+    } catch (e) {}
+    _activeMaleVoiceSource = null;
   }
-
-  // 2순위: 여성 키워드가 없는 보이스 선택 (단, 이름이 단순 '한국어'인 기본 여성 보이스일 수 있으므로 isDedicatedMale은 항상 false로 유지!)
-  const nonFemaleVoices = koVoices.filter(v => !femaleKeywords.test(v.name) && !femaleKeywords.test(v.voiceURI || ''));
-  if (nonFemaleVoices.length > 0) {
-    return { voice: nonFemaleVoices[nonFemaleVoices.length - 1], isDedicatedMale: false };
+  if (_activeMaleVoiceHtmlAudio) {
+    try {
+      _activeMaleVoiceHtmlAudio.onended = null;
+      _activeMaleVoiceHtmlAudio.onerror = null;
+      _activeMaleVoiceHtmlAudio.pause();
+      _activeMaleVoiceHtmlAudio.currentTime = 0;
+    } catch (e) {}
+    _activeMaleVoiceHtmlAudio = null;
   }
-
-  return { voice: koVoices[0], isDedicatedMale: false };
 }
 
-if ('speechSynthesis' in window) {
-  window.speechSynthesis.onvoiceschanged = () => {
-    _cachedKoreanMaleVoice = pickBestKoreanMaleVoice();
-  };
+function isMaleVoiceAudioPlaying() {
+  return _isMaleVoicePlaying;
 }
 
-// 모바일·PC 어디서나 인자하고 중후한 남성 성우 목소리로 들리도록 낭독하는 함수
+// 여성 TTS 피치 변조 없이 오리지널 한국어 남성 성우 음성 파일(MP3)로 낭독하는 함수
 function speakMaleVoiceNarration(spokenText, onFinish) {
   let finishedCalled = false;
   const finishOnce = () => {
     if (finishedCalled) return;
     finishedCalled = true;
+    _isMaleVoicePlaying = false;
     if (typeof onFinish === 'function') onFinish();
   };
 
+  stopActiveMaleVoiceAudio();
   try {
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-      const utter = new SpeechSynthesisUtterance(spokenText);
-      utter.lang = 'ko-KR';
+    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+  } catch (e) {}
 
-      const picked = pickBestKoreanMaleVoice();
-      if (picked.voice) {
-        _cachedKoreanMaleVoice = picked;
-        utter.voice = picked.voice;
-      } else if (_cachedKoreanMaleVoice && _cachedKoreanMaleVoice.voice) {
-        utter.voice = _cachedKoreanMaleVoice.voice;
+  const key = (spokenText || '').trim();
+  const audioUrl = DAVID_MALE_VOICE_AUDIO_MAP[key];
+
+  if (audioUrl) {
+    _isMaleVoicePlaying = true;
+    const playViaHtmlAudio = () => {
+      try {
+        const audio = new Audio(audioUrl);
+        audio.volume = 1.0;
+        _activeMaleVoiceHtmlAudio = audio;
+        audio.onended = () => {
+          if (_activeMaleVoiceHtmlAudio === audio) _activeMaleVoiceHtmlAudio = null;
+          finishOnce();
+        };
+        audio.onerror = () => {
+          if (_activeMaleVoiceHtmlAudio === audio) _activeMaleVoiceHtmlAudio = null;
+          finishOnce();
+        };
+        const p = audio.play();
+        if (p && typeof p.catch === 'function') {
+          p.catch(() => finishOnce());
+        }
+      } catch (e) {
+        finishOnce();
+      }
+    };
+
+    const ctx = typeof getAudioCtx === 'function' ? getAudioCtx() : null;
+    if (ctx) {
+      const startBufferPlayback = (audioBuffer) => {
+        if (!audioBuffer || finishedCalled) {
+          if (!finishedCalled) playViaHtmlAudio();
+          return;
+        }
+        try {
+          if (ctx.state === 'suspended') ctx.resume();
+          const source = ctx.createBufferSource();
+          const gainNode = ctx.createGain();
+          gainNode.gain.value = 1.15;
+          source.buffer = audioBuffer;
+          source.connect(gainNode);
+          gainNode.connect(ctx.destination);
+          _activeMaleVoiceSource = source;
+          source.onended = () => {
+            if (_activeMaleVoiceSource === source) _activeMaleVoiceSource = null;
+            finishOnce();
+          };
+          source.start(0);
+        } catch (e) {
+          playViaHtmlAudio();
+        }
+      };
+
+      if (_maleVoiceDecodedBufferCache[audioUrl]) {
+        startBufferPlayback(_maleVoiceDecodedBufferCache[audioUrl]);
+        return;
       }
 
-      const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
-      // 모바일(기본 여성 TTS 엔진) 또는 전용 남성 음성이 아닌 경우 피치를 0.56으로 낮추어
-      // 여성 톤을 완전히 없애고 따뜻하고 인자한 중저음 남성 바리톤 목소리로 변환
-      // PC 전용 남성 보이스(InJoon 등)도 0.78 피치와 느긋한 속도로 인자한 어조 연출
-      utter.pitch = (!isMobile && picked.isDedicatedMale) ? 0.78 : 0.56;
-      utter.rate = 0.86;
-      utter.volume = 1.0;
-
-      utter.onend = finishOnce;
-      utter.onerror = finishOnce;
-
-      window.speechSynthesis.speak(utter);
+      const rawPromise = _maleVoiceRawBufferCache[audioUrl] || fetch(audioUrl).then(r => (r.ok ? r.arrayBuffer() : null)).catch(() => null);
+      _maleVoiceRawBufferCache[audioUrl] = rawPromise;
+      rawPromise
+        .then(rawBuf => {
+          if (!rawBuf) return null;
+          return ctx.decodeAudioData(rawBuf.slice(0));
+        })
+        .then(decoded => {
+          if (decoded) _maleVoiceDecodedBufferCache[audioUrl] = decoded;
+          startBufferPlayback(decoded);
+        })
+        .catch(() => {
+          playViaHtmlAudio();
+        });
       return;
     }
-  } catch (e) {}
+
+    playViaHtmlAudio();
+    return;
+  }
+
   finishOnce();
 }
 
