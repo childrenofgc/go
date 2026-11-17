@@ -286,6 +286,10 @@ function speakText(text) {
   // 번개 아이콘(⚡)이 '고압주의'로 읽히지 않도록 제거
   const cleanText = text.replace(/⚡/g, '').replace(/&/g, '과').trim();
   if (melodyTimer) { clearInterval(melodyTimer); melodyTimer = null; }
+  if (currentEpisode === 'david' && typeof speakMaleVoiceNarration === 'function') {
+    speakMaleVoiceNarration(cleanText);
+    return;
+  }
   let ttsWorked = false;
   if ('speechSynthesis' in window) {
     try {
@@ -842,40 +846,77 @@ function createBlazingPillarOfFire(x, y, z, scale = 1.0) {
   const pGroup = new THREE.Group();
   const baseMat = matVoxel('#fde047', '#ca8a04');
   const outerFireMat = new THREE.MeshBasicMaterial({ color: 0xea580c, transparent: true, opacity: 0.82 });
-  const midFireMat = new THREE.MeshBasicMaterial({ color: 0xf97316, transparent: true, opacity: 0.9 });
+  const midFireMat = new THREE.MeshBasicMaterial({ color: 0xf97316, transparent: true, opacity: 0.90 });
   const innerFireMat = new THREE.MeshBasicMaterial({ color: 0xfef08a });
+  const skyCrownMat = new THREE.MeshBasicMaterial({ color: 0xfde047, transparent: true, opacity: 0.72 });
   const cloudMat = matVoxel('#f8fafc', '#e2e8f0');
+  const warmCloudMat = matVoxel('#fed7aa', '#fdba74');
 
-  const altarBase = createBox(4.2 * scale, 0.9 * scale, 4.2 * scale, baseMat, 0, 0.45 * scale, 0);
-  const outerCore = createBox(2.5 * scale, 8.5 * scale, 2.5 * scale, outerFireMat, 0, 4.8 * scale, 0, false);
-  const midCore = createBox(1.85 * scale, 9.2 * scale, 1.85 * scale, midFireMat, 0, 5.1 * scale, 0, false);
-  const innerCore = createBox(1.15 * scale, 9.8 * scale, 1.15 * scale, innerFireMat, 0, 5.4 * scale, 0, false);
+  // 하늘 높이 치솟는 거대한 불기둥 코어 (높이 약 56~60 * scale)
+  const altarBase = createBox(4.6 * scale, 1.0 * scale, 4.6 * scale, baseMat, 0, 0.5 * scale, 0);
+  const outerCore = createBox(3.0 * scale, 54.0 * scale, 3.0 * scale, outerFireMat, 0, 27.5 * scale, 0, false);
+  const midCore = createBox(2.15 * scale, 57.0 * scale, 2.15 * scale, midFireMat, 0, 29.0 * scale, 0, false);
+  const innerCore = createBox(1.25 * scale, 60.0 * scale, 1.25 * scale, innerFireMat, 0, 30.5 * scale, 0, false);
+  const skyCrown = createBox(4.4 * scale, 6.5 * scale, 4.4 * scale, skyCrownMat, 0, 56.0 * scale, 0, false);
 
-  const cloudRing1 = createBox(3.4 * scale, 1.2 * scale, 3.4 * scale, cloudMat, 0, 2.2 * scale, 0, false);
-  const cloudRing2 = createBox(3.0 * scale, 1.0 * scale, 3.0 * scale, cloudMat, 0, 5.6 * scale, 0, false);
+  const cloudRing1 = createBox(3.8 * scale, 1.25 * scale, 3.8 * scale, cloudMat, 0, 2.5 * scale, 0, false);
+  const cloudRing2 = createBox(3.5 * scale, 1.15 * scale, 3.5 * scale, warmCloudMat, 0, 10.5 * scale, 0, false);
+  const cloudRing3 = createBox(3.3 * scale, 1.10 * scale, 3.3 * scale, cloudMat, 0, 20.5 * scale, 0, false);
+  const cloudRing4 = createBox(3.6 * scale, 1.20 * scale, 3.6 * scale, warmCloudMat, 0, 32.0 * scale, 0, false);
+  const cloudRing5 = createBox(4.2 * scale, 1.35 * scale, 4.2 * scale, cloudMat, 0, 45.0 * scale, 0, false);
 
-  pGroup.add(altarBase, outerCore, midCore, innerCore, cloudRing1, cloudRing2);
+  pGroup.add(
+    altarBase,
+    outerCore,
+    midCore,
+    innerCore,
+    skyCrown,
+    cloudRing1,
+    cloudRing2,
+    cloudRing3,
+    cloudRing4,
+    cloudRing5
+  );
+
+  const extraRings = [
+    { mesh: cloudRing2, baseY: 10.5 * scale, dir: 1, spd: 2.2 },
+    { mesh: cloudRing3, baseY: 20.5 * scale, dir: -1, spd: 2.5 },
+    { mesh: cloudRing4, baseY: 32.0 * scale, dir: 1, spd: 2.0 },
+    { mesh: cloudRing5, baseY: 45.0 * scale, dir: -1, spd: 1.7 }
+  ];
 
   const embers = [];
   const emberColors = [0xfef08a, 0xfde047, 0xf97316, 0xef4444, 0xfb923c];
-  for (let i = 0; i < 24; i++) {
+  const emberCount = 44;
+  const maxPillarH = 56.0 * scale;
+  for (let i = 0; i < emberCount; i++) {
     const eMat = new THREE.MeshBasicMaterial({ color: emberColors[i % emberColors.length] });
-    const sz = (0.32 + (i % 3) * 0.16) * scale;
-    const ember = createBox(sz, sz * 1.4, sz, eMat, 0, 1.0, 0, false);
-    const angle = (i / 24) * Math.PI * 2;
-    const radius = (0.9 + (i % 4) * 0.38) * scale;
+    const sz = (0.36 + (i % 3) * 0.18) * scale;
+    const ember = createBox(sz, sz * 1.6, sz, eMat, 0, 1.0, 0, false);
+    const angle = (i / emberCount) * Math.PI * 2;
+    const radius = (1.05 + (i % 4) * 0.45) * scale;
     pGroup.add(ember);
     embers.push({
       mesh: ember, angle, radius,
-      speedY: (3.2 + (i % 5) * 0.85) * scale,
-      yOffset: (i / 24) * 9.0 * scale,
-      maxH: 9.8 * scale,
+      speedY: (6.2 + (i % 5) * 1.45) * scale,
+      yOffset: (i / emberCount) * maxPillarH,
+      maxH: maxPillarH,
       phase: i * 0.7
     });
   }
 
   pGroup.position.set(x, y, z);
-  pGroup.userData = { fireCore: midCore, outerCore, innerCore, cloudRing: cloudRing1, cloudRing2, embers, scale };
+  pGroup.userData = {
+    fireCore: midCore,
+    outerCore,
+    innerCore,
+    skyCrown,
+    cloudRing: cloudRing1,
+    cloudRing2,
+    extraRings,
+    embers,
+    scale
+  };
   worldGroup.add(pGroup);
   blazingPillars.push(pGroup);
   return pGroup;
@@ -932,12 +973,22 @@ function updateBlazingPillars(dt, now) {
     u.outerCore.rotation.y += dt * 2.6;
     u.fireCore.rotation.y -= dt * 3.8;
     u.innerCore.rotation.y += dt * 5.2;
-    u.outerCore.scale.set(pulse, 1 + Math.cos(now * 0.012) * 0.08, pulse);
-    u.fireCore.scale.set(1 / pulse, 1 + Math.sin(now * 0.018) * 0.12, 1 / pulse);
+    u.outerCore.scale.set(pulse, 1 + Math.cos(now * 0.012) * 0.05, pulse);
+    u.fireCore.scale.set(1 / pulse, 1 + Math.sin(now * 0.018) * 0.07, 1 / pulse);
+    if (u.skyCrown) {
+      u.skyCrown.rotation.y -= dt * 2.0;
+      const crownPulse = 1 + Math.sin(now * 0.01) * 0.18;
+      u.skyCrown.scale.set(crownPulse, 1, crownPulse);
+    }
 
     u.cloudRing.rotation.y -= dt * 1.8;
     u.cloudRing.position.y = (2.2 + Math.sin(now * 0.005) * 0.45) * u.scale;
-    if (u.cloudRing2) {
+    if (u.extraRings && u.extraRings.length > 0) {
+      u.extraRings.forEach((er, idx) => {
+        er.mesh.rotation.y += dt * er.spd * er.dir;
+        er.mesh.position.y = er.baseY + Math.cos(now * 0.006 + idx * 1.2) * (0.65 * u.scale);
+      });
+    } else if (u.cloudRing2) {
       u.cloudRing2.rotation.y += dt * 2.2;
       u.cloudRing2.position.y = (5.6 + Math.cos(now * 0.006) * 0.55) * u.scale;
     }
@@ -947,10 +998,10 @@ function updateBlazingPillars(dt, now) {
         e.yOffset += e.speedY * dt;
         if (e.yOffset > e.maxH) e.yOffset = 0.8 * u.scale;
         const prog = e.yOffset / e.maxH;
-        const curAngle = e.angle + now * 0.004 + prog * 2.5;
-        const curRad = e.radius * (1 - prog * 0.35) + Math.sin(now * 0.01 + e.phase) * 0.25;
+        const curAngle = e.angle + now * 0.004 + prog * 3.2;
+        const curRad = e.radius * (1 - prog * 0.22) + Math.sin(now * 0.01 + e.phase) * 0.28;
         e.mesh.position.set(Math.cos(curAngle) * curRad, e.yOffset, Math.sin(curAngle) * curRad);
-        const s = Math.max(0.2, 1.15 - prog * 0.85);
+        const s = Math.max(0.28, 1.2 - prog * 0.75);
         e.mesh.scale.set(s, s, s);
         e.mesh.rotation.y += dt * 6;
         e.mesh.rotation.x += dt * 4;
@@ -1530,7 +1581,7 @@ function applyCoreCameraByMode() {
 
   if (typeof davidAimState !== 'undefined' && davidAimState.active) return;
   if (typeof davidFlyingStone !== 'undefined' && davidFlyingStone.active) return;
-  if (typeof davidThroneEnding !== 'undefined' && davidThroneEnding.seated) return;
+  if (typeof davidThroneEnding !== 'undefined' && davidThroneEnding.seated && !davidThroneEnding.modalShown) return;
 
   const sinY = Math.sin(cameraYaw);
   const cosY = Math.cos(cameraYaw);

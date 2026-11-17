@@ -2098,7 +2098,7 @@ function spawnBrookSlingStones(count) {
   davidSlingStones = [];
 
   const isMovingStream = (currentMode === 'senior' || currentMode === 'timeattack');
-  const stoneColors = ['#e2e8f0', '#bae6fd', '#fef08a', '#cbd5e1', '#f8fafc'];
+  const stoneColors = ['#94a3b8', '#64748b', '#cbd5e1', '#78716c', '#a8a29e'];
 
   for (let i = 0; i < count; i++) {
     const sx = -15 + (i / Math.max(1, count - 1)) * 30 + (Math.random() - 0.5) * 2.0;
@@ -2106,9 +2106,10 @@ function spawnBrookSlingStones(count) {
     const sz = getElahStreamCenterZ(sx) + zOffset;
 
     const grp = new THREE.Group();
-    const stoneMat = matDavidCached(stoneColors[i % stoneColors.length], '#94a3b8');
-    const core = createBox(0.68, 0.48, 0.68, stoneMat, 0, 0.32, 0);
-    const topCap = createBox(0.46, 0.22, 0.46, matDavidCached('#ffffff'), 0, 0.60, 0, false);
+    const stoneMat = matDavidCached(stoneColors[i % stoneColors.length], '#475569');
+    const core = createBox(0.68, 0.44, 0.62, stoneMat, 0, 0.28, 0);
+    const midFacet = createBox(0.54, 0.34, 0.50, matDavidCached('#94a3b8', '#475569'), 0.04, 0.44, -0.03, false);
+    const topCap = createBox(0.38, 0.18, 0.36, matDavidCached('#cbd5e1', '#64748b'), -0.03, 0.58, 0.02, false);
     const ring = new THREE.Mesh(
       new THREE.RingGeometry(0.75, 1.1, 20),
       new THREE.MeshBasicMaterial({ color: 0x38bdf8, side: THREE.DoubleSide })
@@ -2116,7 +2117,7 @@ function spawnBrookSlingStones(count) {
     ring.rotation.x = -Math.PI / 2;
     ring.position.y = 0.08;
 
-    grp.add(core, topCap, ring);
+    grp.add(core, midFacet, topCap, ring);
     grp.position.set(sx, 0, sz);
     worldGroup.add(grp);
 
@@ -2135,13 +2136,38 @@ function spawnBrookSlingStones(count) {
   }
 }
 
+function createDavidSlingStoneProjectileMesh() {
+  const stoneGrp = new THREE.Group();
+  const baseRockMat = matDavidCached('#64748b', '#334155');
+  const midRockMat = matDavidCached('#94a3b8', '#475569');
+  const lightRockMat = matDavidCached('#cbd5e1', '#64748b');
+  const darkChipMat = matDavidCached('#475569', '#1e293b');
+
+  // 다면체 자연석 코어 + 각진 조약돌 복셀 레이어 조합으로 입체적인 회색 물맷돌 형상 구현
+  const polyGeo = new THREE.DodecahedronGeometry(0.46, 0);
+  const polyMat = new THREE.MeshLambertMaterial({ color: 0x94a3b8, flatShading: true });
+  const polyCore = new THREE.Mesh(polyGeo, polyMat);
+  polyCore.scale.set(1.18, 0.84, 1.04);
+
+  const mainSlab = createBox(0.74, 0.44, 0.62, midRockMat, 0, 0, 0, false);
+  const upperRidge = createBox(0.54, 0.30, 0.46, lightRockMat, -0.05, 0.22, 0.03, false);
+  const lowerBase = createBox(0.58, 0.26, 0.48, baseRockMat, 0.04, -0.20, -0.02, false);
+  const sideFacetL = createBox(0.24, 0.30, 0.42, baseRockMat, -0.34, -0.03, 0.02, false);
+  const sideFacetR = createBox(0.22, 0.28, 0.38, darkChipMat, 0.34, 0.04, -0.03, false);
+
+  stoneGrp.add(polyCore, mainSlab, upperRidge, lowerBase, sideFacetL, sideFacetR);
+  return stoneGrp;
+}
+
 function updateDavidCarriedStonesVisual() {
   if (!carriedBlockGroup) return;
   while (carriedBlockGroup.children.length > 0) carriedBlockGroup.remove(carriedBlockGroup.children[0]);
-  const sMat = matDavidCached('#e2e8f0', '#94a3b8');
+  const sMat = matDavidCached('#94a3b8', '#475569');
+  const capMat = matDavidCached('#cbd5e1', '#64748b');
   for (let i = 0; i < Math.min(davidHeldStones, 5); i++) {
-    const st = createBox(0.44, 0.28, 0.44, sMat, 0, i * 0.30, 0, false);
-    carriedBlockGroup.add(st);
+    const st = createBox(0.46, 0.22, 0.40, sMat, 0, i * 0.30, 0, false);
+    const cap = createBox(0.32, 0.10, 0.28, capMat, 0.02, i * 0.30 + 0.14, 0, false);
+    carriedBlockGroup.add(st, cap);
   }
   const hudBox = document.getElementById('hud-block-box');
   if (currentEpisode === 'david' && currentStage === 2) {
@@ -2364,10 +2390,7 @@ function buildDavidStage2World() {
     });
   });
 
-  const projMesh = new THREE.Mesh(
-    new THREE.SphereGeometry(0.48, 12, 12),
-    new THREE.MeshBasicMaterial({ color: 0xfef08a })
-  );
+  const projMesh = createDavidSlingStoneProjectileMesh();
   projMesh.visible = false;
   worldGroup.add(projMesh);
   davidFlyingStone.mesh = projMesh;
@@ -2617,6 +2640,9 @@ function updateDavidStage2Frame(dt, now) {
     curPos.y += Math.sin(p * Math.PI) * 5.2;
     if (davidFlyingStone.mesh) {
       davidFlyingStone.mesh.position.copy(curPos);
+      davidFlyingStone.mesh.rotation.x += dt * 14.0;
+      davidFlyingStone.mesh.rotation.y += dt * 11.0;
+      davidFlyingStone.mesh.rotation.z += dt * 8.5;
     }
 
     camera.position.lerp(new THREE.Vector3(playerPos.x * 0.3 + 2.5, 7.8, -2.0), 0.08);

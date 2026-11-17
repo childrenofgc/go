@@ -195,7 +195,7 @@ const DAVID_VICTORY_RHYTHM  = [
   0.65, 0.65, 1.35, 0.95
 ];
 
-// 모바일·PC 브라우저에서 가장 자연스러운 한국어 남성 성우 보이스를 선택하는 함수
+// 모바일·PC 브라우저에서 인자하고 따뜻한 한국어 남성 성우 음성을 출력하는 선택기
 let _cachedKoreanMaleVoice = null;
 function pickBestKoreanMaleVoice() {
   if (!('speechSynthesis' in window)) return { voice: null, isDedicatedMale: false };
@@ -203,23 +203,22 @@ function pickBestKoreanMaleVoice() {
   const koVoices = voices.filter(v => v.lang && (v.lang.toLowerCase().includes('ko') || v.lang.toLowerCase().includes('kr')));
   if (koVoices.length === 0) return { voice: null, isDedicatedMale: false };
 
-  // 1순위: 안드로이드(Google/Samsung)·iOS·Windows의 명시적 남성 음성 프로필
-  // (안드로이드 Google TTS는 kpb, kod가 남성 보이스이며, 삼성 TTS는 SMTl02/04 계열이 남성 보이스)
+  const isAndroid = /Android/i.test(navigator.userAgent || '');
+  // 1순위: 명시적 남성 음성 키워드 (InJoon, Hyunsu, Minsu, kpb, kod, SMTl02/04 등)
   const maleKeywords = /injoon|hyunsu|bongjin|gookmin|minsu|jinsu|kpb|kod|smtl02|smtl04|male|man|남성|남자/i;
   const femaleKeywords = /sunhi|jiyeon|yuna|sora|heami|kpa|kpc|smtl01|female|woman|여성|여자/i;
 
   const explicitMale = koVoices.find(v => maleKeywords.test(v.name) || maleKeywords.test(v.voiceURI || ''));
   if (explicitMale) {
-    return { voice: explicitMale, isDedicatedMale: true };
+    // 안드로이드 크롬/웹뷰는 OS TTS 브리지 특성상 utter.voice 지정이 무시되고 기본(여성) 엔진이 쓰이는 경우가 많으므로
+    // 안드로이드에서는 전용 남성 보이스로 간주하지 않고 낮은 남성 바리톤 피치(0.56)를 강제 적용함
+    return { voice: explicitMale, isDedicatedMale: !isAndroid };
   }
 
-  // 2순위: 여성 키워드가 아닌 두 번째 한국어 보이스 (모바일에는 보통 [기본 여성, 추가 남성] 순서로 내장됨)
+  // 2순위: 여성 키워드가 없는 보이스 선택 (단, 이름이 단순 '한국어'인 기본 여성 보이스일 수 있으므로 isDedicatedMale은 항상 false로 유지!)
   const nonFemaleVoices = koVoices.filter(v => !femaleKeywords.test(v.name) && !femaleKeywords.test(v.voiceURI || ''));
-  if (nonFemaleVoices.length >= 2) {
-    return { voice: nonFemaleVoices[nonFemaleVoices.length - 1], isDedicatedMale: true };
-  }
-  if (koVoices.length >= 2) {
-    return { voice: koVoices[koVoices.length - 1], isDedicatedMale: false };
+  if (nonFemaleVoices.length > 0) {
+    return { voice: nonFemaleVoices[nonFemaleVoices.length - 1], isDedicatedMale: false };
   }
 
   return { voice: koVoices[0], isDedicatedMale: false };
@@ -231,28 +230,45 @@ if ('speechSynthesis' in window) {
   };
 }
 
-// 모바일에서 목소리가 깨지지 않고 또렷하고 중후하게 들리는 남성 성우 낭독기
-function speakMaleVoiceNarration(spokenText) {
+// 모바일·PC 어디서나 인자하고 중후한 남성 성우 목소리로 들리도록 낭독하는 함수
+function speakMaleVoiceNarration(spokenText, onFinish) {
+  let finishedCalled = false;
+  const finishOnce = () => {
+    if (finishedCalled) return;
+    finishedCalled = true;
+    if (typeof onFinish === 'function') onFinish();
+  };
+
   try {
     if ('speechSynthesis' in window) {
       window.speechSynthesis.cancel();
       const utter = new SpeechSynthesisUtterance(spokenText);
       utter.lang = 'ko-KR';
 
-      const picked = _cachedKoreanMaleVoice || pickBestKoreanMaleVoice();
+      const picked = pickBestKoreanMaleVoice();
       if (picked.voice) {
+        _cachedKoreanMaleVoice = picked;
         utter.voice = picked.voice;
+      } else if (_cachedKoreanMaleVoice && _cachedKoreanMaleVoice.voice) {
+        utter.voice = _cachedKoreanMaleVoice.voice;
       }
 
-      // 전용 남성 보이스가 잡혔을 때는 원래 성우 톤(0.92)을 유지해 기계음 변조를 막고,
-      // 기본 단일 보이스만 있는 모바일 기기에서는 음이 깨지지 않는 최대 안정권 저음(0.84)으로 설정
-      utter.pitch = picked.isDedicatedMale ? 0.92 : 0.84;
-      utter.rate = 0.93;
+      const isMobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
+      // 모바일(기본 여성 TTS 엔진) 또는 전용 남성 음성이 아닌 경우 피치를 0.56으로 낮추어
+      // 여성 톤을 완전히 없애고 따뜻하고 인자한 중저음 남성 바리톤 목소리로 변환
+      // PC 전용 남성 보이스(InJoon 등)도 0.78 피치와 느긋한 속도로 인자한 어조 연출
+      utter.pitch = (!isMobile && picked.isDedicatedMale) ? 0.78 : 0.56;
+      utter.rate = 0.86;
       utter.volume = 1.0;
 
+      utter.onend = finishOnce;
+      utter.onerror = finishOnce;
+
       window.speechSynthesis.speak(utter);
+      return;
     }
   } catch (e) {}
+  finishOnce();
 }
 
 let davidWarSfxTimer = null;
@@ -621,47 +637,87 @@ function runDavidBlackoutSequence(slides, onComplete) {
   overlay.classList.add('flex');
   overlay.style.opacity = '1';
 
-  let cursorMs = 0;
+  const registerTimer = (fn, ms) => {
+    const t = setTimeout(fn, ms);
+    davidOpeningState.timers.push(t);
+    return t;
+  };
 
-  slides.forEach((slide) => {
-    const startTimer = setTimeout(() => {
-      textWrap.style.opacity = '0';
-      setTimeout(() => {
-        mainText.innerHTML = slide.html || '';
-        subText.textContent = slide.sub || '';
-        subText.className = slide.sub ? 'text-amber-300 font-jua text-base sm:text-xl mt-4 tracking-wide' : 'hidden';
-        textWrap.style.opacity = '1';
-
-        if (slide.voiceText) {
-          speakMaleVoiceNarration(slide.voiceText);
-        }
-        if (slide.sfxMode) {
-          playWarBattleCrySfx(slide.sfxMode);
-        }
-      }, 280);
-    }, cursorMs);
-    davidOpeningState.timers.push(startTimer);
-
-    const fadeOutTimer = setTimeout(() => {
-      textWrap.style.opacity = '0';
-    }, cursorMs + Math.max(500, slide.durationMs - 650));
-    davidOpeningState.timers.push(fadeOutTimer);
-
-    cursorMs += slide.durationMs;
-  });
-
-  const finishTimer = setTimeout(() => {
+  const finishSequence = () => {
     overlay.style.opacity = '0';
-    const hideTimer = setTimeout(() => {
+    registerTimer(() => {
       overlay.classList.add('hidden');
       overlay.classList.remove('flex');
       davidOpeningState.active = false;
       clearDavidOpeningTimers();
       if (onComplete) onComplete(prevTimeAttack);
     }, 650);
-    davidOpeningState.timers.push(hideTimer);
-  }, cursorMs);
-  davidOpeningState.timers.push(finishTimer);
+  };
+
+  const playSlideAt = (idx) => {
+    if (!davidOpeningState.active) return;
+    if (idx >= slides.length) {
+      finishSequence();
+      return;
+    }
+
+    const slide = slides[idx];
+    let minTimeElapsed = false;
+    let voiceDone = !slide.voiceText;
+    let advanced = false;
+
+    const tryAdvanceSlide = () => {
+      if (advanced || !davidOpeningState.active) return;
+      if (!minTimeElapsed || !voiceDone) return;
+      advanced = true;
+      textWrap.style.opacity = '0';
+      registerTimer(() => {
+        playSlideAt(idx + 1);
+      }, 650);
+    };
+
+    textWrap.style.opacity = '0';
+    registerTimer(() => {
+      if (!davidOpeningState.active) return;
+      mainText.innerHTML = slide.html || '';
+      subText.textContent = slide.sub || '';
+      subText.className = slide.sub ? 'text-amber-300 font-jua text-base sm:text-xl mt-4 tracking-wide' : 'hidden';
+      textWrap.style.opacity = '1';
+
+      if (slide.voiceText) {
+        speakMaleVoiceNarration(slide.voiceText, () => {
+          // 음성 종료 후 여운을 위해 450ms 뒤 완료 플래그 활성화
+          registerTimer(() => {
+            voiceDone = true;
+            tryAdvanceSlide();
+          }, 450);
+        });
+        // 일부 모바일 브라우저에서 onend 이벤트가 누락되는 경우를 대비한 안전 타이머
+        registerTimer(() => {
+          voiceDone = true;
+          tryAdvanceSlide();
+        }, Math.max(slide.durationMs + 4500, 12500));
+      }
+      if (slide.sfxMode) {
+        playWarBattleCrySfx(slide.sfxMode);
+      }
+    }, 280);
+
+    registerTimer(() => {
+      minTimeElapsed = true;
+      // 만약 이미 브라우저 음성 출력이 끝난 상태라면 즉시 voiceDone 처리
+      try {
+        if ('speechSynthesis' in window && !window.speechSynthesis.speaking) {
+          voiceDone = true;
+        }
+      } catch (e) {
+        voiceDone = true;
+      }
+      tryAdvanceSlide();
+    }, Math.max(800, slide.durationMs - 650));
+  };
+
+  playSlideAt(0);
 }
 
 function startDavidStage1Opening(onDone) {
@@ -671,13 +727,13 @@ function startDavidStage1Opening(onDone) {
         html: '"내가 이새의 아들 다윗을 만나니... "',
         sub: '',
         voiceText: '내가 이새의 아들 다윗을 만나니',
-        durationMs: 5000
+        durationMs: 5400
       },
       {
         html: '"내 마음에 맞는 사람이라 내 뜻을 다 이루리라 "',
         sub: '- 사도행전 13:22 -',
         voiceText: '내 마음에 맞는 사람이라 내 뜻을 다 이루리라',
-        durationMs: 6000
+        durationMs: 6500
       }
     ],
     () => {

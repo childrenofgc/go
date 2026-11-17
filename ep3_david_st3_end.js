@@ -459,7 +459,6 @@ function buildDavidCastleWallPerimeter(limit, withSouthGate = true) {
   const wallTrimMat = matVoxel('#b45309', '#78350f');
   const wallH = 8.2;
   const wallThick = 3.4;
-  const segLen = 12.0;
 
   const addTransparentWallSegment = (w, h, d, x, y, z, isTrim = false, v = 0) => {
     const mat = isTrim ? wallTrimMat.clone() : makeDetailedBuildingWallMat(v);
@@ -469,55 +468,82 @@ function buildDavidCastleWallPerimeter(limit, withSouthGate = true) {
     return box;
   };
 
-  for (let x = -limit; x <= limit; x += segLen) {
-    addTransparentWallSegment(segLen + 0.15, wallH, wallThick, x, wallH / 2, -limit, false, 0);
-    addTransparentWallSegment(segLen + 0.35, 0.55, wallThick + 0.4, x, wallH + 0.25, -limit, true);
-    [-3.6, 0, 3.6].forEach(ox => {
-      addTransparentWallSegment(2.0, 1.2, wallThick + 0.2, x + ox, wallH + 1.1, -limit, false, 3);
-    });
-
-    if (withSouthGate && Math.abs(x) < 12.5) continue;
-    addTransparentWallSegment(segLen + 0.15, wallH, wallThick, x, wallH / 2, limit, false, 0);
-    addTransparentWallSegment(segLen + 0.35, 0.55, wallThick + 0.4, x, wallH + 0.25, limit, true);
-    [-3.6, 0, 3.6].forEach(ox => {
-      addTransparentWallSegment(2.0, 1.2, wallThick + 0.2, x + ox, wallH + 1.1, limit, false, 3);
-    });
-  }
-
-  // 남쪽 대성문(x = ±7.8, 폭 7.2 -> 외곽 ±11.4)과 양옆 성벽 사이의 빈틈을 완전히 메우는 연장 성벽
-  if (withSouthGate) {
-    [-12.8, 12.8].forEach(extX => {
-      const extW = 4.6;
-      addTransparentWallSegment(extW, wallH, wallThick, extX, wallH / 2, limit, false, 0);
-      addTransparentWallSegment(extW + 0.25, 0.55, wallThick + 0.4, extX, wallH + 0.25, limit, true);
-      [-1.1, 1.1].forEach(ox => {
-        addTransparentWallSegment(1.6, 1.2, wallThick + 0.2, extX + ox, wallH + 1.1, limit, false, 3);
+  // 구간[startCoord, endCoord]을 겹침(Z-fighting) 없이 정확히 분할하여 성벽·상단 몰딩·성가퀴를 층별로 적층
+  const addWallSpanAlongX = (xStart, xEnd, zPos, segCount) => {
+    const totalW = xEnd - xStart;
+    const segW = totalW / segCount;
+    for (let i = 0; i < segCount; i++) {
+      const cx = xStart + (i + 0.5) * segW;
+      // 1층 본체: y = 0 .. 8.20
+      addTransparentWallSegment(segW, wallH, wallThick, cx, wallH / 2, zPos, false, 0);
+      // 2층 상단 테두리 몰딩: y = 8.20 .. 8.75 (본체와 겹치지 않도록 정확히 위에 적층)
+      addTransparentWallSegment(segW, 0.55, wallThick + 0.4, cx, wallH + 0.275, zPos, true);
+      // 3층 성가퀴(Merlon): y = 8.75 .. 9.95 (몰딩 위에 적층)
+      const merlonOffsets = segW >= 9.0 ? [-segW * 0.3, 0, segW * 0.3] : [-segW * 0.25, segW * 0.25];
+      merlonOffsets.forEach(ox => {
+        addTransparentWallSegment(1.8, 1.2, wallThick + 0.16, cx + ox, wallH + 1.15, zPos, false, 3);
       });
-      registerCitySolidBox(extX, limit, extW, wallThick, wallH + 1.2, 0.20);
-    });
-  }
+    }
+  };
 
-  for (let z = -limit; z <= limit; z += segLen) {
-    addTransparentWallSegment(wallThick, wallH, segLen + 0.15, -limit, wallH / 2, z, false, 0);
-    addTransparentWallSegment(wallThick + 0.4, 0.55, segLen + 0.35, -limit, wallH + 0.25, z, true);
-    [-3.6, 0, 3.6].forEach(oz => {
-      addTransparentWallSegment(wallThick + 0.2, 1.2, 2.0, -limit, wallH + 1.1, z + oz, false, 3);
-    });
+  const addWallSpanAlongZ = (zStart, zEnd, xPos, segCount) => {
+    const totalD = zEnd - zStart;
+    const segD = totalD / segCount;
+    for (let i = 0; i < segCount; i++) {
+      const cz = zStart + (i + 0.5) * segD;
+      // 1층 본체: y = 0 .. 8.20
+      addTransparentWallSegment(wallThick, wallH, segD, xPos, wallH / 2, cz, false, 0);
+      // 2층 상단 테두리 몰딩: y = 8.20 .. 8.75
+      addTransparentWallSegment(wallThick + 0.4, 0.55, segD, xPos, wallH + 0.275, cz, true);
+      // 3층 성가퀴(Merlon): y = 8.75 .. 9.95
+      const merlonOffsets = segD >= 9.0 ? [-segD * 0.3, 0, segD * 0.3] : [-segD * 0.25, segD * 0.25];
+      merlonOffsets.forEach(oz => {
+        addTransparentWallSegment(wallThick + 0.16, 1.2, 1.8, xPos, wallH + 1.15, cz + oz, false, 3);
+      });
+    }
+  };
 
-    addTransparentWallSegment(wallThick, wallH, segLen + 0.15, limit, wallH / 2, z, false, 0);
-    addTransparentWallSegment(wallThick + 0.4, 0.55, segLen + 0.35, limit, wallH + 0.25, z, true);
-    [-3.6, 0, 3.6].forEach(oz => {
-      addTransparentWallSegment(wallThick + 0.2, 1.2, 2.0, limit, wallH + 1.1, z + oz, false, 3);
-    });
+  const towerHalf = 3.4; // 망루 폭 6.8의 절반
+  const spanCountHalf = Math.max(2, Math.round((limit - towerHalf * 2) / 12.0));
+
+  // 북쪽 성벽 (좌/우 망루 및 중앙 북쪽 망루 사이를 겹침 없이 연결)
+  addWallSpanAlongX(-limit + towerHalf, -towerHalf, -limit, spanCountHalf);
+  addWallSpanAlongX( towerHalf,  limit - towerHalf, -limit, spanCountHalf);
+
+  // 서쪽 & 동쪽 성벽 (모서리 망루와 중앙 측면 망루 사이를 겹침 없이 연결)
+  addWallSpanAlongZ(-limit + towerHalf, -towerHalf, -limit, spanCountHalf);
+  addWallSpanAlongZ( towerHalf,  limit - towerHalf, -limit, spanCountHalf);
+  addWallSpanAlongZ(-limit + towerHalf, -towerHalf,  limit, spanCountHalf);
+  addWallSpanAlongZ( towerHalf,  limit - towerHalf,  limit, spanCountHalf);
+
+  // 남쪽 성벽: 대성문 타워(외곽 x = ±11.4)와 모서리 망루(x = ±(limit - 3.4)) 사이를 빈틈·겹침 없이 연결
+  if (withSouthGate) {
+    const gateOuterX = 11.4;
+    const southWingW = (limit - towerHalf) - gateOuterX;
+    const southSegs = Math.max(2, Math.round(southWingW / 10.6));
+    addWallSpanAlongX(-limit + towerHalf, -gateOuterX, limit, southSegs);
+    addWallSpanAlongX( gateOuterX,  limit - towerHalf, limit, southSegs);
+
+    // 성문 옆과 성벽 사이로 사람이나 플레이어가 절대 빠져나가지 못하도록 연속 충돌 박스 등록
+    const wingCenter = (limit + gateOuterX) / 2;
+    const wingSolidW = limit - gateOuterX + 1.2;
+    registerCitySolidBox(-wingCenter, limit, wingSolidW, wallThick + 0.4, wallH + 1.8, 0.25);
+    registerCitySolidBox( wingCenter, limit, wingSolidW, wallThick + 0.4, wallH + 1.8, 0.25);
+  } else {
+    addWallSpanAlongX(-limit + towerHalf, -towerHalf, limit, spanCountHalf);
+    addWallSpanAlongX( towerHalf,  limit - towerHalf, limit, spanCountHalf);
   }
 
   const towerCoords = [
     [-limit, -limit], [limit, -limit], [-limit, limit], [limit, limit],
     [-limit, 0], [limit, 0], [0, -limit]
   ];
+  if (!withSouthGate) towerCoords.push([0, limit]);
+
   towerCoords.forEach(([tx, tz]) => {
-    const tBody = createBox(6.8, wallH + 3.2, 6.8, makeDetailedBuildingWallMat(3), tx, (wallH + 3.2) / 2, tz);
-    const tRoof = createBox(7.4, 0.7, 7.4, wallTrimMat.clone(), tx, wallH + 3.55, tz);
+    const tBodyH = wallH + 3.2;
+    const tBody = createBox(6.8, tBodyH, 6.8, makeDetailedBuildingWallMat(3), tx, tBodyH / 2, tz);
+    const tRoof = createBox(7.4, 0.7, 7.4, wallTrimMat.clone(), tx, tBodyH + 0.35, tz);
     worldGroup.add(tBody, tRoof);
     wallMeshes.push(tBody, tRoof);
   });
@@ -534,24 +560,24 @@ function buildDavidCastleWallPerimeter(limit, withSouthGate = true) {
     const highwayMat = new THREE.MeshLambertMaterial({ map: makeDavidCityStoneTex(2.2, 32) });
     const curbMat = matDavidCached('#94a3b8', '#64748b');
 
-    const outerGround = createBox(limit * 3.0, 1.2, 130, outGrassMat, 0, -0.58, limit + 64, false);
+    const outerGround = createBox(limit * 3.0, 1.2, 130, outGrassMat, 0, -0.62, limit + 64, false);
     outerGround.receiveShadow = true;
     worldGroup.add(outerGround);
 
     const roadLen = 125;
     const roadCenterZ = limit + roadLen / 2 - 2;
     worldGroup.add(
-      createBox(8.6, 0.14, roadLen, highwayMat, 0, 0.06, roadCenterZ, false),
-      createBox(0.65, 0.28, roadLen, curbMat, -4.6, 0.14, roadCenterZ, false),
-      createBox(0.65, 0.28, roadLen, curbMat,  4.6, 0.14, roadCenterZ, false)
+      createBox(8.6, 0.08, roadLen, highwayMat, 0, 0.04, roadCenterZ, false),
+      createBox(0.65, 0.22, roadLen, curbMat, -4.65, 0.11, roadCenterZ, false),
+      createBox(0.65, 0.22, roadLen, curbMat,  4.65, 0.11, roadCenterZ, false)
     );
 
     for (let rz = limit + 12; rz <= limit + 108; rz += 16) {
       addPalmTree(-9.5, rz, 1.15, false);
       addPalmTree( 9.5, rz, 1.15, false);
       worldGroup.add(
-        createBox(0.45, 1.6, 0.45, curbMat, -5.2, 0.8, rz, false),
-        createBox(0.45, 1.6, 0.45, curbMat,  5.2, 0.8, rz, false)
+        createBox(0.45, 1.6, 0.45, curbMat, -5.3, 0.8, rz, false),
+        createBox(0.45, 1.6, 0.45, curbMat,  5.3, 0.8, rz, false)
       );
     }
   }
@@ -775,21 +801,23 @@ function buildDavidCityPalace(cx, cz) {
   const goldMat = matDavidCached('#facc15', '#ca8a04');
   const colMat = matVoxel('#f8fafc', '#cbd5e1');
 
+  // 층별 Y 범위를 정확히 적층하여 면 겹침(Z-fighting) 원천 차단
+  // base: 0.00..1.20 | mainHall: 1.20..7.60 | cedarRoof: 7.60..8.50 | upperTower: 8.50..12.60 | crownRoof: 12.60..13.30
   const base = createBox(20, 1.2, 14, makeDetailedBuildingWallMat(3), cx, 0.6, cz);
-  const mainHall = createBox(18, 6.5, 11, makeDetailedBuildingWallMat(0), cx, 4.4, cz);
-  const cedarRoof = createBox(19.2, 0.9, 12.2, cedarMat.clone(), cx, 8.0, cz);
-  const upperTower = createBox(10, 4.2, 7, makeDetailedBuildingWallMat(2), cx, 10.5, cz - 1.0);
-  const crownRoof = createBox(11.0, 0.7, 8.0, goldMat, cx, 12.9, cz - 1.0);
+  const mainHall = createBox(18, 6.4, 11, makeDetailedBuildingWallMat(0), cx, 4.4, cz);
+  const cedarRoof = createBox(19.2, 0.9, 12.2, cedarMat.clone(), cx, 8.05, cz);
+  const upperTower = createBox(10, 4.1, 7, makeDetailedBuildingWallMat(2), cx, 10.55, cz - 1.0);
+  const crownRoof = createBox(11.0, 0.7, 8.0, goldMat, cx, 12.95, cz - 1.0);
   worldGroup.add(base, mainHall, cedarRoof, upperTower, crownRoof);
   wallMeshes.push(mainHall, cedarRoof, upperTower);
 
   [-6.5, -2.5, 2.5, 6.5].forEach(ox => {
-    const col = createBox(1.1, 6.2, 1.1, colMat.clone(), cx + ox, 4.2, cz + 6.0);
+    const col = createBox(1.1, 6.4, 1.1, colMat.clone(), cx + ox, 4.4, cz + 6.2);
     worldGroup.add(col);
     wallMeshes.push(col);
   });
-  addWallTorch(cx - 4.5, 3.2, cz + 6.8);
-  addWallTorch(cx + 4.5, 3.2, cz + 6.8);
+  addWallTorch(cx - 4.5, 3.2, cz + 6.85);
+  addWallTorch(cx + 4.5, 3.2, cz + 6.85);
 
   registerCitySolidBox(cx, cz, 20.0, 14.0, 12.5, 0.35);
 }
@@ -800,16 +828,17 @@ function buildDavidCityTabernacle(cx, cz) {
   const tentPurple = matVoxel('#7e22ce', '#581c87').clone();
   const goldMat = matDavidCached('#facc15', '#ca8a04');
 
+  // platform: 0.00..0.80 | tentBody: 0.80..5.90 | roofBlue: 5.90..6.70 | roofTop: 6.70..7.40
   const platform = createBox(16, 0.8, 12, matDavidCached('#cbd5e1', '#94a3b8'), cx, 0.4, cz);
-  const tentBody = createBox(12, 5.2, 8.5, tentWhite, cx, 3.4, cz);
+  const tentBody = createBox(12, 5.1, 8.5, tentWhite, cx, 3.35, cz);
   const roofBlue = createBox(12.8, 0.8, 9.2, tentBlue, cx, 6.3, cz);
-  const roofTop = createBox(10.5, 0.7, 7.5, tentPurple, cx, 7.0, cz);
+  const roofTop = createBox(10.5, 0.7, 7.5, tentPurple, cx, 7.05, cz);
   worldGroup.add(platform, tentBody, roofBlue, roofTop);
   wallMeshes.push(tentBody, roofBlue, roofTop);
 
   const arkBox = createBox(2.2, 1.3, 1.3, goldMat, cx, 1.45, cz + 3.2);
-  const cherubL = createBox(0.5, 0.7, 0.5, goldMat, cx - 0.65, 2.4, cz + 3.2);
-  const cherubR = createBox(0.5, 0.7, 0.5, goldMat, cx + 0.65, 2.4, cz + 3.2);
+  const cherubL = createBox(0.5, 0.7, 0.5, goldMat, cx - 0.65, 2.45, cz + 3.2);
+  const cherubR = createBox(0.5, 0.7, 0.5, goldMat, cx + 0.65, 2.45, cz + 3.2);
   worldGroup.add(arkBox, cherubL, cherubR);
   addWallTorch(cx - 4.8, 2.5, cz + 5.2);
   addWallTorch(cx + 4.8, 2.5, cz + 5.2);
@@ -826,22 +855,25 @@ function buildClimbableTwoStoryHouse(cx, cz, stairSide = 'east', colorVariant = 
   const winMat = matDavidCached('#1e293b');
 
   const w = 9.0, h1 = 3.6, d = 7.4;
+  const body1FH = 3.30; // 0.00 .. 3.30
+  const slabH = 0.30;   // 3.30 .. 3.60
 
-  const body1F = createBox(w, h1, d, wallMat, cx, h1 / 2, cz);
-  const slab2F = createBox(w + 0.4, 0.30, d + 0.4, trimMat, cx, h1 - 0.12, cz);
-  const door1F = createBox(1.6, 2.4, 0.25, trimMat, cx, 1.2, cz + d / 2 + 0.08);
-  const lintel1F = createBox(2.1, 0.28, 0.34, frameMat, cx, 2.52, cz + d / 2 + 0.10);
+  const body1F = createBox(w, body1FH, d, wallMat, cx, body1FH / 2, cz);
+  const slab2F = createBox(w + 0.36, slabH, d + 0.36, trimMat, cx, body1FH + slabH / 2, cz);
+  const zFront = cz + d / 2;
+  const door1F = createBox(1.6, 2.3, 0.10, trimMat, cx, 1.15, zFront + 0.06);
+  const lintel1F = createBox(2.1, 0.24, 0.16, frameMat, cx, 2.44, zFront + 0.09);
   worldGroup.add(body1F, slab2F, door1F, lintel1F);
   wallMeshes.push(body1F, slab2F);
 
   [-2.6, 2.6].forEach(ox => {
     worldGroup.add(
-      createBox(1.3, 1.2, 0.22, frameMat, cx + ox, 2.1, cz + d / 2 + 0.06),
-      createBox(0.95, 0.95, 0.26, winMat, cx + ox, 2.1, cz + d / 2 + 0.08)
+      createBox(1.3, 1.2, 0.08, frameMat, cx + ox, 2.05, zFront + 0.05),
+      createBox(0.95, 0.90, 0.05, winMat, cx + ox, 2.05, zFront + 0.12)
     );
   });
-  for (let bx = -w / 2 + 0.8; bx <= w / 2 - 0.8; bx += 1.8) {
-    worldGroup.add(createBox(0.24, 0.22, d + 0.7, frameMat, cx + bx, h1 - 0.28, cz));
+  for (let bx = -w / 2 + 0.9; bx <= w / 2 - 0.9; bx += 1.8) {
+    worldGroup.add(createBox(0.22, 0.20, d + 0.64, frameMat, cx + bx, body1FH - 0.14, cz));
   }
 
   platforms.push({
@@ -868,18 +900,18 @@ function buildClimbableTwoStoryHouse(cx, cz, stairSide = 'east', colorVariant = 
   wallMeshes.push(body2F, roof2F);
   registerCitySolidBox(roomX, roomZ, roomW, roomD, h1 + roomH, 0.20);
 
+  // 외벽 계단: 본체 외벽(cx ± w/2) 바깥쪽에 밀착 배치하고 계단 단끼리 Z축 겹침이 없도록 설계
   const dir = (stairSide === 'east') ? 1 : -1;
-  const stairW = 2.6;
-  const stairX = cx + dir * (w / 2 + stairW / 2 - 0.30);
-  const stepDepth = 1.24;
-  const startZ = cz + d / 2 - 0.4;
+  const stairW = 2.4;
+  const stairX = cx + dir * (w / 2 + stairW / 2 + 0.02);
+  const stepDepth = 1.20;
+  const startZ = cz + d / 2 - 0.60;
 
   for (let s = 1; s <= 6; s++) {
     const stepTopY = s * 0.6;
     const sz = startZ - (s - 1) * stepDepth;
-    const boxD = (s === 6) ? (stepDepth + 0.65) : (stepDepth + 0.18);
-    const boxZ = (s === 6) ? (sz - 0.20) : sz;
-    const stepBox = createBox(stairW, stepTopY, boxD, stairMat.clone(), stairX, stepTopY / 2, boxZ);
+    const visualH = (s === 6) ? (stepTopY - 0.02) : stepTopY;
+    const stepBox = createBox(stairW, visualH, stepDepth, stairMat.clone(), stairX, visualH / 2, sz);
     worldGroup.add(stepBox);
     wallMeshes.push(stepBox);
 
@@ -888,8 +920,8 @@ function buildClimbableTwoStoryHouse(cx, cz, stairSide = 'east', colorVariant = 
     platforms.push({
       minX: pMinX,
       maxX: pMaxX,
-      minZ: boxZ - boxD * 0.55,
-      maxZ: boxZ + boxD * 0.55,
+      minZ: sz - stepDepth * 0.60,
+      maxZ: sz + stepDepth * 0.60,
       topY: stepTopY
     });
   }
@@ -904,21 +936,23 @@ function buildOpenShopBuildingWithKeeper(cx, cz, w, d, facing = 'south', shopTyp
   const isNS = (facing === 'south' || facing === 'north');
   const fSign = (facing === 'south' || facing === 'east') ? 1 : -1;
 
-  const roofBox = createBox(w + 0.4, 0.55, d + 0.4, woodMat.clone(), cx, h + 0.25, cz);
+  // 지붕(y = 4.50 .. 5.05)과 차양(전면 벽 바깥쪽)이 벽체와 면을 공유하지 않도록 배치
+  const roofBox = createBox(w + 0.4, 0.55, d + 0.4, woodMat.clone(), cx, h + 0.275, cz);
   const signAwning = createBox(
-    isNS ? w + 0.6 : 1.8,
-    0.45,
-    isNS ? 1.8 : d + 0.6,
+    isNS ? w + 0.5 : 1.7,
+    0.42,
+    isNS ? 1.7 : d + 0.5,
     awningMat,
-    cx + (isNS ? 0 : fSign * (w / 2 + 0.6)),
+    cx + (isNS ? 0 : fSign * (w / 2 + 0.88)),
     h - 0.35,
-    cz + (isNS ? fSign * (d / 2 + 0.6) : 0)
+    cz + (isNS ? fSign * (d / 2 + 0.88) : 0)
   );
   worldGroup.add(roofBox, signAwning);
   wallMeshes.push(roofBox, signAwning);
 
   if (isNS) {
-    const backWall = createBox(w, h, 0.8, makeDetailedBuildingWallMat(idx), cx, h / 2, cz - fSign * (d / 2 - 0.4));
+    // 뒷벽(backWall)을 좌우 측벽(sideL, sideR, 두께 0.8) 안쪽 폭(w - 1.6)으로 맞춰 모서리 겹침 제거
+    const backWall = createBox(w - 1.6, h, 0.8, makeDetailedBuildingWallMat(idx), cx, h / 2, cz - fSign * (d / 2 - 0.4));
     const sideL = createBox(0.8, h, d, makeDetailedBuildingWallMat(idx), cx - w / 2 + 0.4, h / 2, cz);
     const sideR = createBox(0.8, h, d, makeDetailedBuildingWallMat(idx), cx + w / 2 - 0.4, h / 2, cz);
     const counter = createBox(w - 2.0, 1.15, 1.1, woodMat.clone(), cx, 0.58, cz + fSign * (d / 2 - 1.3));
@@ -927,7 +961,7 @@ function buildOpenShopBuildingWithKeeper(cx, cz, w, d, facing = 'south', shopTyp
 
     const itemCols = ['#ef4444', '#facc15', '#22c55e', '#a855f7'];
     [-1.8, 0, 1.8].forEach((ox, i) => {
-      worldGroup.add(createBox(0.75, 0.48, 0.65, matDavidCached(itemCols[(idx + i) % itemCols.length]), cx + ox, 1.38, cz + fSign * (d / 2 - 1.3)));
+      worldGroup.add(createBox(0.75, 0.48, 0.65, matDavidCached(itemCols[(idx + i) % itemCols.length]), cx + ox, 1.40, cz + fSign * (d / 2 - 1.3)));
     });
 
     const keeper = createDetailedCityNpcMesh(idx % 2 === 0 ? 'merchant' : 'architect');
@@ -936,7 +970,8 @@ function buildOpenShopBuildingWithKeeper(cx, cz, w, d, facing = 'south', shopTyp
     worldGroup.add(keeper);
     davidCityShopkeepers.push({ mesh: keeper, phase: idx * 1.1 });
   } else {
-    const backWall = createBox(0.8, h, d, makeDetailedBuildingWallMat(idx), cx - fSign * (w / 2 - 0.4), h / 2, cz);
+    // 뒷벽(backWall)을 남북 측벽(sideN, sideS, 두께 0.8) 안쪽 깊이(d - 1.6)로 맞춰 모서리 겹침 제거
+    const backWall = createBox(0.8, h, d - 1.6, makeDetailedBuildingWallMat(idx), cx - fSign * (w / 2 - 0.4), h / 2, cz);
     const sideN = createBox(w, h, 0.8, makeDetailedBuildingWallMat(idx), cx, h / 2, cz - d / 2 + 0.4);
     const sideS = createBox(w, h, 0.8, makeDetailedBuildingWallMat(idx), cx, h / 2, cz + d / 2 - 0.4);
     const counter = createBox(1.1, 1.15, d - 2.0, woodMat.clone(), cx + fSign * (w / 2 - 1.3), 0.58, cz);
@@ -945,7 +980,7 @@ function buildOpenShopBuildingWithKeeper(cx, cz, w, d, facing = 'south', shopTyp
 
     const itemCols = ['#f97316', '#38bdf8', '#fde047', '#ec4899'];
     [-1.8, 0, 1.8].forEach((oz, i) => {
-      worldGroup.add(createBox(0.65, 0.48, 0.75, matDavidCached(itemCols[(idx + i) % itemCols.length]), cx + fSign * (w / 2 - 1.3), 1.38, cz + oz));
+      worldGroup.add(createBox(0.65, 0.48, 0.75, matDavidCached(itemCols[(idx + i) % itemCols.length]), cx + fSign * (w / 2 - 1.3), 1.40, cz + oz));
     });
 
     const keeper = createDetailedCityNpcMesh(idx % 2 === 0 ? 'merchant' : 'architect');
@@ -967,43 +1002,50 @@ function buildSolidCityBuildingBlock(cx, cz, w, h, d, variant = 0) {
   const doorMat = matDavidCached('#451a03');
   const stoneQuoinMat = matDavidCached('#d6d3d1', '#a8a29e');
 
-  const body = createBox(w, h, d, wallMat, cx, h / 2, cz);
-  const roof = createBox(w + 0.45, 0.45, d + 0.45, roofMat, cx, h + 0.22, cz);
-  const plinth = createBox(w + 0.22, 0.36, d + 0.22, stoneQuoinMat, cx, 0.18, cz);
-  worldGroup.add(body, roof, plinth);
+  // 기단(plinth: 0.00..0.36) -> 본체(body: 0.36..h) -> 지붕(roof: h..h+0.45) 순차 적층으로 면 겹침 제거
+  const plinthH = 0.36;
+  const bodyH = Math.max(1.0, h - plinthH);
+  const plinth = createBox(w + 0.22, plinthH, d + 0.22, stoneQuoinMat, cx, plinthH / 2, cz);
+  const body = createBox(w, bodyH, d, wallMat, cx, plinthH + bodyH / 2, cz);
+  const roof = createBox(w + 0.45, 0.45, d + 0.45, roofMat, cx, h + 0.225, cz);
+  worldGroup.add(plinth, body, roof);
   wallMeshes.push(body, roof);
 
   if (w >= d) {
     const count = Math.max(1, Math.floor(w / 7.5));
+    const zFront = cz + d / 2;
+    const zBack = cz - d / 2;
     for (let i = 0; i < count; i++) {
       const ox = -w / 2 + (i + 0.5) * (w / count);
       worldGroup.add(
-        createBox(1.4, 2.3, 0.18, doorMat, cx + ox, 1.15, cz + d / 2 + 0.06),
-        createBox(1.8, 0.24, 0.28, beamMat, cx + ox, 2.40, cz + d / 2 + 0.08),
-        createBox(1.35, 1.35, 0.16, winFrameMat, cx + ox + 1.85, 2.65, cz + d / 2 + 0.05),
-        createBox(1.05, 1.05, 0.20, winMat, cx + ox + 1.85, 2.65, cz + d / 2 + 0.07),
-        createBox(1.35, 1.35, 0.16, winFrameMat, cx + ox - 1.85, 2.65, cz - d / 2 - 0.05),
-        createBox(1.05, 1.05, 0.20, winMat, cx + ox - 1.85, 2.65, cz - d / 2 - 0.07)
+        createBox(1.4, 2.0, 0.10, doorMat, cx + ox, plinthH + 1.0, zFront + 0.06),
+        createBox(1.8, 0.22, 0.16, beamMat, cx + ox, plinthH + 2.12, zFront + 0.09),
+        createBox(1.35, 1.30, 0.08, winFrameMat, cx + ox + 1.85, 2.65, zFront + 0.05),
+        createBox(1.05, 1.00, 0.05, winMat, cx + ox + 1.85, 2.65, zFront + 0.12),
+        createBox(1.35, 1.30, 0.08, winFrameMat, cx + ox - 1.85, 2.65, zBack - 0.05),
+        createBox(1.05, 1.00, 0.05, winMat, cx + ox - 1.85, 2.65, zBack - 0.12)
       );
     }
     for (let bx = -w / 2 + 1.2; bx <= w / 2 - 1.2; bx += 2.6) {
-      worldGroup.add(createBox(0.22, 0.22, d + 0.72, beamMat, cx + bx, h - 0.22, cz));
+      worldGroup.add(createBox(0.22, 0.20, d + 0.68, beamMat, cx + bx, h - 0.16, cz));
     }
   } else {
     const count = Math.max(1, Math.floor(d / 7.5));
+    const xFront = cx + w / 2;
+    const xBack = cx - w / 2;
     for (let i = 0; i < count; i++) {
       const oz = -d / 2 + (i + 0.5) * (d / count);
       worldGroup.add(
-        createBox(0.18, 2.3, 1.4, doorMat, cx + w / 2 + 0.06, 1.15, cz + oz),
-        createBox(0.28, 0.24, 1.8, beamMat, cx + w / 2 + 0.08, 2.40, cz + oz),
-        createBox(0.16, 1.35, 1.35, winFrameMat, cx + w / 2 + 0.05, 2.65, cz + oz + 1.85),
-        createBox(0.20, 1.05, 1.05, winMat, cx + w / 2 + 0.07, 2.65, cz + oz + 1.85),
-        createBox(0.16, 1.35, 1.35, winFrameMat, cx - w / 2 - 0.05, 2.65, cz + oz - 1.85),
-        createBox(0.20, 1.05, 1.05, winMat, cx - w / 2 - 0.07, 2.65, cz + oz - 1.85)
+        createBox(0.10, 2.0, 1.4, doorMat, xFront + 0.06, plinthH + 1.0, cz + oz),
+        createBox(0.16, 0.22, 1.8, beamMat, xFront + 0.09, plinthH + 2.12, cz + oz),
+        createBox(0.08, 1.30, 1.35, winFrameMat, xFront + 0.05, 2.65, cz + oz + 1.85),
+        createBox(0.05, 1.00, 1.05, winMat, xFront + 0.12, 2.65, cz + oz + 1.85),
+        createBox(0.08, 1.30, 1.35, winFrameMat, xBack - 0.05, 2.65, cz + oz - 1.85),
+        createBox(0.05, 1.00, 1.05, winMat, xBack - 0.12, 2.65, cz + oz - 1.85)
       );
     }
     for (let bz = -d / 2 + 1.2; bz <= d / 2 - 1.2; bz += 2.6) {
-      worldGroup.add(createBox(w + 0.72, 0.22, 0.22, beamMat, cx, h - 0.22, cz + bz));
+      worldGroup.add(createBox(w + 0.68, 0.20, 0.22, beamMat, cx, h - 0.16, cz + bz));
     }
   }
 
@@ -1042,52 +1084,70 @@ function buildDenseMazeCityAndStreets() {
     buildOpenShopBuildingWithKeeper(sh.x, sh.z, sh.w, sh.d, sh.facing, sh.type, idx);
   });
 
+  // 인접 건물끼리 지붕·처마·벽체가 서로 겹쳐 깜빡이지 않도록 좌표를 정밀 조정하되,
+  // 맞닿는 경계는 registerCitySolidBox로 빈틈없이 막아 사람이 비집고 들어갈 틈을 0으로 유지
   const cityMazeBlocks = [
-    { x: -60, z: -26, w: 7.5, h: 4.9, d: 28.0, v: 0 },
-    { x: -36, z: -60, w: 30.0, h: 4.8, d: 7.5, v: 1 },
-    { x: -36, z: -48, w: 20.0, h: 4.6, d: 7.5, v: 2 },
-    { x: -28, z: -36, w: 7.5, h: 4.5, d: 16.0, v: 3 },
-    { x: -30, z: -15, w: 15.0, h: 4.7, d: 7.5, v: 0 },
-    { x: -58, z:  -4, w: 8.5, h: 4.7, d: 14.0, v: 1 },
-    { x: -16, z: -20, w: 7.5, h: 4.8, d: 14.0, v: 2 },
-    { x: -16, z: -56, w: 12.0, h: 4.7, d: 7.5, v: 0 },
+    { x: -60,   z: -26.5, w: 7.5, h: 4.9, d: 27.0, v: 0 },
+    { x: -36,   z: -60,   w: 28.0, h: 4.8, d: 7.5, v: 1 },
+    { x: -36,   z: -48,   w: 20.0, h: 4.6, d: 7.5, v: 2 },
+    { x: -28.6, z: -35.2, w: 6.4, h: 4.5, d: 14.5, v: 3 },
+    { x: -30,   z: -15,   w: 15.0, h: 4.7, d: 7.5, v: 0 },
+    { x: -58,   z:  -3.5, w: 8.5, h: 4.7, d: 13.0, v: 1 },
+    { x: -16,   z: -20,   w: 7.5, h: 4.8, d: 14.0, v: 2 },
+    { x: -15.0, z: -56,   w: 10.0, h: 4.7, d: 7.5, v: 0 },
 
-    { x:  60, z: -26, w: 7.5, h: 4.9, d: 28.0, v: 1 },
-    { x:  36, z: -60, w: 30.0, h: 4.8, d: 7.5, v: 0 },
-    { x:  34, z: -48, w: 18.0, h: 4.6, d: 7.5, v: 3 },
-    { x:  28, z: -36, w: 7.5, h: 4.5, d: 16.0, v: 2 },
-    { x:  30, z: -15, w: 15.0, h: 4.7, d: 7.5, v: 1 },
-    { x:  58, z:  -4, w: 8.5, h: 4.7, d: 14.0, v: 0 },
-    { x:  16, z: -20, w: 7.5, h: 4.8, d: 14.0, v: 3 },
-    { x:  20, z: -34, w: 8.5, h: 4.6, d: 7.5, v: 2 },
-    { x:  16, z: -56, w: 12.0, h: 4.7, d: 7.5, v: 1 },
+    { x:  60,   z: -26.5, w: 7.5, h: 4.9, d: 27.0, v: 1 },
+    { x:  36,   z: -60,   w: 28.0, h: 4.8, d: 7.5, v: 0 },
+    { x:  34,   z: -48,   w: 18.0, h: 4.6, d: 7.5, v: 3 },
+    { x:  28.6, z: -35.2, w: 6.4, h: 4.5, d: 14.5, v: 2 },
+    { x:  30,   z: -15,   w: 15.0, h: 4.7, d: 7.5, v: 1 },
+    { x:  58,   z:  -3.5, w: 8.5, h: 4.7, d: 13.0, v: 0 },
+    { x:  16,   z: -20,   w: 7.5, h: 4.8, d: 14.0, v: 3 },
+    { x:  19.5, z: -34,   w: 7.6, h: 4.6, d: 7.5, v: 2 },
+    { x:  15.0, z: -56,   w: 10.0, h: 4.7, d: 7.5, v: 1 },
 
-    { x: -60, z:  16, w: 7.5, h: 4.8, d: 22.0, v: 2 },
-    { x: -42, z:   8, w: 8.5, h: 4.5, d: 12.0, v: 0 },
-    { x: -60, z:  46, w: 7.5, h: 4.8, d: 24.0, v: 1 },
-    { x: -40, z:  60, w: 28.0, h: 4.8, d: 7.5, v: 3 },
-    { x: -34, z:  48, w: 18.0, h: 4.6, d: 7.5, v: 0 },
-    { x: -29, z:  32, w: 8.0, h: 4.6, d: 18.0, v: 2 },
-    { x: -17, z:  31, w: 9.0, h: 4.5, d: 12.0, v: 1 },
-    { x: -18, z:  46, w: 10.0, h: 4.8, d: 7.5, v: 3 },
-    { x: -18, z:  59, w: 10.0, h: 4.8, d: 7.5, v: 0 },
+    { x: -60,   z:  16,   w: 7.5, h: 4.8, d: 22.0, v: 2 },
+    { x: -42,   z:   8,   w: 8.5, h: 4.5, d: 12.0, v: 0 },
+    { x: -60,   z:  46,   w: 7.5, h: 4.8, d: 24.0, v: 1 },
+    { x: -40,   z:  60,   w: 28.0, h: 4.8, d: 7.5, v: 3 },
+    { x: -34,   z:  48,   w: 18.0, h: 4.6, d: 7.5, v: 0 },
+    { x: -29,   z:  32,   w: 8.0, h: 4.6, d: 18.0, v: 2 },
+    { x: -17,   z:  31,   w: 9.0, h: 4.5, d: 12.0, v: 1 },
+    { x: -18,   z:  46,   w: 10.0, h: 4.8, d: 7.5, v: 3 },
+    { x: -18,   z:  59,   w: 10.0, h: 4.8, d: 7.5, v: 0 },
 
-    { x:  60, z:  16, w: 7.5, h: 4.8, d: 22.0, v: 3 },
-    { x:  42, z:   8, w: 8.5, h: 4.5, d: 12.0, v: 1 },
-    { x:  60, z:  46, w: 7.5, h: 4.8, d: 24.0, v: 0 },
-    { x:  40, z:  60, w: 28.0, h: 4.8, d: 7.5, v: 2 },
-    { x:  34, z:  48, w: 18.0, h: 4.6, d: 7.5, v: 1 },
-    { x:  31, z:  32, w: 8.0, h: 4.6, d: 18.0, v: 3 },
-    { x:  30, z:  20, w: 10.0, h: 4.5, d: 7.0, v: 0 },
-    { x:  18, z:  46, w: 10.0, h: 4.8, d: 7.5, v: 2 },
-    { x:  18, z:  59, w: 10.0, h: 4.8, d: 7.5, v: 1 }
+    { x:  60,   z:  16,   w: 7.5, h: 4.8, d: 22.0, v: 3 },
+    { x:  42,   z:   8,   w: 8.5, h: 4.5, d: 12.0, v: 1 },
+    { x:  61.2, z:  38.0, w: 5.2, h: 4.8, d: 11.0, v: 0 },
+    { x:  40,   z:  60,   w: 28.0, h: 4.8, d: 7.5, v: 2 },
+    { x:  34,   z:  48,   w: 18.0, h: 4.6, d: 7.5, v: 1 },
+    { x:  31,   z:  33.0, w: 8.0, h: 4.6, d: 16.0, v: 3 },
+    { x:  30,   z:  19.5, w: 10.0, h: 4.5, d: 7.0, v: 0 },
+    { x:  18,   z:  46,   w: 10.0, h: 4.8, d: 7.5, v: 2 },
+    { x:  18,   z:  59,   w: 10.0, h: 4.8, d: 7.5, v: 1 }
   ];
 
   cityMazeBlocks.forEach(b => {
     buildSolidCityBuildingBlock(b.x, b.z, b.w, b.h, b.d, b.v);
   });
 
-  // [왕궁 전령 앞 정사각형 광장 바닥 구조물 & 중앙 우물]
+  // 인접 건물 사이 이음새(시각적 Z-fighting 방지를 위해 띄운 미세 간격)에 연속 충돌 박스를 채워 사람이 들어갈 틈을 완벽히 차단
+  [
+    [-59.0, -11.5, 9.0, 3.8],
+    [ 59.0, -11.5, 9.0, 3.8],
+    [-21.0, -58.0, 3.6, 8.5],
+    [ 21.0, -58.0, 3.6, 8.5],
+    [-28.6, -43.5, 7.2, 3.2],
+    [ 28.6, -43.5, 7.2, 3.2],
+    [-25.0, -34.5, 3.2, 10.0],
+    [ 24.5, -34.5, 3.6, 8.5],
+    [ 30.5,  24.0, 9.5, 3.4],
+    [ 59.0,  44.5, 6.5, 4.0]
+  ].forEach(([jx, jz, jw, jd]) => {
+    registerCitySolidBox(jx, jz, jw, jd, 5.0, 0.25);
+  });
+
+  // [왕궁 전령 앞 정사각형 광장 바닥 구조물 & 중앙 우물 - 면 겹침(깜빡임) 완전 제거]
   const plazaCanvas = document.createElement('canvas');
   plazaCanvas.width = 256;
   plazaCanvas.height = 256;
@@ -1116,37 +1176,53 @@ function buildDenseMazeCityAndStreets() {
 
   const plazaTex = new THREE.CanvasTexture(plazaCanvas);
   plazaTex.magFilter = THREE.NearestFilter;
-  const plazaFloorMat = new THREE.MeshLambertMaterial({ map: plazaTex });
+  const plazaFloorMat = new THREE.MeshLambertMaterial({
+    map: plazaTex,
+    polygonOffset: true,
+    polygonOffsetFactor: -1,
+    polygonOffsetUnits: -1
+  });
   const plazaBorderMat = matDavidCached('#d6c5a5', '#9c8665');
   const plazaPodiumMat = matDavidCached('#cbd5e1', '#94a3b8');
 
-  // 왕궁 전령(z = -4.5) 앞 ~ 중앙 우물 구조물(z = 8) 바닥을 감싸는 정사각형 광장 바닥 구조물
+  // baseGround 상단(y = 0.00) 위에 겹침 없이 적층:
+  // 1) 광장 본판(plazaMainSlab): z = -2.8 .. 15.2 (중심 z = 6.2, 깊이 18.0), y = 0.01 .. 0.06
+  // 2) 왕궁 전령 앞판(heraldApronSlab): z = -6.8 .. -2.8 (중심 z = -4.8, 깊이 4.0), y = 0.01 .. 0.06 (plazaMainSlab과 Z축 겹침 0!)
   const plazaSize = 18.0;
   const plazaCenterZ = 6.2;
-  const plazaMainSlab = createBox(plazaSize, 0.10, plazaSize, plazaFloorMat, 0, 0.05, plazaCenterZ, false);
+  const plazaMainSlab = createBox(plazaSize, 0.05, plazaSize, plazaFloorMat, 0, 0.035, plazaCenterZ, false);
   plazaMainSlab.receiveShadow = true;
-  // 왕궁 전령 발밑과 광장을 잇는 정사각형 진입 바닥판
-  const heraldApronSlab = createBox(8.4, 0.10, 5.2, plazaFloorMat, 0, 0.05, -4.4, false);
-  heraldApronSlab.receiveShadow = true;
-  // 중앙 구조물(우물) 바로 아래 정사각형 이중 기단 바닥 구조물
-  const wellSquareBase1 = createBox(7.6, 0.16, 7.6, plazaBorderMat, 0, 0.08, 8.0, false);
-  const wellSquareBase2 = createBox(5.4, 0.24, 5.4, plazaPodiumMat, 0, 0.12, 8.0, false);
-  // 정사각형 광장 테두리 연석(얇고 낮은 광장 경계석)
-  const rimN = createBox(plazaSize + 0.5, 0.16, 0.45, plazaBorderMat, 0, 0.08, plazaCenterZ - plazaSize / 2, false);
-  const rimS = createBox(plazaSize + 0.5, 0.16, 0.45, plazaBorderMat, 0, 0.08, plazaCenterZ + plazaSize / 2, false);
-  const rimW = createBox(0.45, 0.16, plazaSize + 0.5, plazaBorderMat, -plazaSize / 2, 0.08, plazaCenterZ, false);
-  const rimE = createBox(0.45, 0.16, plazaSize + 0.5, plazaBorderMat,  plazaSize / 2, 0.08, plazaCenterZ, false);
 
-  worldGroup.add(plazaMainSlab, heraldApronSlab, wellSquareBase1, wellSquareBase2, rimN, rimS, rimW, rimE);
+  const heraldApronSlab = createBox(8.4, 0.05, 4.0, plazaFloorMat, 0, 0.035, -4.8, false);
+  heraldApronSlab.receiveShadow = true;
+
+  // 중앙 구조물(우물) 아래 정사각형 이중 기단: 광장 상단(y = 0.06) 위에 순차 적층 (0.06..0.14 -> 0.14..0.22)
+  const wellSquareBase1 = createBox(7.6, 0.08, 7.6, plazaBorderMat, 0, 0.10, 8.0, false);
+  const wellSquareBase2 = createBox(5.4, 0.08, 5.4, plazaPodiumMat, 0, 0.18, 8.0, false);
+
+  // 정사각형 광장 테두리 연석: 모서리끼리 겹치지 않도록 분할하고 전령 앞판 구간(x = -4.2 .. 4.2)은 열어둠 (y = 0.06..0.12)
+  const rimS = createBox(plazaSize + 0.9, 0.06, 0.45, plazaBorderMat, 0, 0.09, plazaCenterZ + plazaSize / 2 + 0.225, false);
+  const rimW = createBox(0.45, 0.06, plazaSize, plazaBorderMat, -plazaSize / 2 - 0.225, 0.09, plazaCenterZ, false);
+  const rimE = createBox(0.45, 0.06, plazaSize, plazaBorderMat,  plazaSize / 2 + 0.225, 0.09, plazaCenterZ, false);
+  const rimNL = createBox(5.25, 0.06, 0.45, plazaBorderMat, -6.825, 0.09, -3.025, false);
+  const rimNR = createBox(5.25, 0.06, 0.45, plazaBorderMat,  6.825, 0.09, -3.025, false);
+  const apronRimW = createBox(0.45, 0.06, 3.55, plazaBorderMat, -4.425, 0.09, -5.025, false);
+  const apronRimE = createBox(0.45, 0.06, 3.55, plazaBorderMat,  4.425, 0.09, -5.025, false);
+  const apronRimN = createBox(9.30, 0.06, 0.45, plazaBorderMat,  0,     0.09, -7.025, false);
+
+  worldGroup.add(
+    plazaMainSlab, heraldApronSlab, wellSquareBase1, wellSquareBase2,
+    rimS, rimW, rimE, rimNL, rimNR, apronRimW, apronRimE, apronRimN
+  );
 
   const wellMat = matDavidCached('#94a3b8', '#64748b');
   const woodMat = matDavidCached('#451a03');
   worldGroup.add(
-    createBox(3.4, 1.1, 3.4, wellMat, 0, 0.65, 8),
-    createBox(2.4, 0.2, 2.4, new THREE.MeshBasicMaterial({ color: 0x0284c7 }), 0, 1.05, 8, false),
-    createBox(0.28, 2.6, 0.28, woodMat, -1.3, 2.2, 8),
-    createBox(0.28, 2.6, 0.28, woodMat,  1.3, 2.2, 8),
-    createBox(3.4, 0.35, 1.4, woodMat, 0, 3.5, 8)
+    createBox(3.4, 1.0, 3.4, wellMat, 0, 0.72, 8),
+    createBox(2.4, 0.08, 2.4, new THREE.MeshBasicMaterial({ color: 0x0284c7 }), 0, 1.26, 8, false),
+    createBox(0.28, 2.2, 0.28, woodMat, -1.3, 2.32, 8),
+    createBox(0.28, 2.2, 0.28, woodMat,  1.3, 2.32, 8),
+    createBox(3.4, 0.35, 1.4, woodMat, 0, 3.55, 8)
   );
   registerCitySolidBox(0, 8, 3.6, 3.6, 3.6, 0.35);
 
@@ -1190,24 +1266,24 @@ function buildDenseMazeCityAndStreets() {
 function buildQuestBuildableStructures(mapLimit = 68) {
   const marketRoot = new THREE.Group();
   marketRoot.position.set(-28, 0, 8);
-  const basePad = createBox(8.5, 0.2, 6.0, matDavidCached('#d9a05b', '#92400e'), 0, 0.1, 0, false);
-  const unfinishedFrame = createBox(8.2, 0.25, 5.8, new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.35 }), 0, 0.25, 0, false);
+  const basePad = createBox(8.5, 0.20, 6.0, matDavidCached('#d9a05b', '#92400e'), 0, 0.10, 0, false);
+  const unfinishedFrame = createBox(8.2, 0.16, 5.8, new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.35 }), 0, 0.28, 0, false);
   const completedMarket = new THREE.Group();
   const woodMat = matDavidCached('#78350f', '#451a03');
   const awning1 = matVoxel('#ef4444', '#b91c1c').clone();
   const awning2 = matVoxel('#fef08a', '#eab308').clone();
   completedMarket.add(
-    createBox(8.2, 3.8, 0.7, makeDetailedBuildingWallMat(0), 0, 1.9, -2.5),
-    createBox(0.45, 3.8, 0.45, woodMat, -3.6, 1.9, -2.4),
-    createBox(0.45, 3.8, 0.45, woodMat,  3.6, 1.9, -2.4),
-    createBox(0.45, 3.8, 0.45, woodMat, -3.6, 1.9,  2.4),
-    createBox(0.45, 3.8, 0.45, woodMat,  3.6, 1.9,  2.4),
-    createBox(8.6, 0.5, 3.1, awning1, 0, 4.0, -1.3),
-    createBox(8.6, 0.5, 3.1, awning2, 0, 3.8,  1.3),
-    createBox(6.8, 1.15, 1.6, woodMat, 0, 0.65, 0.4),
-    createBox(1.2, 0.6, 1.0, matDavidCached('#f97316'), -1.8, 1.45, 0.4),
-    createBox(1.2, 0.6, 1.0, matDavidCached('#22c55e'),  0.0, 1.45, 0.4),
-    createBox(1.2, 0.6, 1.0, matDavidCached('#a855f7'),  1.8, 1.45, 0.4)
+    createBox(8.2, 3.6, 0.7, makeDetailedBuildingWallMat(0), 0, 2.0, -2.5),
+    createBox(0.45, 3.6, 0.45, woodMat, -3.6, 2.0, -1.9),
+    createBox(0.45, 3.6, 0.45, woodMat,  3.6, 2.0, -1.9),
+    createBox(0.45, 3.6, 0.45, woodMat, -3.6, 2.0,  2.4),
+    createBox(0.45, 3.6, 0.45, woodMat,  3.6, 2.0,  2.4),
+    createBox(8.6, 0.45, 2.8, awning1, 0, 4.05, -1.45),
+    createBox(8.6, 0.45, 2.8, awning2, 0, 3.95,  1.45),
+    createBox(6.8, 1.10, 1.6, woodMat, 0, 0.75, 0.4),
+    createBox(1.2, 0.55, 1.0, matDavidCached('#f97316'), -1.8, 1.58, 0.4),
+    createBox(1.2, 0.55, 1.0, matDavidCached('#22c55e'),  0.0, 1.58, 0.4),
+    createBox(1.2, 0.55, 1.0, matDavidCached('#a855f7'),  1.8, 1.58, 0.4)
   );
   completedMarket.visible = false;
   marketRoot.add(basePad, unfinishedFrame, completedMarket);
@@ -1219,22 +1295,22 @@ function buildQuestBuildableStructures(mapLimit = 68) {
 
   const houseRoot = new THREE.Group();
   houseRoot.position.set(28, 0, 8);
-  const hPad = createBox(9.0, 0.25, 7.0, matDavidCached('#94a3b8', '#64748b'), 0, 0.12, 0, false);
-  const hUnfinished = createBox(8.6, 0.3, 6.6, new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.35 }), 0, 0.28, 0, false);
+  const hPad = createBox(9.0, 0.24, 7.0, matDavidCached('#94a3b8', '#64748b'), 0, 0.12, 0, false);
+  const hUnfinished = createBox(8.6, 0.16, 6.6, new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.35 }), 0, 0.32, 0, false);
   const completedHouse = new THREE.Group();
   const stoneWall = makeDetailedBuildingWallMat(1);
   const woodBeam = matVoxel('#78350f', '#451a03').clone();
   completedHouse.add(
-    createBox(8.4, 4.6, 6.4, stoneWall, 0, 2.3, 0),
-    createBox(8.8, 0.5, 6.8, woodBeam, 0, 4.8, 0),
-    createBox(4.8, 2.5, 4.4, makeDetailedBuildingWallMat(2), 1.2, 6.2, -0.5),
-    createBox(5.2, 0.4, 4.8, woodBeam, 1.2, 7.6, -0.5),
-    createBox(1.6, 2.8, 0.3, woodBeam, -1.2, 1.4, 3.25),
-    createBox(1.3, 1.3, 0.25, matDavidCached('#1e293b'), 2.0, 2.6, 3.25)
+    createBox(8.4, 4.4, 6.4, stoneWall, 0, 2.44, 0),
+    createBox(8.8, 0.5, 6.8, woodBeam, 0, 4.89, 0),
+    createBox(4.8, 2.4, 4.4, makeDetailedBuildingWallMat(2), 1.2, 6.34, -0.5),
+    createBox(5.2, 0.4, 4.8, woodBeam, 1.2, 7.74, -0.5),
+    createBox(1.6, 2.6, 0.12, woodBeam, -1.2, 1.54, 3.27),
+    createBox(1.3, 1.3, 0.10, matDavidCached('#1e293b'), 2.0, 2.65, 3.26)
   );
   completedHouse.visible = false;
   houseRoot.add(hPad, hUnfinished, completedHouse);
-  houseRoot.userData = { unfinishedFrame: hUnfinished, completedHouse, cx: 28, cz: 8, w: 8.8, d: 6.8, topY: 7.8 };
+  houseRoot.userData = { unfinishedFrame: hUnfinished, completedHouse, cx: 28, cz: 8, w: 8.8, d: 6.8, topY: 7.95 };
   worldGroup.add(houseRoot);
   davidCityBuildings.houseGroup = houseRoot;
   // 행인들이 건축 터/완성 건물을 가로지르지 못하도록 영역 등록
@@ -1247,15 +1323,17 @@ function buildQuestBuildableStructures(mapLimit = 68) {
   const ironMat = matDavidCached('#475569', '#1e293b');
   const goldStud = matDavidCached('#facc15');
 
-  const tL = createBox(7.2, 10.5, 5.8, towerMat, -7.8, 5.25, 0);
-  const tR = createBox(7.2, 10.5, 5.8, makeDetailedBuildingWallMat(0),  7.8, 5.25, 0);
-  const tTop = createBox(22.8, 2.4, 5.8, makeDetailedBuildingWallMat(1), 0, 10.2, 0);
-  gateRoot.add(tL, tR, tTop);
-  wallMeshes.push(tL, tR, tTop);
+  // 좌우 성문 타워(y = 0..9.6, 깊이 5.8)와 상단 성루(y = 9.6..12.0, 깊이 6.0)를 층별로 분리 적층하여 Z-fighting 제거
+  const tL = createBox(7.2, 9.6, 5.8, towerMat, -7.8, 4.8, 0);
+  const tR = createBox(7.2, 9.6, 5.8, makeDetailedBuildingWallMat(0),  7.8, 4.8, 0);
+  const tArchLintel = createBox(8.4, 2.0, 5.4, makeDetailedBuildingWallMat(0), 0, 8.6, 0);
+  const tTop = createBox(23.2, 2.4, 6.0, makeDetailedBuildingWallMat(1), 0, 10.8, 0);
+  gateRoot.add(tL, tR, tArchLintel, tTop);
+  wallMeshes.push(tL, tR, tArchLintel, tTop);
 
-  registerCitySolidBox(-7.8, gateZ, 7.2, 5.8, 10.5, 0.20);
-  registerCitySolidBox( 7.8, gateZ, 7.2, 5.8, 10.5, 0.20);
-  registerCitySolidBox( 0.0, gateZ - 0.4, 8.6, 2.2, 10.5, 0.15);
+  registerCitySolidBox(-7.8, gateZ, 7.2, 5.8, 12.0, 0.20);
+  registerCitySolidBox( 7.8, gateZ, 7.2, 5.8, 12.0, 0.20);
+  registerCitySolidBox( 0.0, gateZ - 0.4, 8.6, 2.2, 12.0, 0.15);
 
   const brokenGate = new THREE.Group();
   const bDoorL = createBox(3.6, 6.5, 0.5, matDavidCached('#78350f'), -2.4, 3.0, 0);
@@ -1571,10 +1649,16 @@ function buildDavidStage3World() {
     const beacon = createNpcSkyBeacon(cfg.beaconColor);
     const ring = new THREE.Mesh(
       new THREE.RingGeometry(1.3, 1.8, 28),
-      new THREE.MeshBasicMaterial({ color: cfg.beaconColor, side: THREE.DoubleSide })
+      new THREE.MeshBasicMaterial({
+        color: cfg.beaconColor,
+        side: THREE.DoubleSide,
+        polygonOffset: true,
+        polygonOffsetFactor: -1,
+        polygonOffsetUnits: -1
+      })
     );
     ring.rotation.x = -Math.PI / 2;
-    ring.position.y = 0.06;
+    ring.position.y = (cfg.id === 'herald') ? 0.085 : 0.06;
 
     npcGrp.add(mesh, beacon, ring);
     npcGrp.position.set(cfg.x, 0, cfg.z);
@@ -1763,6 +1847,24 @@ window.confirmDavidNpcDialog = function () {
     davidStage2Dialogue.active
   ) {
     window.advanceDavidStage2Dialogue();
+    return;
+  }
+
+  // 스테이지 3 나단 선지자 언약 말풍선 확인 시 즉시 스테이지 클리어 모달 오픈
+  if (
+    currentEpisode === 'david' &&
+    currentStage === 3 &&
+    davidStage3Cutscene.active
+  ) {
+    if (davidStage3Cutscene._typingTimer) {
+      clearInterval(davidStage3Cutscene._typingTimer);
+      davidStage3Cutscene._typingTimer = null;
+    }
+    const dlgEl = document.getElementById('david-npc-dialog');
+    if (dlgEl) dlgEl.classList.add('hidden');
+    if (animaleseTimer) { clearInterval(animaleseTimer); animaleseTimer = null; }
+    davidStage3Cutscene.active = false;
+    openStageClearModal(3);
     return;
   }
 
@@ -2283,6 +2385,7 @@ function updateDavidStage3Frame(dt, now) {
 function startDavidStage3CovenantCutscene() {
   isPlaying = false;
   isTimeAttackActive = false;
+  ensureDavidCustomUI();
   hideAllDavidCustomUI();
   const tracker = document.getElementById('david-st3-quest-tracker');
   if (tracker) tracker.classList.add('hidden');
@@ -2290,8 +2393,38 @@ function startDavidStage3CovenantCutscene() {
   document.getElementById('context-action-btn').classList.add('hidden');
   document.getElementById('puzzle-build-btn').classList.add('hidden');
   document.getElementById('hud-mission-box').classList.add('hidden');
-  if (targetObject && targetObject.label) targetObject.label.style.opacity = '0';
   if (targetObject && targetObject.beacon) targetObject.beacon.visible = false;
+
+  // 나단 선지자 머리 위 말풍선 라벨 표시
+  if (targetObject && targetObject.label) {
+    targetObject.label.innerHTML = '💬 나단 선지자: "다윗 왕이시여! 네 집과 네 나라가 내 앞에서 영원히 보전되고 네 왕위가 영원히 견고하리라!"';
+    targetObject.label.style.opacity = '1';
+  }
+
+  // 하단 대화 말풍선(david-npc-dialog)에 나단 선지자의 언약 메시지 출력
+  const dlg = document.getElementById('david-npc-dialog');
+  const nameEl = document.getElementById('david-npc-name');
+  const textEl = document.getElementById('david-npc-text');
+  const btnEl = document.getElementById('david-npc-action-btn');
+  const nathanMsg = '"다윗 왕이시여! 여호와께서 말씀하시기를 \'네 집과 네 나라가 내 앞에서 영원히 보전되고 네 왕위가 영원히 견고하리라!\' 하셨나이다!" (사무엘하 7:16)';
+
+  if (dlg && nameEl && textEl && btnEl) {
+    dlg.classList.remove('hidden');
+    nameEl.textContent = '✨ 나단 선지자 (하나님의 언약 메시지)';
+    btnEl.textContent = '아멘! 감사히 받겠나이다 👑';
+    textEl.textContent = '';
+
+    if (davidStage3Cutscene._typingTimer) clearInterval(davidStage3Cutscene._typingTimer);
+    let shownLen = 0;
+    davidStage3Cutscene._typingTimer = setInterval(() => {
+      shownLen += 2;
+      textEl.textContent = nathanMsg.slice(0, shownLen);
+      if (shownLen >= nathanMsg.length) {
+        clearInterval(davidStage3Cutscene._typingTimer);
+        davidStage3Cutscene._typingTimer = null;
+      }
+    }, 32);
+  }
 
   playerPos.set(0, 0, -39.5);
   playerFacing = Math.PI;
@@ -2300,7 +2433,7 @@ function startDavidStage3CovenantCutscene() {
     playerGroup.rotation.y = Math.PI;
   }
 
-  playAnimaleseSpeech('네 집과 네 나라가 내 앞에서 영원히 보전되고 네 왕위가 영원히 견고하리라', 0.88);
+  playAnimaleseSpeech('다윗 왕이시여 네 집과 네 나라가 내 앞에서 영원히 보전되고 네 왕위가 영원히 견고하리라', 0.88);
   davidStage3Cutscene.active = true;
   davidStage3Cutscene.timer = 0;
   playSfx('clear');
@@ -2315,11 +2448,22 @@ function updateDavidStage3CutsceneFrame(dt, now) {
   camera.position.lerp(new THREE.Vector3(3.5, 4.5, -34.0), 0.1);
   camera.lookAt(0, 2.2, -42.5);
 
+  if (targetObject && targetObject.label) {
+    updateWorldLabelPos(targetObject.label, new THREE.Vector3(0, 3.1, -42.5), true);
+  }
+
   if (targetObject && targetObject.mesh && targetObject.mesh.userData.rArm) {
     targetObject.mesh.userData.rArm.rotation.x = -2.1 + Math.sin(now * 0.01) * 0.25;
   }
 
-  if (t >= 3.6) {
+  if (t >= 6.2) {
+    if (davidStage3Cutscene._typingTimer) {
+      clearInterval(davidStage3Cutscene._typingTimer);
+      davidStage3Cutscene._typingTimer = null;
+    }
+    const dlg = document.getElementById('david-npc-dialog');
+    if (dlg) dlg.classList.add('hidden');
+    if (targetObject && targetObject.label) targetObject.label.style.opacity = '0';
     davidStage3Cutscene.active = false;
     openStageClearModal(3);
   }
@@ -2337,8 +2481,8 @@ function createEmptyThroneWithGuideArrow(cx, cz) {
 
   root.add(
     createBox(7.6, 0.5, 6.8, stoneStep, 0, 0.25, 0.6),
-    createBox(6.0, 1.0, 5.2, stoneStep, 0, 0.50, 0.0),
-    createBox(4.4, 1.5, 3.8, goldMat,   0, 0.75, -0.5)
+    createBox(6.0, 0.5, 5.2, stoneStep, 0, 0.75, 0.0),
+    createBox(4.4, 0.5, 3.8, goldMat,   0, 1.25, -0.5)
   );
 
   platforms.push(
@@ -2348,11 +2492,11 @@ function createEmptyThroneWithGuideArrow(cx, cz) {
   );
 
   root.add(
-    createBox(2.4, 0.35, 1.9, redVelvet, 0, 1.65, -0.5),
-    createBox(2.6, 3.4,  0.4, goldMat,   0, 3.20, -1.35),
-    createBox(2.0, 2.8,  0.45, redVelvet, 0, 3.10, -1.30),
-    createBox(0.38, 1.0, 1.9, goldMat,  -1.15, 2.15, -0.5),
-    createBox(0.38, 1.0, 1.9, goldMat,   1.15, 2.15, -0.5)
+    createBox(2.4, 0.35, 1.9, redVelvet, 0, 1.68, -0.5),
+    createBox(2.6, 3.4,  0.36, goldMat,  0, 3.20, -1.36),
+    createBox(2.0, 2.8,  0.12, redVelvet, 0, 3.10, -1.12),
+    createBox(0.38, 1.0, 1.9, goldMat,  -1.15, 2.18, -0.5),
+    createBox(0.38, 1.0, 1.9, goldMat,   1.15, 2.18, -0.5)
   );
   colliders.push({ minX: cx - 1.5, maxX: cx + 1.5, minZ: cz - 1.8, maxZ: cz - 1.1 });
 
@@ -2374,7 +2518,7 @@ function createEmptyThroneWithGuideArrow(cx, cz) {
     new THREE.MeshBasicMaterial({ color: 0xfde047, side: THREE.DoubleSide })
   );
   ring.rotation.x = -Math.PI / 2;
-  ring.position.set(0, 1.85, -0.4);
+  ring.position.set(0, 1.88, -0.4);
   root.add(ring);
 
   root.userData = { arrowGrp, ring };
@@ -2388,17 +2532,22 @@ function startDavidEndingBlackoutAndCert() {
         html: '"보라 날이 이르리니 내가 다윗에게 한 의로운 가지를 일으킬 것이라<br/>그가 왕이 되어 지혜롭게 다스리며 세상에서 정의와 공의를 행할 것이며"',
         sub: '- 예레미야 23장 5절 -',
         voiceText: '보라 날이 이르리니 내가 다윗에게 한 의로운 가지를 일으킬 것이라 그가 왕이 되어 지혜롭게 다스리며 세상에서 정의와 공의를 행할 것이며',
-        durationMs: 7500
+        durationMs: 11800
       },
       {
         html: '"아브라함과 다윗의 자손 예수 그리스도의 계보라"',
         sub: '- 마태복음 1장 1절 (다윗의 후손으로 오신 구원자 메시아) -',
         voiceText: '아브라함과 다윗의 자손 예수 그리스도의 계보라',
-        durationMs: 5500
+        durationMs: 6800
       }
     ],
     () => {
       isPlaying = true;
+      // 인증서 이후 다시 엔딩 화면으로 돌아왔을 때 좌우 회전 및 시점 전환으로 자유롭게 둘러볼 수 있도록 정면 시점 초기화
+      cameraYaw = Math.PI;
+      cameraTargetYaw = Math.PI;
+      snapCameraToPlayer();
+
       const certOpenBtn = document.getElementById('cert-open-btn');
       if (certOpenBtn) certOpenBtn.classList.remove('hidden');
       if (typeof showEndingCertificate === 'function') {
@@ -2435,16 +2584,16 @@ function buildDavidEndingWorld() {
 
   worldGroup.add(
     createBox(endLimit * 2.4, 1, endLimit * 2.4, cityStoneMat, 0, -0.5, 0, false),
-    createBox(26, 0.12, 34, marbleMat, 0, 0.06, -4, false),
-    createBox(4.8, 0.16, 28, carpetMat, 0, 0.08, -2, false)
+    createBox(26, 0.06, 34, marbleMat, 0, 0.03, -4, false),
+    createBox(4.8, 0.06, 28, carpetMat, 0, 0.09, -2, false)
   );
 
   buildDavidCastleWallPerimeter(endLimit, false);
 
   [-10.5, 10.5].forEach(px => {
     for (let pz = -14; pz <= 8; pz += 5.5) {
-      const col = createBox(1.2, 6.5, 1.2, marbleMat.clone(), px, 3.25, pz);
-      const cap = createBox(1.5, 0.45, 1.5, goldMat, px, 6.6, pz);
+      const col = createBox(1.2, 6.4, 1.2, marbleMat.clone(), px, 3.26, pz);
+      const cap = createBox(1.5, 0.45, 1.5, goldMat, px, 6.68, pz);
       worldGroup.add(col, cap);
       wallMeshes.push(col);
     }
@@ -2565,10 +2714,12 @@ function updateDavidEndingThroneFrame(dt, now) {
 
   davidThroneEnding.seatTimer += dt;
   playerPos.set(0, 1.65, -8.45);
+  playerVelY = 0;
+  isGrounded = true;
   playerFacing = 0;
   if (playerGroup) {
     playerGroup.position.copy(playerPos);
-    playerGroup.rotation.y = 0;
+    playerGroup.rotation.y = (window.globalCameraViewMode === 'fps') ? (cameraYaw + Math.PI) : 0;
   }
   if (playerLimbs) {
     if (playerLimbs.lLeg) playerLimbs.lLeg.rotation.x = -1.25;
@@ -2576,8 +2727,12 @@ function updateDavidEndingThroneFrame(dt, now) {
     if (playerLimbs.rArm) playerLimbs.rArm.rotation.x = -1.8 + Math.sin(now * 0.008) * 0.35;
   }
 
-  camera.position.lerp(new THREE.Vector3(0, 4.8, -1.2), 0.08);
-  camera.lookAt(0, 2.5, -8.5);
+  // 암전 및 인증서가 나오기 전 연출 구간에서만 정면 클로즈업 카메라를 적용하고,
+  // 인증서가 나온 뒤 엔딩 화면으로 돌아왔을 때는 화면을 자유롭게 회전·시점 전환하며 둘러볼 수 있도록 허용
+  if (!davidThroneEnding.modalShown) {
+    camera.position.lerp(new THREE.Vector3(0, 4.8, -1.2), 0.08);
+    camera.lookAt(0, 2.5, -8.5);
+  }
 
   if (davidThroneEnding.seatTimer >= 1.10 && !davidThroneEnding.modalShown) {
     davidThroneEnding.modalShown = true;
