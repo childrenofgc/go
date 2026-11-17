@@ -409,6 +409,8 @@ function registerCitySolidBox(cx, cz, w, d, topY, pad = 0.30) {
   davidCityBuildingBoxes.push({ minX, maxX, minZ, maxZ, topY });
 }
 
+let davidStage3KingTrail = [];
+
 function lockCompletedQuestBuilding(cx, cz, w, d, topY, completedGroup) {
   registerCitySolidBox(cx, cz, w, d, topY, 0.28);
   if (completedGroup) {
@@ -419,6 +421,9 @@ function lockCompletedQuestBuilding(cx, cz, w, d, topY, completedGroup) {
     });
   }
   resolvePlayerOutOfCityBuildings();
+  if (typeof davidRetainers !== 'undefined' && Array.isArray(davidRetainers)) {
+    davidRetainers.forEach(ret => resolveRetainerOutOfCityBuildings(ret));
+  }
 }
 
 function isCityFloorSpotClear(x, z, pad = 1.35) {
@@ -428,6 +433,97 @@ function isCityFloorSpotClear(x, z, pad = 1.35) {
     }
   }
   return true;
+}
+
+function isRetainerSpotClear(x, z, curY = 0, pad = 0.46) {
+  if (currentMapRectBounds !== null) {
+    if (
+      x < currentMapRectBounds.minX + pad ||
+      x > currentMapRectBounds.maxX - pad ||
+      z < currentMapRectBounds.minZ + pad ||
+      z > currentMapRectBounds.maxZ - pad
+    ) {
+      return false;
+    }
+  }
+  for (const b of davidCityBuildingBoxes) {
+    if (curY >= b.topY - 0.55) continue;
+    if (x + pad > b.minX && x - pad < b.maxX && z + pad > b.minZ && z - pad < b.maxZ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function isRetainerLineClear(x1, z1, x2, z2, curY = 0, pad = 0.40) {
+  const dist = Math.hypot(x2 - x1, z2 - z1);
+  if (dist < 0.05) return isRetainerSpotClear(x2, z2, curY, pad);
+  const steps = Math.max(2, Math.ceil(dist / 0.45));
+  for (let i = 1; i <= steps; i++) {
+    const t = i / steps;
+    const sx = x1 + (x2 - x1) * t;
+    const sz = z1 + (z2 - z1) * t;
+    if (!isRetainerSpotClear(sx, sz, curY, pad)) return false;
+  }
+  return true;
+}
+
+function resolveRetainerOutOfCityBuildings(ret) {
+  if (!ret || !ret.mesh) return;
+  const pos = ret.mesh.position;
+  const pad = 0.46;
+  for (const b of davidCityBuildingBoxes) {
+    if (pos.y >= b.topY - 0.55) continue;
+    const minX = b.minX - pad;
+    const maxX = b.maxX + pad;
+    const minZ = b.minZ - pad;
+    const maxZ = b.maxZ + pad;
+    if (pos.x > minX && pos.x < maxX && pos.z > minZ && pos.z < maxZ) {
+      const dLeft = pos.x - minX;
+      const dRight = maxX - pos.x;
+      const dNorth = pos.z - minZ;
+      const dSouth = maxZ - pos.z;
+      const minSide = Math.min(dLeft, dRight, dNorth, dSouth);
+      if (minSide === dLeft) pos.x = minX - 0.08;
+      else if (minSide === dRight) pos.x = maxX + 0.08;
+      else if (minSide === dNorth) pos.z = minZ - 0.08;
+      else pos.z = maxZ + 0.08;
+    }
+  }
+}
+
+function getKingTrailPointAtDist(targetDist) {
+  if (!davidStage3KingTrail || davidStage3KingTrail.length === 0) {
+    const sinF = Math.sin(playerFacing);
+    const cosF = Math.cos(playerFacing);
+    return {
+      x: playerPos.x - sinF * targetDist,
+      z: playerPos.z - cosF * targetDist,
+      y: playerPos.y
+    };
+  }
+  let acc = 0;
+  let prevX = playerPos.x;
+  let prevZ = playerPos.z;
+  let prevY = playerPos.y;
+  for (let i = 0; i < davidStage3KingTrail.length; i++) {
+    const pt = davidStage3KingTrail[i];
+    const seg = Math.hypot(pt.x - prevX, pt.z - prevZ);
+    if (acc + seg >= targetDist && seg > 0.001) {
+      const r = (targetDist - acc) / seg;
+      return {
+        x: prevX + (pt.x - prevX) * r,
+        z: prevZ + (pt.z - prevZ) * r,
+        y: prevY + (pt.y - prevY) * r
+      };
+    }
+    acc += seg;
+    prevX = pt.x;
+    prevZ = pt.z;
+    prevY = pt.y;
+  }
+  const last = davidStage3KingTrail[davidStage3KingTrail.length - 1];
+  return { x: last.x, z: last.z, y: last.y };
 }
 
 function resolvePlayerOutOfCityBuildings() {
@@ -1723,6 +1819,12 @@ function buildDavidStage3World() {
   });
 
   playerPos.set(0, 0, 14.0);
+  davidStage3KingTrail = [
+    { x: 0, z: 14.0, y: 0 },
+    { x: 0, z: 15.6, y: 0 },
+    { x: 0, z: 17.2, y: 0 },
+    { x: 0, z: 18.8, y: 0 }
+  ];
   lastGroundedY = 0;
   playerVelY = 0; isGrounded = true; playerFacing = Math.PI;
   cameraYaw = 0; cameraTargetYaw = 0;
@@ -2121,7 +2223,10 @@ function updateDavidRetainersAndResources(dt, now) {
     if (!res.beingPickedUp && horizDist < 3.8 && heightDiff < 1.8) {
       res.beingPickedUp = true;
       res.pickupTimer = 0;
-      const idleRet = davidRetainers.find(r => !r.fetchingRes) || davidRetainers[idx % Math.max(1, davidRetainers.length)];
+      const clearRet = davidRetainers.find(
+        r => !r.fetchingRes && isRetainerLineClear(r.mesh.position.x, r.mesh.position.z, res.pos.x, res.pos.z, r.mesh.position.y, 0.32)
+      );
+      const idleRet = clearRet || davidRetainers.find(r => !r.fetchingRes) || davidRetainers[idx % Math.max(1, davidRetainers.length)];
       if (idleRet) {
         res.assignedRetainerIdx = idleRet.index;
         idleRet.fetchingRes = res;
@@ -2175,39 +2280,139 @@ function updateDavidRetainersAndResources(dt, now) {
     }
   });
 
+  // 왕(플레이어)의 이동 궤적 기록 (좁은 길 한 줄 이동 및 건물 모서리 우회 추적용)
+  if (
+    davidStage3KingTrail.length === 0 ||
+    Math.hypot(playerPos.x - davidStage3KingTrail[0].x, playerPos.z - davidStage3KingTrail[0].z) > 0.24
+  ) {
+    davidStage3KingTrail.unshift({ x: playerPos.x, z: playerPos.z, y: playerPos.y });
+    if (davidStage3KingTrail.length > 90) davidStage3KingTrail.pop();
+  }
+
+  const sinF = Math.sin(playerFacing);
+  const cosF = Math.cos(playerFacing);
+  const backDist = 1.95;
+  const leftSideX = playerPos.x - sinF * backDist - cosF * 1.12;
+  const leftSideZ = playerPos.z - cosF * backDist + sinF * 1.12;
+  const rightSideX = playerPos.x - sinF * backDist + cosF * 1.12;
+  const rightSideZ = playerPos.z - cosF * backDist - sinF * 1.12;
+
+  // 왕 좌우 및 뒤쪽 좌우 폭이 넉넉한지 검사 (좁은 골목이거나 건물이 인접하면 한 줄 대열로 전환)
+  const kingLeftClear = isRetainerSpotClear(playerPos.x - cosF * 1.65, playerPos.z + sinF * 1.65, playerPos.y, 0.52);
+  const kingRightClear = isRetainerSpotClear(playerPos.x + cosF * 1.65, playerPos.z - sinF * 1.65, playerPos.y, 0.52);
+  const backLeftClear = isRetainerSpotClear(leftSideX, leftSideZ, playerPos.y, 0.58);
+  const backRightClear = isRetainerSpotClear(rightSideX, rightSideZ, playerPos.y, 0.58);
+  const useSingleFile = !(kingLeftClear && kingRightClear && backLeftClear && backRightClear);
+
   davidRetainers.forEach((ret, rIdx) => {
     const u = ret.mesh.userData;
+    const curX = ret.mesh.position.x;
+    const curY = ret.mesh.position.y;
+    const curZ = ret.mesh.position.z;
     let targetX, targetY, targetZ;
     let isPickingUp = false;
 
     if (ret.fetchingRes && !ret.fetchingRes.collected) {
       isPickingUp = true;
       const offsetAng = (rIdx === 0 ? -0.5 : 0.5);
-      targetX = ret.fetchingRes.pos.x + Math.sin(offsetAng) * 0.65;
-      targetZ = ret.fetchingRes.pos.z + Math.cos(offsetAng) * 0.65;
+      const candX = ret.fetchingRes.pos.x + Math.sin(offsetAng) * 0.65;
+      const candZ = ret.fetchingRes.pos.z + Math.cos(offsetAng) * 0.65;
+      if (isRetainerSpotClear(candX, candZ, ret.fetchingRes.baseY, 0.42)) {
+        targetX = candX;
+        targetZ = candZ;
+      } else {
+        targetX = ret.fetchingRes.pos.x;
+        targetZ = ret.fetchingRes.pos.z;
+      }
       targetY = ret.fetchingRes.baseY;
     } else {
       ret.fetchingRes = null;
-      const sideSign = (rIdx === 0 ? -1 : 1);
-      const backDist = 1.95;
-      const sideDist = 1.15 * sideSign;
-      const sinF = Math.sin(playerFacing);
-      const cosF = Math.cos(playerFacing);
-      targetX = playerPos.x - sinF * backDist + cosF * sideDist;
-      targetZ = playerPos.z - cosF * backDist - sinF * sideDist;
-      targetY = playerPos.y;
+      const sideCandX = (rIdx === 0 ? leftSideX : rightSideX);
+      const sideCandZ = (rIdx === 0 ? leftSideZ : rightSideZ);
+
+      if (!useSingleFile && isRetainerSpotClear(sideCandX, sideCandZ, playerPos.y, 0.52)) {
+        targetX = sideCandX;
+        targetZ = sideCandZ;
+        targetY = playerPos.y;
+      } else {
+        // 길이 좁거나 옆 건물이 가로막을 때는 왕의 발자취를 따라 한 줄(1열 종대)로 이동
+        const trailDist = (rIdx === 0 ? 1.75 : 3.25);
+        const tp = getKingTrailPointAtDist(trailDist);
+        targetX = tp.x;
+        targetZ = tp.z;
+        targetY = tp.y;
+      }
     }
 
-    const dx = targetX - ret.mesh.position.x;
-    const dz = targetZ - ret.mesh.position.z;
+    // 목표 지점까지 건물 모서리가 가로막고 있으면 왕의 이동 궤적(trail) 중 시야가 확보된 가장 앞쪽 지점을 경유
+    let steerX = targetX;
+    let steerZ = targetZ;
+    if (!isRetainerLineClear(curX, curZ, targetX, targetZ, curY, 0.38)) {
+      for (let i = 0; i < davidStage3KingTrail.length; i++) {
+        const wp = davidStage3KingTrail[i];
+        if (
+          Math.hypot(wp.x - curX, wp.z - curZ) > 0.35 &&
+          isRetainerSpotClear(wp.x, wp.z, curY, 0.42) &&
+          isRetainerLineClear(curX, curZ, wp.x, wp.z, curY, 0.35)
+        ) {
+          steerX = wp.x;
+          steerZ = wp.z;
+          break;
+        }
+      }
+    }
+
+    // 앞선 보좌관(rIdx === 0)과 겹치지 않도록 한 줄 이동 시 간격 유지
+    if (!isPickingUp && rIdx === 1 && davidRetainers[0]) {
+      const leadPos = davidRetainers[0].mesh.position;
+      const dLead = Math.hypot(curX - leadPos.x, curZ - leadPos.z);
+      const dGoal = Math.hypot(targetX - curX, targetZ - curZ);
+      if (dLead < 1.15 && dGoal < 1.8) {
+        steerX = curX;
+        steerZ = curZ;
+      }
+    }
+
+    const dx = steerX - curX;
+    const dz = steerZ - curZ;
     const dist = Math.hypot(dx, dz);
-    const spd = isPickingUp ? 12.0 : 7.5;
+    const spd = isPickingUp ? 12.0 : 8.2;
 
     if (dist > 0.20) {
-      const ratio = Math.min(1, spd * dt);
-      ret.mesh.position.x += dx * ratio;
-      ret.mesh.position.z += dz * ratio;
-      ret.heading = lerpAngle(ret.heading, Math.atan2(dx, dz), dt * 12);
+      const step = Math.min(dist, spd * dt);
+      const baseAng = Math.atan2(dx, dz);
+      let moved = false;
+      let moveAng = baseAng;
+
+      const tryOffsets = [0, 0.42, -0.42, 0.85, -0.85, 1.30, -1.30, 1.75, -1.75];
+      for (let k = 0; k < tryOffsets.length; k++) {
+        const ang = baseAng + tryOffsets[k];
+        const nx = curX + Math.sin(ang) * step;
+        const nz = curZ + Math.cos(ang) * step;
+        if (isRetainerSpotClear(nx, nz, curY, 0.45)) {
+          ret.mesh.position.x = nx;
+          ret.mesh.position.z = nz;
+          moveAng = ang;
+          moved = true;
+          break;
+        }
+      }
+
+      if (!moved) {
+        const nxOnly = curX + Math.sin(baseAng) * step;
+        const nzOnly = curZ + Math.cos(baseAng) * step;
+        if (isRetainerSpotClear(nxOnly, curZ, curY, 0.45)) {
+          ret.mesh.position.x = nxOnly;
+          moved = true;
+        } else if (isRetainerSpotClear(curX, nzOnly, curY, 0.45)) {
+          ret.mesh.position.z = nzOnly;
+          moved = true;
+        }
+      }
+
+      resolveRetainerOutOfCityBuildings(ret);
+
+      ret.heading = lerpAngle(ret.heading, moveAng, dt * 12);
       ret.mesh.rotation.y = ret.heading;
 
       const walkSwing = Math.sin(now * 0.018 + rIdx * 1.5) * 0.65;
@@ -2220,6 +2425,7 @@ function updateDavidRetainersAndResources(dt, now) {
         u.rArm.rotation.x = walkSwing * 0.6;
       }
     } else {
+      resolveRetainerOutOfCityBuildings(ret);
       if (u.lLeg && u.rLeg) {
         u.lLeg.rotation.x = 0;
         u.rLeg.rotation.x = 0;
@@ -2529,12 +2735,14 @@ function startDavidEndingBlackoutAndCert() {
   runDavidBlackoutSequence(
     [
       {
+        icon: '👑',
         html: '"보라 날이 이르리니 내가 다윗에게 한 의로운 가지를 일으킬 것이라<br/>그가 왕이 되어 지혜롭게 다스리며 세상에서 정의와 공의를 행할 것이며"',
         sub: '- 예레미야 23장 5절 -',
         voiceText: '보라 날이 이르리니 내가 다윗에게 한 의로운 가지를 일으킬 것이라 그가 왕이 되어 지혜롭게 다스리며 세상에서 정의와 공의를 행할 것이며',
-        durationMs: 11800
+        durationMs: 12600
       },
       {
+        icon: '✨',
         html: '"아브라함과 다윗의 자손 예수 그리스도의 계보라"',
         sub: '- 마태복음 1장 1절 (다윗의 후손으로 오신 구원자 메시아) -',
         voiceText: '아브라함과 다윗의 자손 예수 그리스도의 계보라',
@@ -2811,6 +3019,7 @@ REGISTER_EPISODE('david', {
     davidCityShopkeepers = [];
     davidCityPedestrians = [];
     davidCityBuildingBoxes = [];
+    davidStage3KingTrail = [];
     davidCurrentActiveQuestNpc = null;
     davidThroneEnding.seated = false;
     davidThroneEnding.modalShown = false;

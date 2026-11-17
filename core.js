@@ -286,10 +286,6 @@ function speakText(text) {
   // 번개 아이콘(⚡)이 '고압주의'로 읽히지 않도록 제거
   const cleanText = text.replace(/⚡/g, '').replace(/&/g, '과').trim();
   if (melodyTimer) { clearInterval(melodyTimer); melodyTimer = null; }
-  if (currentEpisode === 'david' && typeof speakMaleVoiceNarration === 'function') {
-    speakMaleVoiceNarration(cleanText);
-    return;
-  }
   let ttsWorked = false;
   if ('speechSynthesis' in window) {
     try {
@@ -925,41 +921,78 @@ function createBlazingPillarOfFire(x, y, z, scale = 1.0) {
 function createSwirlingPillarOfCloud(x, y, z, scale = 1.0) {
   const pGroup = new THREE.Group();
   const baseMat = matVoxel('#cbd5e1', '#94a3b8');
-  const outerCloudMat = new THREE.MeshBasicMaterial({ color: 0xe2e8f0, transparent: true, opacity: 0.78 });
-  const midCloudMat = new THREE.MeshBasicMaterial({ color: 0xf8fafc, transparent: true, opacity: 0.9 });
+  const outerCloudMat = new THREE.MeshBasicMaterial({ color: 0xe2e8f0, transparent: true, opacity: 0.80 });
+  const midCloudMat = new THREE.MeshBasicMaterial({ color: 0xf8fafc, transparent: true, opacity: 0.90 });
   const innerGlowMat = new THREE.MeshBasicMaterial({ color: 0xbae6fd });
+  const skyCrownMat = new THREE.MeshBasicMaterial({ color: 0xf0f9ff, transparent: true, opacity: 0.76 });
   const puffMat = matVoxel('#ffffff', '#e0f2fe');
+  const softSkyCloudMat = matVoxel('#e0f2fe', '#bae6fd');
 
-  const altarBase = createBox(4.2 * scale, 0.9 * scale, 4.2 * scale, baseMat, 0, 0.45 * scale, 0);
-  const outerCore = createBox(2.7 * scale, 8.8 * scale, 2.7 * scale, outerCloudMat, 0, 4.9 * scale, 0, false);
-  const midCore = createBox(2.0 * scale, 9.4 * scale, 2.0 * scale, midCloudMat, 0, 5.2 * scale, 0, false);
-  const innerCore = createBox(1.2 * scale, 10.0 * scale, 1.2 * scale, innerGlowMat, 0, 5.5 * scale, 0, false);
+  // 하늘 높이 치솟는 거대한 구름기둥 코어 (높이 약 56~60 * scale)
+  const altarBase = createBox(4.6 * scale, 1.0 * scale, 4.6 * scale, baseMat, 0, 0.5 * scale, 0);
+  const outerCore = createBox(3.0 * scale, 54.0 * scale, 3.0 * scale, outerCloudMat, 0, 27.5 * scale, 0, false);
+  const midCore = createBox(2.15 * scale, 57.0 * scale, 2.15 * scale, midCloudMat, 0, 29.0 * scale, 0, false);
+  const innerCore = createBox(1.25 * scale, 60.0 * scale, 1.25 * scale, innerGlowMat, 0, 30.5 * scale, 0, false);
+  const skyCrown = createBox(4.6 * scale, 6.5 * scale, 4.6 * scale, skyCrownMat, 0, 56.0 * scale, 0, false);
 
-  const cloudRing1 = createBox(3.7 * scale, 1.3 * scale, 3.7 * scale, puffMat, 0, 2.4 * scale, 0, false);
-  const cloudRing2 = createBox(3.3 * scale, 1.2 * scale, 3.3 * scale, puffMat, 0, 6.0 * scale, 0, false);
+  const cloudRing1 = createBox(3.9 * scale, 1.30 * scale, 3.9 * scale, puffMat, 0, 2.5 * scale, 0, false);
+  const cloudRing2 = createBox(3.6 * scale, 1.20 * scale, 3.6 * scale, softSkyCloudMat, 0, 10.5 * scale, 0, false);
+  const cloudRing3 = createBox(3.4 * scale, 1.15 * scale, 3.4 * scale, puffMat, 0, 20.5 * scale, 0, false);
+  const cloudRing4 = createBox(3.7 * scale, 1.25 * scale, 3.7 * scale, softSkyCloudMat, 0, 32.0 * scale, 0, false);
+  const cloudRing5 = createBox(4.3 * scale, 1.40 * scale, 4.3 * scale, puffMat, 0, 45.0 * scale, 0, false);
 
-  pGroup.add(altarBase, outerCore, midCore, innerCore, cloudRing1, cloudRing2);
+  pGroup.add(
+    altarBase,
+    outerCore,
+    midCore,
+    innerCore,
+    skyCrown,
+    cloudRing1,
+    cloudRing2,
+    cloudRing3,
+    cloudRing4,
+    cloudRing5
+  );
+
+  const extraRings = [
+    { mesh: cloudRing2, baseY: 10.5 * scale, dir: -1, spd: 2.0 },
+    { mesh: cloudRing3, baseY: 20.5 * scale, dir: 1, spd: 2.3 },
+    { mesh: cloudRing4, baseY: 32.0 * scale, dir: -1, spd: 1.9 },
+    { mesh: cloudRing5, baseY: 45.0 * scale, dir: 1, spd: 1.6 }
+  ];
 
   const embers = [];
   const cloudColors = [0xffffff, 0xf8fafc, 0xe0f2fe, 0xbae6fd, 0xcbd5e1];
-  for (let i = 0; i < 24; i++) {
+  const puffCount = 44;
+  const maxPillarH = 56.0 * scale;
+  for (let i = 0; i < puffCount; i++) {
     const cMat = new THREE.MeshBasicMaterial({ color: cloudColors[i % cloudColors.length], transparent: true, opacity: 0.9 });
     const sz = (0.42 + (i % 3) * 0.18) * scale;
-    const puff = createBox(sz * 1.3, sz, sz * 1.3, cMat, 0, 1.0, 0, false);
-    const angle = (i / 24) * Math.PI * 2;
-    const radius = (1.05 + (i % 4) * 0.42) * scale;
+    const puff = createBox(sz * 1.35, sz, sz * 1.35, cMat, 0, 1.0, 0, false);
+    const angle = (i / puffCount) * Math.PI * 2;
+    const radius = (1.08 + (i % 4) * 0.45) * scale;
     pGroup.add(puff);
     embers.push({
       mesh: puff, angle, radius,
-      speedY: (2.8 + (i % 5) * 0.75) * scale,
-      yOffset: (i / 24) * 9.2 * scale,
-      maxH: 10.0 * scale,
+      speedY: (5.6 + (i % 5) * 1.35) * scale,
+      yOffset: (i / puffCount) * maxPillarH,
+      maxH: maxPillarH,
       phase: i * 0.8
     });
   }
 
   pGroup.position.set(x, y, z);
-  pGroup.userData = { fireCore: midCore, outerCore, innerCore, cloudRing: cloudRing1, cloudRing2, embers, scale };
+  pGroup.userData = {
+    fireCore: midCore,
+    outerCore,
+    innerCore,
+    skyCrown,
+    cloudRing: cloudRing1,
+    cloudRing2,
+    extraRings,
+    embers,
+    scale
+  };
   worldGroup.add(pGroup);
   blazingPillars.push(pGroup);
   return pGroup;
@@ -1937,14 +1970,33 @@ function proceedNextStage() {
       setTimeout(() => { bf.style.opacity = '0'; }, 250);
     }, 5350);
   } else if (currentStage === 2) {
+    if (currentEpisode === 'exodus') {
+      stopStageBgm();
+      const bf = document.getElementById('black-fade');
+      document.getElementById('black-fade-icon').textContent = '⛰️';
+      document.getElementById('black-fade-title').textContent = '"이스라엘 자손이 시내 광야에 이르러 산 앞에 장막을 치니라"';
+      document.getElementById('black-fade-sub').textContent = '홍해를 건넌 백성들이 하나님의 산, 시내산 아래에 도착합니다';
+      bf.style.opacity = '1';
+      setTimeout(() => {
+        currentStage = 3; isPlaying = true;
+        if (currentMode === 'timeattack') {
+          timeRemaining = 10.0;
+          timeAttackFirstRechargeUsed = false;
+          isTimeAttackActive = true;
+        }
+        buildExodusStage3World();
+        startStageBgm(3);
+        setTimeout(() => { bf.style.opacity = '0'; }, 250);
+      }, 3600);
+      return;
+    }
     currentStage = 3; isPlaying = true;
     if (currentMode === 'timeattack') {
       timeRemaining = 10.0;
       timeAttackFirstRechargeUsed = false;
       isTimeAttackActive = true;
     }
-    if (currentEpisode === 'exodus') buildExodusStage3World();
-    else buildNoahArkInteriorMaze(3);
+    buildNoahArkInteriorMaze(3);
     startStageBgm(3);
   } else if (currentStage === 3) {
     const wf = document.getElementById('white-fade');

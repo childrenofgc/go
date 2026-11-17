@@ -610,6 +610,7 @@ function clearDavidOpeningTimers() {
   davidOpeningState.timers.forEach(t => clearTimeout(t));
   davidOpeningState.timers = [];
   if (davidWarSfxTimer) { clearInterval(davidWarSfxTimer); davidWarSfxTimer = null; }
+  stopActiveMaleVoiceAudio();
   try {
     if ('speechSynthesis' in window) window.speechSynthesis.cancel();
   } catch (e) {}
@@ -621,6 +622,7 @@ function runDavidBlackoutSequence(slides, onComplete) {
 
   const overlay = document.getElementById('david-cinematic-overlay');
   const textWrap = document.getElementById('david-cinematic-text-wrap');
+  const iconEl = document.getElementById('david-cinematic-icon');
   const mainText = document.getElementById('david-cinematic-main-text');
   const subText = document.getElementById('david-cinematic-sub-text');
   if (!overlay || !textWrap || !mainText || !subText) {
@@ -679,6 +681,10 @@ function runDavidBlackoutSequence(slides, onComplete) {
     textWrap.style.opacity = '0';
     registerTimer(() => {
       if (!davidOpeningState.active) return;
+      if (iconEl) {
+        iconEl.textContent = slide.icon || '✨';
+        iconEl.className = 'text-6xl mb-4 drop-shadow-lg';
+      }
       mainText.innerHTML = slide.html || '';
       subText.textContent = slide.sub || '';
       subText.className = slide.sub ? 'text-amber-300 font-jua text-base sm:text-xl mt-4 tracking-wide' : 'hidden';
@@ -692,11 +698,11 @@ function runDavidBlackoutSequence(slides, onComplete) {
             tryAdvanceSlide();
           }, 450);
         });
-        // 일부 모바일 브라우저에서 onend 이벤트가 누락되는 경우를 대비한 안전 타이머
+        // 일부 모바일 브라우저에서 이벤트가 누락되는 경우를 대비한 안전 타이머
         registerTimer(() => {
           voiceDone = true;
           tryAdvanceSlide();
-        }, Math.max(slide.durationMs + 4500, 12500));
+        }, Math.max(slide.durationMs + 4500, 14500));
       }
       if (slide.sfxMode) {
         playWarBattleCrySfx(slide.sfxMode);
@@ -705,9 +711,9 @@ function runDavidBlackoutSequence(slides, onComplete) {
 
     registerTimer(() => {
       minTimeElapsed = true;
-      // 만약 이미 브라우저 음성 출력이 끝난 상태라면 즉시 voiceDone 처리
+      // 만약 이미 오디오 및 브라우저 음성 출력이 끝난 상태라면 즉시 voiceDone 처리
       try {
-        if ('speechSynthesis' in window && !window.speechSynthesis.speaking) {
+        if (!isMaleVoiceAudioPlaying() && (!('speechSynthesis' in window) || !window.speechSynthesis.speaking)) {
           voiceDone = true;
         }
       } catch (e) {
@@ -724,12 +730,14 @@ function startDavidStage1Opening(onDone) {
   runDavidBlackoutSequence(
     [
       {
+        icon: '🐑',
         html: '"내가 이새의 아들 다윗을 만나니... "',
         sub: '',
         voiceText: '내가 이새의 아들 다윗을 만나니',
         durationMs: 5400
       },
       {
+        icon: '🪉',
         html: '"내 마음에 맞는 사람이라 내 뜻을 다 이루리라 "',
         sub: '- 사도행전 13:22 -',
         voiceText: '내 마음에 맞는 사람이라 내 뜻을 다 이루리라',
@@ -757,7 +765,8 @@ function ensureDavidCustomUI() {
     uiRoot.innerHTML = `
       <!-- [오프닝 & 엔딩 암전 내레이션 오버레이] -->
       <div id="david-cinematic-overlay" class="hidden pointer-events-auto fixed inset-0 bg-black z-50 flex-col items-center justify-center p-6 text-center transition-opacity duration-700" style="opacity:0;">
-        <div id="david-cinematic-text-wrap" class="max-w-2xl transition-opacity duration-500 px-4" style="opacity:0;">
+        <div id="david-cinematic-text-wrap" class="max-w-2xl transition-opacity duration-500 px-4 flex flex-col items-center" style="opacity:0;">
+          <div id="david-cinematic-icon" class="text-6xl mb-4 drop-shadow-lg">✨</div>
           <p id="david-cinematic-main-text" class="text-white font-jua text-xl sm:text-3xl leading-relaxed drop-shadow-lg break-keep"></p>
           <p id="david-cinematic-sub-text" class="hidden"></p>
         </div>

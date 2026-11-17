@@ -2063,18 +2063,21 @@ function startDavidStage2OpeningAndDialogue() {
   runDavidBlackoutSequence(
     [
       {
+        icon: '⚔️',
         html: '"블레셋 군대가 유다 땅을 침공했다.<br/>사울 왕이 이끄는 이스라엘과 적군 블레셋은<br/>엘라 골짜기를 사이에 두고 팽팽히 대치했다"',
         sub: '',
         sfxMode: 'battle',
         durationMs: 5000
       },
       {
+        icon: '🛡️',
         html: '"블레셋 진영에서 키가 약 3미터에 달하는 거인 전사,<br/>골리앗이 걸어 나왔다."',
         sub: '',
         sfxMode: 'giant_steps',
         durationMs: 3000
       },
       {
+        icon: '🪨',
         html: '"모두가 숨죽이던 그때, 형들의 안부를 물으러 전장에 온<br/>베들레헴의 어린 목동 다윗.<br/>살아 계신 하나님을 모욕하는 골리앗의 목소리를 들은 소년은<br/>홀로 전장으로 발걸음을 옮긴다."',
         sub: '',
         sfxMode: 'battle',
