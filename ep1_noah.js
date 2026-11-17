@@ -576,7 +576,7 @@ function buildDetailedStage1NoahArk(arkZ = -19) {
 
 function buildArkExteriorOceanWorld(halfW, halfD, wallH) {
   noahOuterSeaWaves = [];
-  const seaY = 2.35; // 점프 시 미로 벽 너머로 한눈에 내려다보이는 출렁이는 해수면 높이
+  const seaY = -0.12; // 방주 내부 바닥(y=0)보다 살짝 아래에 수면을 맞춰 외벽 반투명 시에도 시야를 가리지 않으면서 바깥은 온통 바다로 보이게 함
   const seaSpan = 280;
 
   const waterMatN = new THREE.MeshLambertMaterial({ map: makeNoahOceanWaterTex(28, 16) });
@@ -584,29 +584,46 @@ function buildArkExteriorOceanWorld(halfW, halfD, wallH) {
   const waterMatLR = new THREE.MeshLambertMaterial({ map: makeNoahOceanWaterTex(14, 24) });
   const deepHorizonMat = new THREE.MeshBasicMaterial({ color: 0x0369a1 });
 
-  // 방주 사방을 빈틈없이 둘러싼 망망대해 수면
-  const northSea = createBox(halfW * 2 + seaSpan * 2, 1.6, seaSpan, waterMatN, 0, seaY - 0.8, -halfD - seaSpan / 2 - 0.8, false);
-  const southSea = createBox(halfW * 2 + seaSpan * 2, 1.6, seaSpan, waterMatS, 0, seaY - 0.8, halfD + seaSpan / 2 + 0.8, false);
-  const westSea = createBox(seaSpan, 1.6, halfD * 2 + 4, waterMatLR, -halfW - seaSpan / 2 - 0.8, seaY - 0.8, 0, false);
-  const eastSea = createBox(seaSpan, 1.6, halfD * 2 + 4, waterMatLR, halfW + seaSpan / 2 + 0.8, seaY - 0.8, 0, false);
+  // 방주 사방 외곽(방주 내부 바닥과 절대 겹치지 않는 바깥 영역)을 둘러싼 망망대해 수면
+  const northSea = createBox(halfW * 2 + seaSpan * 2, 1.6, seaSpan, waterMatN, 0, seaY - 0.8, -halfD - seaSpan / 2 - 1.2, false);
+  const southSea = createBox(halfW * 2 + seaSpan * 2, 1.6, seaSpan, waterMatS, 0, seaY - 0.8, halfD + seaSpan / 2 + 1.2, false);
+  const westSea = createBox(seaSpan, 1.6, halfD * 2 + 4, waterMatLR, -halfW - seaSpan / 2 - 1.2, seaY - 0.8, 0, false);
+  const eastSea = createBox(seaSpan, 1.6, halfD * 2 + 4, waterMatLR, halfW + seaSpan / 2 + 1.2, seaY - 0.8, 0, false);
   worldGroup.add(northSea, southSea, westSea, eastSea);
 
   // 방주 외벽 바깥쪽 배 현측(gunwale) 및 뱃머리·고물 곡선 목재 구조물
-  const outerHullMat = matVoxel('#5c2808', '#3b1704');
-  const outerRailMat = matVoxel('#92400e', '#78350f');
-  worldGroup.add(
-    createBox(halfW * 2 + 4.4, 1.2, 1.2, outerHullMat, 0, wallH - 0.5, -halfD - 1.2, false),
-    createBox(halfW * 2 + 4.4, 1.2, 1.2, outerHullMat, 0, wallH - 0.5, halfD + 1.2, false),
-    createBox(1.2, 1.2, halfD * 2 + 4.4, outerHullMat, -halfW - 1.2, wallH - 0.5, 0, false),
-    createBox(1.2, 1.2, halfD * 2 + 4.4, outerHullMat, halfW + 1.2, wallH - 0.5, 0, false),
-    // 북쪽(선수) & 남쪽(선미) 뾰족한 배 모양 연장부
-    createBox(halfW * 1.35, wallH * 0.78, 5.5, outerRailMat, 0, wallH * 0.39, -halfD - 4.2, false),
-    createBox(halfW * 0.72, wallH * 0.85, 5.5, outerHullMat, 0, wallH * 0.42, -halfD - 9.2, false),
-    createBox(2.4, wallH + 2.8, 3.2, outerHullMat, 0, (wallH + 2.8) / 2, -halfD - 12.5, false),
-    createBox(halfW * 1.35, wallH * 0.78, 5.5, outerRailMat, 0, wallH * 0.39, halfD + 4.2, false),
-    createBox(halfW * 0.72, wallH * 0.85, 5.5, outerHullMat, 0, wallH * 0.42, halfD + 9.2, false),
-    createBox(2.4, wallH + 2.4, 3.2, outerHullMat, 0, (wallH + 2.4) / 2, halfD + 12.5, false)
-  );
+  // (노아가 바깥쪽 벽 근처에 있을 때 카메라 시야를 가리면 함께 반투명해지도록 wallMeshes에 등록)
+  const addOuterHullPart = (w, h, d, baseMat, x, y, z, linkedList) => {
+    const m = createBox(w, h, d, baseMat.clone(), x, y, z, false);
+    if (linkedList) {
+      linkedList.push(m.material);
+      m.userData.linkedFadeMats = linkedList;
+    }
+    worldGroup.add(m);
+    wallMeshes.push(m);
+    return m;
+  };
+
+  const baseOuterHullMat = matVoxel('#5c2808', '#3b1704');
+  const baseOuterRailMat = matVoxel('#92400e', '#78350f');
+  const northHullMats = [];
+  const southHullMats = [];
+  const westHullMats = [];
+  const eastHullMats = [];
+
+  addOuterHullPart(halfW * 2 + 4.4, 1.2, 1.2, baseOuterHullMat, 0, wallH - 0.5, -halfD - 1.2, northHullMats);
+  addOuterHullPart(halfW * 2 + 4.4, 1.2, 1.2, baseOuterHullMat, 0, wallH - 0.5, halfD + 1.2, southHullMats);
+  addOuterHullPart(1.2, 1.2, halfD * 2 + 4.4, baseOuterHullMat, -halfW - 1.2, wallH - 0.5, 0, westHullMats);
+  addOuterHullPart(1.2, 1.2, halfD * 2 + 4.4, baseOuterHullMat, halfW + 1.2, wallH - 0.5, 0, eastHullMats);
+
+  // 북쪽(선수) & 남쪽(선미) 뾰족한 배 모양 연장부
+  addOuterHullPart(halfW * 1.35, wallH * 0.78, 5.5, baseOuterRailMat, 0, wallH * 0.39, -halfD - 4.2, northHullMats);
+  addOuterHullPart(halfW * 0.72, wallH * 0.85, 5.5, baseOuterHullMat, 0, wallH * 0.42, -halfD - 9.2, northHullMats);
+  addOuterHullPart(2.4, wallH + 2.8, 3.2, baseOuterHullMat, 0, (wallH + 2.8) / 2, -halfD - 12.5, northHullMats);
+
+  addOuterHullPart(halfW * 1.35, wallH * 0.78, 5.5, baseOuterRailMat, 0, wallH * 0.39, halfD + 4.2, southHullMats);
+  addOuterHullPart(halfW * 0.72, wallH * 0.85, 5.5, baseOuterHullMat, 0, wallH * 0.42, halfD + 9.2, southHullMats);
+  addOuterHullPart(2.4, wallH + 2.4, 3.2, baseOuterHullMat, 0, (wallH + 2.4) / 2, halfD + 12.5, southHullMats);
 
   // 출렁이는 입체 파도 마루 & 하얀 물보라(whitecaps)
   const waveCrestMat = new THREE.MeshLambertMaterial({ color: 0x38bdf8 });
@@ -645,7 +662,8 @@ function buildArkExteriorOceanWorld(halfW, halfD, wallH) {
       worldGroup.add(cl);
     });
   }
-  worldGroup.add(createBox(700, 0.5, 700, deepHorizonMat, 0, seaY - 1.9, 0, false));
+  // 심해 바닥면은 방주 바닥(y = -1.0 ~ 0.0)보다 훨씬 아래인 y = -2.6에 배치해 방주 내부 바닥과 겹치지 않게 함
+  worldGroup.add(createBox(700, 0.5, 700, deepHorizonMat, 0, -2.6, 0, false));
 }
 
 function buildArkInteriorCeilingGroup(halfW, halfD, wallH) {
@@ -658,7 +676,7 @@ function buildArkInteriorCeilingGroup(halfW, halfD, wallH) {
   const roofSlab = createBox(halfW * 2 + 3, 0.55, halfD * 2 + 3, ceilMat, 0, wallH + 0.55, 0, false);
   ceilingGroup.add(roofSlab);
 
-  // 1인칭 시점에서 올려다볼 때 입체감이 살아나는 가로·세로 대들보(서까래)
+  // 1인칭 및 올려봄 시점에서 올려다볼 때 입체감이 살아나는 가로·세로 대들보(서까래)
   for (let z = -halfD + 6; z <= halfD - 6; z += 8.5) {
     ceilingGroup.add(createBox(halfW * 2 + 1, 0.42, 0.65, beamMat, 0, wallH + 0.12, z, false));
   }
@@ -666,8 +684,9 @@ function buildArkInteriorCeilingGroup(halfW, halfD, wallH) {
     ceilingGroup.add(createBox(0.7, 0.46, halfD * 2 + 1, beamMat, bx, wallH + 0.1, 0, false));
   });
 
-  // [요청사항] 1인칭 시점('fps')일 때만 지붕이 보이도록 설정
-  ceilingGroup.visible = (window.globalCameraViewMode === 'fps');
+  // [요청사항] 1인칭('fps') 및 올려봄('lookup') 시점일 때 지붕이 보이도록 설정
+  ceilingGroup.visible =
+    window.globalCameraViewMode === 'fps' || window.globalCameraViewMode === 'lookup';
   window.noahArkCeilingGroup = ceilingGroup;
   worldGroup.add(ceilingGroup);
 }
@@ -789,17 +808,17 @@ function buildNoahArkInteriorMaze(stageNum) {
   const isHard = (currentMode === 'senior' || currentMode === 'timeattack');
   const halfW = isHard ? 36 : 26, halfD = isHard ? 48 : 34, wallH = 6.2;
 
-  // 바닥(짙은 역청 고동색)과 미로 벽(따뜻한 밝은 황금 호박색/삼나무 선박 판자)의 뚜렷한 색상 대비
+  // 바닥(짙은 밤갈색 역청 나무 갑판)과 미로 벽(따뜻한 밝은 황금 호박색/삼나무 선박 판자)의 뚜렷한 색상 대비
   const floorTex = stageNum === 2
-    ? makeDetailedArkPitchFloorTex('#24130a', '#160b05')
-    : makeDetailedArkPitchFloorTex('#1e1510', '#120c08');
+    ? makeDetailedArkPitchFloorTex('#3b2010', '#261308')
+    : makeDetailedArkPitchFloorTex('#331b0e', '#201007');
   const floorMat = new THREE.MeshLambertMaterial({ map: floorTex });
   const topTrimMat = matVoxel(stageNum === 2 ? '#fbbf24' : '#f59e0b', '#92400e');
   const ribPostMat = matVoxel('#6b2f0a', '#451a03');
 
   worldGroup.add(createBox(halfW * 2, 1, halfD * 2, floorMat, 0, -0.5, 0));
 
-  // 방주 바깥 사방 바다 풍경 & 1인칭 시점 전용 지붕 생성
+  // 방주 바깥 사방 바다 풍경 & 1인칭·올려봄 시점 지붕 생성
   buildArkExteriorOceanWorld(halfW, halfD, wallH);
   buildArkInteriorCeilingGroup(halfW, halfD, wallH);
 
@@ -813,27 +832,37 @@ function buildNoahArkInteriorMaze(stageNum) {
     const repeatX = Math.max(1, Math.round(spanLen / 4.2));
     const segWallTex = makeNoahArkWoodPlankTex(wallBaseHex, wallGrainHex, wallSeamHex, repeatX, 2);
     const segWallMat = new THREE.MeshLambertMaterial({ map: segWallTex });
+    const segTrimMat = topTrimMat.clone();
+    const segRibMat = ribPostMat.clone();
+    const linkedMats = [segWallMat, segTrimMat, segRibMat];
 
     const m = createBox(w, wallH, d, segWallMat, x, wallH / 2, z);
-    const trim = createBox(w + 0.12, 0.30, d + 0.12, topTrimMat, x, wallH + 0.15, z, false);
-    const basePlinth = createBox(w + 0.10, 0.28, d + 0.10, ribPostMat, x, 0.14, z, false);
+    const trim = createBox(w + 0.12, 0.30, d + 0.12, segTrimMat, x, wallH + 0.15, z, false);
+    const basePlinth = createBox(w + 0.10, 0.28, d + 0.10, segRibMat, x, 0.14, z, false);
+    m.userData.linkedFadeMats = linkedMats;
+    trim.userData.linkedFadeMats = linkedMats;
+    basePlinth.userData.linkedFadeMats = linkedMats;
     worldGroup.add(m, trim, basePlinth);
-    wallMeshes.push(m);
+    wallMeshes.push(m, trim, basePlinth);
 
     // 배의 나무 벽 느낌을 살리는 양끝 및 중간 선체 나무 기둥(늑골 프레임)
     if (w >= d && w >= 4.0) {
       const postCount = Math.max(2, Math.floor(w / 6.5) + 1);
       for (let i = 0; i < postCount; i++) {
         const px = (x - w / 2 + 0.25) + (i / (postCount - 1)) * (w - 0.5);
-        const post = createBox(0.32, wallH + 0.1, d + 0.16, ribPostMat, px, wallH / 2, z, false);
+        const post = createBox(0.32, wallH + 0.1, d + 0.16, segRibMat, px, wallH / 2, z, false);
+        post.userData.linkedFadeMats = linkedMats;
         worldGroup.add(post);
+        wallMeshes.push(post);
       }
     } else if (d > w && d >= 4.0) {
       const postCount = Math.max(2, Math.floor(d / 6.5) + 1);
       for (let i = 0; i < postCount; i++) {
         const pz = (z - d / 2 + 0.25) + (i / (postCount - 1)) * (d - 0.5);
-        const post = createBox(w + 0.16, wallH + 0.1, 0.32, ribPostMat, x, wallH / 2, pz, false);
+        const post = createBox(w + 0.16, wallH + 0.1, 0.32, segRibMat, x, wallH / 2, pz, false);
+        post.userData.linkedFadeMats = linkedMats;
         worldGroup.add(post);
+        wallMeshes.push(post);
       }
     }
 
@@ -1275,7 +1304,8 @@ function updateNoahStageFrame(dt, now) {
 
   if (currentStage === 2 || currentStage === 3) {
     if (window.noahArkCeilingGroup) {
-      window.noahArkCeilingGroup.visible = (window.globalCameraViewMode === 'fps');
+      window.noahArkCeilingGroup.visible =
+        window.globalCameraViewMode === 'fps' || window.globalCameraViewMode === 'lookup';
     }
     if (noahOuterSeaWaves.length > 0) {
       noahOuterSeaWaves.forEach(w => {

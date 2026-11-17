@@ -1477,7 +1477,8 @@ function ensureGlobalCameraViewToggleUI() {
 
 function setPlayerMeshVisibilityForCamera(isFpsMode) {
   if (window.noahArkCeilingGroup) {
-    window.noahArkCeilingGroup.visible = Boolean(isFpsMode);
+    window.noahArkCeilingGroup.visible =
+      window.globalCameraViewMode === 'fps' || window.globalCameraViewMode === 'lookup';
   }
   if (!playerGroup) return;
   playerGroup.children.forEach(child => {
@@ -1766,14 +1767,34 @@ function updateWallTransparency() {
   fadedMaterials.forEach(m => { m.transparent = false; m.opacity = 1.0; });
   fadedMaterials = [];
   if (wallMeshes.length === 0 || window.globalCameraViewMode === 'fps') return;
-  const focusPos = doveCutscene.active ? new THREE.Vector3(doveCutscene.doveX, 2.8, doveCutscene.goalZ) : new THREE.Vector3(playerPos.x, playerPos.y + 1.5, playerPos.z);
-  const dir = focusPos.clone().sub(camera.position), dist = dir.length();
-  raycaster.set(camera.position, dir.normalize());
-  raycaster.intersectObjects(wallMeshes, false).forEach(hit => {
-    if (hit.distance < dist - 0.5 && hit.object.material) {
-      hit.object.material.transparent = true; hit.object.material.opacity = 0.22;
-      fadedMaterials.push(hit.object.material);
-    }
+
+  const fadeMat = (mat) => {
+    if (!mat) return;
+    mat.transparent = true;
+    mat.opacity = 0.22;
+    if (!fadedMaterials.includes(mat)) fadedMaterials.push(mat);
+  };
+
+  const targetPoints = doveCutscene.active
+    ? [new THREE.Vector3(doveCutscene.doveX, 2.8, doveCutscene.goalZ)]
+    : [
+        new THREE.Vector3(playerPos.x, playerPos.y + 1.5, playerPos.z),
+        new THREE.Vector3(playerPos.x, playerPos.y + 0.65, playerPos.z)
+      ];
+
+  targetPoints.forEach(focusPos => {
+    const dir = focusPos.clone().sub(camera.position);
+    const dist = dir.length();
+    if (dist < 0.05) return;
+    raycaster.set(camera.position, dir.normalize());
+    raycaster.intersectObjects(wallMeshes, false).forEach(hit => {
+      if (hit.distance < dist - 0.12 && hit.object) {
+        fadeMat(hit.object.material);
+        if (hit.object.userData && Array.isArray(hit.object.userData.linkedFadeMats)) {
+          hit.object.userData.linkedFadeMats.forEach(fadeMat);
+        }
+      }
+    });
   });
 }
 
