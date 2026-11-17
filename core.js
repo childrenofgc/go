@@ -1420,12 +1420,9 @@ function ensureGlobalCameraViewToggleUI() {
   const camBar = document.getElementById('cam-bottom-bar');
   if (camBar && camBar.dataset.compactStyled !== 'true') {
     camBar.dataset.compactStyled = 'true';
-    camBar.style.left = '50%';
     camBar.style.right = 'auto';
     camBar.style.transform = 'translateX(-50%)';
     camBar.style.width = 'auto';
-    camBar.style.maxWidth = '164px';
-    camBar.style.gap = '6px';
     camBar.style.padding = '0';
     camBar.style.justifyContent = 'center';
     camBar.style.alignItems = 'center';
@@ -1479,6 +1476,9 @@ function ensureGlobalCameraViewToggleUI() {
 }
 
 function setPlayerMeshVisibilityForCamera(isFpsMode) {
+  if (window.noahArkCeilingGroup) {
+    window.noahArkCeilingGroup.visible = Boolean(isFpsMode);
+  }
   if (!playerGroup) return;
   playerGroup.children.forEach(child => {
     if (child === guideArrowGroup) {
@@ -1516,9 +1516,9 @@ window.cycleGlobalCameraViewMode = function () {
     showToast('👀 카메라: [1인칭 시점]');
   } else {
     btn.innerHTML =
-      '<span class="text-sm leading-none">🌤️</span><span id="global-camera-view-label" class="text-[9px] text-amber-300 mt-0.5 leading-none">위시점</span>';
+      '<span class="text-sm leading-none">🌤️</span><span id="global-camera-view-label" class="text-[9px] text-amber-300 mt-0.5 leading-none">올려봄</span>';
     setPlayerMeshVisibilityForCamera(false);
-    showToast('🌤️ 카메라: [위를 보는 시점]');
+    showToast('🌤️ 카메라: [올려봄 시점]');
   }
   playSfx('switch');
   snapCameraToPlayer();

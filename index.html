@@ -118,6 +118,42 @@
       .landscape-map-wrap { height: 70dvh !important; }
       .map-pin-card { padding: 0.18rem 0.38rem !important; }
     }
+
+    /* 휴대폰 세로모드 하단 조작 버튼(조이스틱 / 좌·우회전·시점변환 / 점프) 겹침 방지 */
+    @media (max-width: 640px) and (orientation: portrait) {
+      #joystick-zone {
+        left: 0.5rem !important;
+        bottom: 0.75rem !important;
+        width: 5.75rem !important;
+        height: 5.75rem !important;
+      }
+      #joystick-knob {
+        width: 2.5rem !important;
+        height: 2.5rem !important;
+        margin-top: -1.25rem !important;
+        margin-left: -1.25rem !important;
+      }
+      #action-zone {
+        right: 0.5rem !important;
+        bottom: 0.75rem !important;
+      }
+      #action-zone .jump-action-btn {
+        width: 4.1rem !important;
+        height: 4.1rem !important;
+        font-size: 0.85rem !important;
+      }
+      #cam-bottom-bar {
+        left: calc(50% + 13px) !important;
+        bottom: 0.75rem !important;
+        gap: 4px !important;
+        max-width: 128px !important;
+      }
+      #cam-bottom-bar > button {
+        width: 2.35rem !important;
+        height: 2.35rem !important;
+        border-radius: 0.65rem !important;
+      }
+    }
   </style>
 </head>
 <body class="relative w-full h-full select-none">
@@ -220,7 +256,7 @@
     <button id="context-action-btn" type="button" onpointerdown="event.preventDefault(); event.stopPropagation(); triggerContextAction();" class="ingame-touch hidden mc-btn px-3.5 py-2 rounded-xl bg-emerald-400 text-slate-950 font-jua text-xs sm:text-sm animate-bounce">
       ✨ 액션 실행!
     </button>
-    <button type="button" onpointerdown="event.preventDefault(); event.stopPropagation(); playerJump();" class="ingame-touch mc-btn w-20 h-20 rounded-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-jua text-base flex flex-col items-center justify-center">
+    <button type="button" onpointerdown="event.preventDefault(); event.stopPropagation(); playerJump();" class="jump-action-btn ingame-touch mc-btn w-20 h-20 rounded-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-jua text-base flex flex-col items-center justify-center">
       <span class="text-xl leading-none pointer-events-none">🦘</span>
       <span class="pointer-events-none">점프</span>
     </button>

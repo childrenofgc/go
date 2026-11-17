@@ -484,6 +484,19 @@ function buildDavidCastleWallPerimeter(limit, withSouthGate = true) {
     });
   }
 
+  // 남쪽 대성문(x = ±7.8, 폭 7.2 -> 외곽 ±11.4)과 양옆 성벽 사이의 빈틈을 완전히 메우는 연장 성벽
+  if (withSouthGate) {
+    [-12.8, 12.8].forEach(extX => {
+      const extW = 4.6;
+      addTransparentWallSegment(extW, wallH, wallThick, extX, wallH / 2, limit, false, 0);
+      addTransparentWallSegment(extW + 0.25, 0.55, wallThick + 0.4, extX, wallH + 0.25, limit, true);
+      [-1.1, 1.1].forEach(ox => {
+        addTransparentWallSegment(1.6, 1.2, wallThick + 0.2, extX + ox, wallH + 1.1, limit, false, 3);
+      });
+      registerCitySolidBox(extX, limit, extW, wallThick, wallH + 1.2, 0.20);
+    });
+  }
+
   for (let z = -limit; z <= limit; z += segLen) {
     addTransparentWallSegment(wallThick, wallH, segLen + 0.15, -limit, wallH / 2, z, false, 0);
     addTransparentWallSegment(wallThick + 0.4, 0.55, segLen + 0.35, -limit, wallH + 0.25, z, true);
@@ -1074,32 +1087,85 @@ function buildDenseMazeCityAndStreets() {
     buildSolidCityBuildingBlock(b.x, b.z, b.w, b.h, b.d, b.v);
   });
 
+  // [왕궁 전령 앞 정사각형 광장 바닥 구조물 & 중앙 우물]
+  const plazaCanvas = document.createElement('canvas');
+  plazaCanvas.width = 256;
+  plazaCanvas.height = 256;
+  const pCtx = plazaCanvas.getContext('2d');
+  pCtx.fillStyle = '#e7dac2';
+  pCtx.fillRect(0, 0, 256, 256);
+
+  // 정사각형 격자 석재 타일 & 광장 외곽 이중 테두리 문양
+  const tileN = 8;
+  const tileSz = 256 / tileN;
+  for (let r = 0; r < tileN; r++) {
+    for (let c = 0; c < tileN; c++) {
+      const isEdge = (r === 0 || r === tileN - 1 || c === 0 || c === tileN - 1);
+      const isInnerFrame = (r === 1 || r === tileN - 2 || c === 1 || c === tileN - 2);
+      pCtx.fillStyle = isEdge ? '#c9b38c' : (isInnerFrame ? '#d8c5a3' : ((r + c) % 2 === 0 ? '#ede2ce' : '#e2d4ba'));
+      pCtx.fillRect(c * tileSz + 2, r * tileSz + 2, tileSz - 4, tileSz - 4);
+      pCtx.strokeStyle = '#8c7656';
+      pCtx.lineWidth = 2;
+      pCtx.strokeRect(c * tileSz + 1, r * tileSz + 1, tileSz - 2, tileSz - 2);
+    }
+  }
+  pCtx.strokeStyle = '#92400e';
+  pCtx.lineWidth = 4;
+  pCtx.strokeRect(6, 6, 244, 244);
+  pCtx.strokeRect(34, 34, 188, 188);
+
+  const plazaTex = new THREE.CanvasTexture(plazaCanvas);
+  plazaTex.magFilter = THREE.NearestFilter;
+  const plazaFloorMat = new THREE.MeshLambertMaterial({ map: plazaTex });
+  const plazaBorderMat = matDavidCached('#d6c5a5', '#9c8665');
+  const plazaPodiumMat = matDavidCached('#cbd5e1', '#94a3b8');
+
+  // 왕궁 전령(z = -4.5) 앞 ~ 중앙 우물 구조물(z = 8) 바닥을 감싸는 정사각형 광장 바닥 구조물
+  const plazaSize = 18.0;
+  const plazaCenterZ = 6.2;
+  const plazaMainSlab = createBox(plazaSize, 0.10, plazaSize, plazaFloorMat, 0, 0.05, plazaCenterZ, false);
+  plazaMainSlab.receiveShadow = true;
+  // 왕궁 전령 발밑과 광장을 잇는 정사각형 진입 바닥판
+  const heraldApronSlab = createBox(8.4, 0.10, 5.2, plazaFloorMat, 0, 0.05, -4.4, false);
+  heraldApronSlab.receiveShadow = true;
+  // 중앙 구조물(우물) 바로 아래 정사각형 이중 기단 바닥 구조물
+  const wellSquareBase1 = createBox(7.6, 0.16, 7.6, plazaBorderMat, 0, 0.08, 8.0, false);
+  const wellSquareBase2 = createBox(5.4, 0.24, 5.4, plazaPodiumMat, 0, 0.12, 8.0, false);
+  // 정사각형 광장 테두리 연석(얇고 낮은 광장 경계석)
+  const rimN = createBox(plazaSize + 0.5, 0.16, 0.45, plazaBorderMat, 0, 0.08, plazaCenterZ - plazaSize / 2, false);
+  const rimS = createBox(plazaSize + 0.5, 0.16, 0.45, plazaBorderMat, 0, 0.08, plazaCenterZ + plazaSize / 2, false);
+  const rimW = createBox(0.45, 0.16, plazaSize + 0.5, plazaBorderMat, -plazaSize / 2, 0.08, plazaCenterZ, false);
+  const rimE = createBox(0.45, 0.16, plazaSize + 0.5, plazaBorderMat,  plazaSize / 2, 0.08, plazaCenterZ, false);
+
+  worldGroup.add(plazaMainSlab, heraldApronSlab, wellSquareBase1, wellSquareBase2, rimN, rimS, rimW, rimE);
+
   const wellMat = matDavidCached('#94a3b8', '#64748b');
   const woodMat = matDavidCached('#451a03');
   worldGroup.add(
-    createBox(3.4, 1.1, 3.4, wellMat, 0, 0.55, 8),
-    createBox(2.4, 0.2, 2.4, new THREE.MeshBasicMaterial({ color: 0x0284c7 }), 0, 0.95, 8, false),
-    createBox(0.28, 2.6, 0.28, woodMat, -1.3, 2.1, 8),
-    createBox(0.28, 2.6, 0.28, woodMat,  1.3, 2.1, 8),
-    createBox(3.4, 0.35, 1.4, woodMat, 0, 3.4, 8)
+    createBox(3.4, 1.1, 3.4, wellMat, 0, 0.65, 8),
+    createBox(2.4, 0.2, 2.4, new THREE.MeshBasicMaterial({ color: 0x0284c7 }), 0, 1.05, 8, false),
+    createBox(0.28, 2.6, 0.28, woodMat, -1.3, 2.2, 8),
+    createBox(0.28, 2.6, 0.28, woodMat,  1.3, 2.2, 8),
+    createBox(3.4, 0.35, 1.4, woodMat, 0, 3.5, 8)
   );
-  registerCitySolidBox(0, 8, 3.4, 3.4, 3.5, 0.25);
+  registerCitySolidBox(0, 8, 3.6, 3.6, 3.6, 0.35);
 
+  // 모든 행인이 건물이나 우물·구조물을 뚫지 않고 순수 길(대로 및 골목길)로만 다니도록 경로 설정
   const pedestrianRoutes = [
-    { x1: -10, z1:   8, x2:  10, z2:   8, spd: 2.3 },
-    { x1:  12, z1:   6, x2: -12, z2:   6, spd: 2.1 },
-    { x1:  -3, z1:  14, x2:  -3, z2:  52, spd: 2.4 },
-    { x1:   3, z1:  52, x2:   3, z2:  14, spd: 2.2 },
-    { x1: -34, z1:  -6, x2: -34, z2: -22, spd: 2.0 },
-    { x1:  34, z1:  -6, x2:  34, z2: -22, spd: 2.1 },
-    { x1: -50, z1: -36, x2: -50, z2:  -6, spd: 2.2 },
-    { x1:  50, z1: -36, x2:  50, z2:  -6, spd: 2.2 },
-    { x1: -23, z1:  16, x2: -23, z2:  40, spd: 2.3 },
-    { x1:  24, z1:  12, x2:  50, z2:  12, spd: 2.1 },
-    { x1: -50, z1:  54, x2: -26, z2:  54, spd: 2.0 },
-    { x1:  26, z1:  54, x2:  50, z2:  54, spd: 2.0 },
-    { x1: -50, z1: -54, x2: -24, z2: -54, spd: 2.1 },
-    { x1:  24, z1: -54, x2:  50, z2: -54, spd: 2.1 }
+    { x1: -11,  z1:   2.8, x2:  11,  z2:   2.8, spd: 2.2 },
+    { x1:  11,  z1:  12.5, x2: -11,  z2:  12.5, spd: 2.1 },
+    { x1:  -3.2, z1: 14,   x2:  -3.2, z2: 52,   spd: 2.4 },
+    { x1:   3.2, z1: 52,   x2:   3.2, z2: 14,   spd: 2.2 },
+    { x1: -48,  z1:  -8.2, x2: -22,  z2:  -8.2, spd: 2.0 },
+    { x1:  22,  z1:  -8.2, x2:  48,  z2:  -8.2, spd: 2.1 },
+    { x1: -50.5, z1: -36,  x2: -50.5, z2: -8,   spd: 2.2 },
+    { x1:  50.5, z1: -36,  x2:  50.5, z2: -8,   spd: 2.2 },
+    { x1: -23.2, z1:  16,  x2: -23.2, z2: 40,   spd: 2.3 },
+    { x1:  50.5, z1:   6,  x2:  50.5, z2: 38,   spd: 2.1 },
+    { x1: -46,  z1:  54,   x2: -25,  z2:  54,   spd: 2.0 },
+    { x1:  25,  z1:  54,   x2:  46,  z2:  54,   spd: 2.0 },
+    { x1: -46,  z1: -54,   x2: -24,  z2: -54,   spd: 2.1 },
+    { x1:  24,  z1: -54,   x2:  46,  z2: -54,   spd: 2.1 }
   ];
 
   pedestrianRoutes.forEach((rt, idx) => {
@@ -1148,6 +1214,8 @@ function buildQuestBuildableStructures(mapLimit = 68) {
   marketRoot.userData = { unfinishedFrame, completedMarket, cx: -28, cz: 8, w: 8.5, d: 6.0, topY: 4.3 };
   worldGroup.add(marketRoot);
   davidCityBuildings.marketGroup = marketRoot;
+  // 행인들이 상가 터/완성 건물을 가로지르지 못하도록 영역 등록
+  davidCityBuildingBoxes.push({ minX: -28 - 4.4, maxX: -28 + 4.4, minZ: 8 - 3.2, maxZ: 8 + 3.2, topY: 0.35 });
 
   const houseRoot = new THREE.Group();
   houseRoot.position.set(28, 0, 8);
@@ -1169,6 +1237,8 @@ function buildQuestBuildableStructures(mapLimit = 68) {
   houseRoot.userData = { unfinishedFrame: hUnfinished, completedHouse, cx: 28, cz: 8, w: 8.8, d: 6.8, topY: 7.8 };
   worldGroup.add(houseRoot);
   davidCityBuildings.houseGroup = houseRoot;
+  // 행인들이 건축 터/완성 건물을 가로지르지 못하도록 영역 등록
+  davidCityBuildingBoxes.push({ minX: 28 - 4.6, maxX: 28 + 4.6, minZ: 8 - 3.6, maxZ: 8 + 3.6, topY: 0.35 });
 
   const gateZ = mapLimit;
   const gateRoot = new THREE.Group();
@@ -1839,6 +1909,25 @@ function updateCityShopkeepersAndPedestrians(dt, now) {
 
   davidCityPedestrians.forEach((ped, idx) => {
     const u = ped.mesh.userData;
+    const curX = ped.mesh.position.x;
+    const curZ = ped.mesh.position.z;
+
+    // 혹시라도 건물이나 구조물 영역과 겹치면 즉시 길 쪽으로 밀어냄
+    for (const b of davidCityBuildingBoxes) {
+      const pad = 0.55;
+      if (curX > b.minX - pad && curX < b.maxX + pad && curZ > b.minZ - pad && curZ < b.maxZ + pad) {
+        const dL = Math.abs(curX - (b.minX - pad));
+        const dR = Math.abs((b.maxX + pad) - curX);
+        const dN = Math.abs(curZ - (b.minZ - pad));
+        const dS = Math.abs((b.maxZ + pad) - curZ);
+        const m = Math.min(dL, dR, dN, dS);
+        if (m === dL) ped.mesh.position.x = b.minX - pad - 0.05;
+        else if (m === dR) ped.mesh.position.x = b.maxX + pad + 0.05;
+        else if (m === dN) ped.mesh.position.z = b.minZ - pad - 0.05;
+        else ped.mesh.position.z = b.maxZ + pad + 0.05;
+      }
+    }
+
     const dToKing = Math.hypot(playerPos.x - ped.mesh.position.x, playerPos.z - ped.mesh.position.z);
 
     if (dToKing < 2.3 && Math.abs(playerPos.y) < 1.0) {
@@ -1864,9 +1953,37 @@ function updateCityShopkeepersAndPedestrians(dt, now) {
       ped.targetZ = ped.forward ? ped.z2 : ped.z1;
     } else {
       const step = Math.min(dist, ped.speed * dt);
-      ped.mesh.position.x += (dx / dist) * step;
-      ped.mesh.position.z += (dz / dist) * step;
-      ped.heading = lerpAngle(ped.heading, Math.atan2(dx, dz), dt * 8);
+      const baseAng = Math.atan2(dx, dz);
+      const nx = ped.mesh.position.x + (dx / dist) * step;
+      const nz = ped.mesh.position.z + (dz / dist) * step;
+
+      if (isCityFloorSpotClear(nx, nz, 0.65)) {
+        ped.mesh.position.x = nx;
+        ped.mesh.position.z = nz;
+        ped.heading = lerpAngle(ped.heading, baseAng, dt * 8);
+      } else {
+        // 전방에 건물·구조물이 있으면 좌우 길로 조향하거나 반대 방향(원래 길)으로 선회
+        let steered = false;
+        const steerAngles = [0.45, -0.45, 0.9, -0.9, 1.35, -1.35];
+        for (const off of steerAngles) {
+          const testAng = baseAng + off;
+          const tx = ped.mesh.position.x + Math.sin(testAng) * step;
+          const tz = ped.mesh.position.z + Math.cos(testAng) * step;
+          if (isCityFloorSpotClear(tx, tz, 0.65)) {
+            ped.mesh.position.x = tx;
+            ped.mesh.position.z = tz;
+            ped.heading = lerpAngle(ped.heading, testAng, dt * 10);
+            steered = true;
+            break;
+          }
+        }
+        if (!steered) {
+          ped.forward = !ped.forward;
+          ped.targetX = ped.forward ? ped.x2 : ped.x1;
+          ped.targetZ = ped.forward ? ped.z2 : ped.z1;
+        }
+      }
+
       ped.mesh.rotation.y = ped.heading;
 
       const swing = Math.sin(now * 0.014 + ped.phase + idx) * 0.55;

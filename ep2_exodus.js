@@ -833,12 +833,81 @@ function buildExodusStage1World() {
 // -------------------------------------------------------------------------
 function buildStage2DestinationMountainsAndSky(northZ, endHighY) {
   const mtnMat1 = matVoxelCached('#15803d', '#166534'), mtnMat2 = matVoxelCached('#64748b', '#475569'), snowCap = matVoxelCached('#f8fafc', '#e2e8f0');
+  const dryLandSandMat = new THREE.MeshLambertMaterial({ map: makeDesertSandTex() });
+  const dryRoadStoneMat = matVoxelCached('#eab308', '#ca8a04');
+  const dryRoadPaveMat = matVoxelCached('#fde68a', '#f59e0b');
+  const roadCurbMat = matVoxelCached('#a8a29e', '#78716c');
+  const cliffBankMat = matVoxelCached('#d97706', '#b45309');
+  const bushMat = matVoxelCached('#16a34a', '#15803d');
+
+  // 1) 불기둥(z = northZ + 7.5) 뒤쪽 바닷길이 끝나는 지점부터 육지로 이어지는 마른 땅 언덕 지형
+  worldGroup.add(
+    createBox(78, 8.0, 26, dryLandSandMat, 0, endHighY - 3.6, northZ - 6, false),
+    createBox(96, 11.0, 36, dryLandSandMat, 0, endHighY - 1.2, northZ - 28, false),
+    createBox(26, 7.5, 22, cliffBankMat, -22, endHighY + 1.2, northZ - 15, false),
+    createBox(26, 7.5, 22, cliffBankMat, 22, endHighY + 1.2, northZ - 15, false)
+  );
+
+  // 2) 불기둥 바로 뒤(z = northZ + 4.8)에서 시작해 마른 땅 언덕 위로 완만하게 올라가는 길(경사로 & 계단식 포장길)
+  const stepCount = 14;
+  for (let i = 0; i < stepCount; i++) {
+    const t = i / (stepCount - 1);
+    const segZ = (northZ + 4.6) - i * 2.6;
+    const segY = (endHighY - 0.55) + t * 7.2;
+    const roadW = 11.6 - t * 2.2;
+
+    // 흙·모래 노반 + 밝은 사암 포장 길면
+    worldGroup.add(
+      createBox(roadW + 2.4, 2.4, 2.85, dryLandSandMat, 0, segY - 1.1, segZ, false),
+      createBox(roadW, 0.36, 2.7, (i % 2 === 0) ? dryRoadPaveMat : dryRoadStoneMat, 0, segY + 0.12, segZ, false),
+      // 길 양옆 돌 경계석(연석)
+      createBox(0.75, 0.62, 2.5, roadCurbMat, -(roadW / 2 + 0.35), segY + 0.32, segZ, false),
+      createBox(0.75, 0.62, 2.5, roadCurbMat, (roadW / 2 + 0.35), segY + 0.32, segZ, false)
+    );
+
+    // 길가 바위 & 풀포기 장식
+    if (i % 3 === 1) {
+      const sideX = roadW / 2 + 1.8;
+      worldGroup.add(
+        createBox(1.4, 0.9, 1.4, roadCurbMat, -sideX, segY + 0.45, segZ, false),
+        createBox(1.1, 0.75, 1.1, bushMat, -sideX + 0.8, segY + 0.38, segZ + 0.9, false),
+        createBox(1.4, 0.9, 1.4, roadCurbMat, sideX, segY + 0.45, segZ, false),
+        createBox(1.1, 0.75, 1.1, bushMat, sideX - 0.8, segY + 0.38, segZ + 0.9, false)
+      );
+    }
+  }
+
+  // 언덕길 정상부 평지 광장 & 종려나무(오아시스 나무) 배치
+  const topPlateauY = endHighY + 6.6;
+  const topPlateauZ = northZ - 33;
+  worldGroup.add(
+    createBox(24, 3.2, 12, dryLandSandMat, 0, topPlateauY - 1.5, topPlateauZ, false),
+    createBox(10.5, 0.35, 10.5, dryRoadPaveMat, 0, topPlateauY + 0.15, topPlateauZ, false)
+  );
+
+  const trunkMat = matVoxelCached('#78350f', '#451a03');
+  [
+    [-8.5, endHighY + 0.2, northZ + 1.5],
+    [8.5,  endHighY + 0.2, northZ + 1.5],
+    [-7.8, endHighY + 3.4, northZ - 12.0],
+    [7.8,  endHighY + 3.4, northZ - 12.0],
+    [-6.8, topPlateauY,    northZ - 29.0],
+    [6.8,  topPlateauY,    northZ - 29.0]
+  ].forEach(([tx, ty, tz]) => {
+    worldGroup.add(
+      createBox(0.85, 4.2, 0.85, trunkMat, tx, ty + 2.1, tz, false),
+      createBox(3.4, 0.9, 3.4, bushMat, tx, ty + 4.3, tz, false),
+      createBox(2.2, 0.8, 2.2, mtnMat1, tx, ty + 5.0, tz, false)
+    );
+  });
+
+  // 3) 올라가는 길 양옆과 뒤쪽을 감싸는 원경 산봉우리
   [
     { x: -34, z: northZ - 26, w: 26, h: 24 },
-    { x: 0,   z: northZ - 34, w: 34, h: 32 },
+    { x: 0,   z: northZ - 48, w: 36, h: 34 },
     { x: 34,  z: northZ - 26, w: 26, h: 24 },
-    { x: -18, z: northZ - 22, w: 20, h: 18 },
-    { x: 18,  z: northZ - 22, w: 20, h: 18 }
+    { x: -20, z: northZ - 32, w: 18, h: 20 },
+    { x: 20,  z: northZ - 32, w: 18, h: 20 }
   ].forEach((p, idx) => {
     worldGroup.add(
       createBox(p.w, p.h, p.w, (idx % 2 === 0) ? mtnMat1 : mtnMat2, p.x, endHighY + p.h / 2 - 2, p.z, false),

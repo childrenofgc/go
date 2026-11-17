@@ -26,8 +26,10 @@ EPISODE_SCRIPTURE.noah = {
   }
 };
 
-// 스테이지 3 노아 이동 궤적 기록 배열
+// 스테이지 3 노아 이동 궤적 기록 배열 및 방주 지붕/외부 바다 파도 배열
 let noahStage3Trail = [];
+let noahOuterSeaWaves = [];
+window.noahArkCeilingGroup = null;
 
 // -------------------------------------------------------------------------
 // [공통 보조] 동물 7쌍 광역 분산 랜덤 스폰 (소년반은 구역별 분할 + 최대 이격 거리 보장)
@@ -43,7 +45,7 @@ function pickWidelySpreadAnimalSpot(bounds, existingSpots, minSpacing, avoidPos,
     const rz = searchB.minZ + Math.random() * (searchB.maxZ - searchB.minZ);
 
     if (avoidPos && Math.hypot(rx - avoidPos.x, rz - avoidPos.z) < avoidRadius) continue;
-    if (currentStage === 1 && rz < -9.5 && Math.abs(rx) < 11.5) continue;
+    if (currentStage === 1 && rz < -9.5 && Math.abs(rx) < 16.5) continue;
     if (!isSpawnSpotClear(rx, rz, 1.75)) continue;
 
     let nearestDist = 9999;
@@ -88,7 +90,7 @@ function buildSpreadSectors(bounds) {
 // -------------------------------------------------------------------------
 function isStage1AnimalSpotClear(nx, nz, limit, radius = 1.25) {
   if (Math.abs(nx) > limit || nz > limit || nz < -10.2) return false;
-  if (nz < -9.8 && Math.abs(nx) < 11.2) return false;
+  if (nz < -9.8 && Math.abs(nx) < 16.5) return false;
   return isSpawnSpotClear(nx, nz, radius);
 }
 
@@ -312,10 +314,371 @@ function moveStage3FollowerSafely(fa, idx, targetX, targetZ, dt, now) {
 }
 
 // -------------------------------------------------------------------------
+// [방주 전용 텍스처 & 구조물 빌더]
+// - 스테이지 1: 나무결 판자 무늬, 더 길쭉한 배 선체, 입체 나무 창문 & 덧창
+// - 스테이지 2·3: 바닥과 뚜렷이 대비되는 밝은 호박색/삼나무 선박 판자 벽 무늬,
+//   1인칭 전용 천장 지붕, 점프 시 보이는 드넓은 바깥 바다 세상
+// -------------------------------------------------------------------------
+function makeNoahArkWoodPlankTex(baseHex = '#a15822', grainHex = '#7c3f14', seamHex = '#3b1906', repX = 4, repY = 2) {
+  const c = document.createElement('canvas');
+  c.width = 256;
+  c.height = 128;
+  const ctx = c.getContext('2d');
+
+  ctx.fillStyle = baseHex;
+  ctx.fillRect(0, 0, 256, 128);
+
+  const plankRows = 4;
+  const rowH = 128 / plankRows;
+  for (let r = 0; r < plankRows; r++) {
+    const py = r * rowH;
+    // 판자별 미세 톤 변화
+    ctx.fillStyle = (r % 2 === 0) ? baseHex : grainHex;
+    ctx.globalAlpha = (r % 2 === 0) ? 0.18 : 0.28;
+    ctx.fillRect(0, py, 256, rowH);
+    ctx.globalAlpha = 1.0;
+
+    // 상단 하이라이트 & 하단 그림자(클링커 선박 판자 겹침 입체감)
+    ctx.fillStyle = 'rgba(255, 235, 195, 0.24)';
+    ctx.fillRect(0, py + 2, 256, 3);
+    ctx.fillStyle = 'rgba(25, 10, 2, 0.35)';
+    ctx.fillRect(0, py + rowH - 5, 256, 3);
+
+    // 수평 나뭇결 물결 무늬
+    ctx.strokeStyle = grainHex;
+    ctx.lineWidth = 1.5;
+    for (let g = 0; g < 4; g++) {
+      const gy = py + 6 + g * 6;
+      ctx.beginPath();
+      for (let x = 0; x <= 256; x += 16) {
+        const wave = Math.sin((x * 0.05) + r * 1.7 + g) * 1.8;
+        if (x === 0) ctx.moveTo(x, gy + wave);
+        else ctx.lineTo(x, gy + wave);
+      }
+      ctx.stroke();
+    }
+
+    // 옹이(나무 매듭) 표현
+    const knotX = ((r * 73 + 44) % 210) + 22;
+    const knotY = py + rowH * 0.52;
+    ctx.strokeStyle = seamHex;
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.ellipse(knotX, knotY, 7, 3.2, 0, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // 수평 판자 틈새(이음새)
+    ctx.fillStyle = seamHex;
+    ctx.fillRect(0, py, 256, 2.2);
+
+    // 수직 판자 이음선 & 나무 못(treenail pegs)
+    const joint1 = ((r * 96 + 48) % 224) + 16;
+    const joint2 = (joint1 + 128) % 256;
+    [joint1, joint2].forEach(jx => {
+      ctx.fillStyle = seamHex;
+      ctx.fillRect(jx, py, 2.2, rowH);
+      ctx.fillStyle = '#451a03';
+      ctx.fillRect(jx - 5, py + 6, 3, 3);
+      ctx.fillRect(jx + 3, py + 6, 3, 3);
+      ctx.fillRect(jx - 5, py + rowH - 9, 3, 3);
+      ctx.fillRect(jx + 3, py + rowH - 9, 3, 3);
+    });
+  }
+
+  // 세로 선체 보강 늑골(rib) 음영 줄무늬
+  ctx.fillStyle = 'rgba(55, 22, 5, 0.22)';
+  ctx.fillRect(0, 0, 8, 128);
+  ctx.fillRect(124, 0, 8, 128);
+
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(repX, repY);
+  tex.magFilter = THREE.NearestFilter;
+  return tex;
+}
+
+function makeDetailedArkPitchFloorTex(c1 = '#24130a', c2 = '#150a05') {
+  const c = document.createElement('canvas');
+  c.width = 128;
+  c.height = 128;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = c1;
+  ctx.fillRect(0, 0, 128, 128);
+
+  // 어두운 역청(pitch) 칠한 갑판 바닥 판자 무늬 (벽면과 확실한 명도·색상 대비)
+  for (let y = 0; y < 128; y += 16) {
+    ctx.fillStyle = (y % 32 === 0) ? c1 : c2;
+    ctx.fillRect(0, y, 128, 16);
+    ctx.fillStyle = '#090402';
+    ctx.fillRect(0, y, 128, 2);
+    ctx.fillStyle = 'rgba(90, 48, 24, 0.22)';
+    ctx.fillRect(0, y + 4, 128, 2);
+    const jx = ((y * 3) % 96) + 16;
+    ctx.fillStyle = '#090402';
+    ctx.fillRect(jx, y, 2, 16);
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(18, 24);
+  tex.magFilter = THREE.NearestFilter;
+  return tex;
+}
+
+function makeNoahOceanWaterTex(repX = 18, repY = 18) {
+  const c = document.createElement('canvas');
+  c.width = 128;
+  c.height = 128;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#0284c7';
+  ctx.fillRect(0, 0, 128, 128);
+
+  for (let y = 0; y < 128; y += 16) {
+    ctx.fillStyle = (y % 32 === 0) ? '#0369a1' : '#0ea5e9';
+    ctx.fillRect(0, y, 128, 8);
+    ctx.fillStyle = 'rgba(186, 230, 253, 0.42)';
+    const wx = (y * 23) % 88;
+    ctx.fillRect(wx, y + 2, 28, 3);
+    ctx.fillRect((wx + 56) % 100, y + 10, 22, 2);
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(repX, repY);
+  tex.magFilter = THREE.NearestFilter;
+  return tex;
+}
+
+function createStage1ArkWoodenWindow(winW = 1.55, winH = 1.35, withShutters = true) {
+  const g = new THREE.Group();
+  const frameMat = matVoxel('#5c2808', '#3b1704');
+  const shutterMat = matVoxel('#b45309', '#78350f');
+  const paneGlowMat = new THREE.MeshBasicMaterial({ color: 0xfef3c7 });
+  const paneRecessMat = matVoxel('#291509', '#1c0d06');
+
+  // 창문 안쪽 공간 + 은은한 등불 빛
+  g.add(
+    createBox(winW - 0.16, winH - 0.16, 0.16, paneRecessMat, 0, 0, 0, false),
+    createBox(winW - 0.34, winH - 0.34, 0.18, paneGlowMat, 0, 0, 0.01, false)
+  );
+  // 나무 창틀 (상·하·좌·우) + 십자 나무 창살(mullion)
+  g.add(
+    createBox(winW + 0.18, 0.18, 0.28, frameMat, 0, winH / 2, 0.04, false),
+    createBox(winW + 0.26, 0.22, 0.34, frameMat, 0, -winH / 2, 0.06, false),
+    createBox(0.18, winH, 0.28, frameMat, -winW / 2, 0, 0.04, false),
+    createBox(0.18, winH, 0.28, frameMat, winW / 2, 0, 0.04, false),
+    createBox(0.12, winH - 0.2, 0.24, frameMat, 0, 0, 0.05, false),
+    createBox(winW - 0.2, 0.12, 0.24, frameMat, 0, 0, 0.05, false)
+  );
+  if (withShutters) {
+    const lShutter = createBox(0.42, winH - 0.06, 0.12, shutterMat, -winW / 2 - 0.24, 0, 0.10, false);
+    lShutter.rotation.y = -0.35;
+    const rShutter = createBox(0.42, winH - 0.06, 0.12, shutterMat, winW / 2 + 0.24, 0, 0.10, false);
+    rShutter.rotation.y = 0.35;
+    g.add(lShutter, rShutter);
+  }
+  return g;
+}
+
+function buildDetailedStage1NoahArk(arkZ = -19) {
+  const hullW = 24.8;
+  const hullH = 6.2;
+  const hullD = 9.8;
+
+  const hullWoodMat = new THREE.MeshLambertMaterial({
+    map: makeNoahArkWoodPlankTex('#9a5220', '#733810', '#381705', 7, 2)
+  });
+  const cabinWoodMat = new THREE.MeshLambertMaterial({
+    map: makeNoahArkWoodPlankTex('#b86828', '#8a4816', '#421b06', 5, 1)
+  });
+  const deckWoodMat = new THREE.MeshLambertMaterial({
+    map: makeNoahArkWoodPlankTex('#c97a32', '#935119', '#4a2008', 6, 3)
+  });
+  const darkTimberMat = matVoxel('#5c2808', '#3e1a05');
+  const trimTimberMat = matVoxel('#d97706', '#92400e');
+  const roofTimberMat = matVoxel('#78350f', '#451a03');
+
+  // 1) 길쭉한 메인 선체 + 좌우 뱃머리(선수)·고물(선미) 테이퍼 구조
+  const arkHull = createBox(hullW, hullH, hullD, hullWoodMat, 0, hullH / 2, arkZ);
+  const bowStep1L = createBox(2.2, hullH - 0.3, hullD * 0.76, hullWoodMat, -(hullW / 2 + 1.0), (hullH - 0.3) / 2 + 0.15, arkZ);
+  const bowStep2L = createBox(1.8, hullH - 0.8, hullD * 0.48, hullWoodMat, -(hullW / 2 + 2.8), (hullH - 0.8) / 2 + 0.4, arkZ);
+  const bowProwL = createBox(0.9, hullH + 1.4, 1.4, darkTimberMat, -(hullW / 2 + 3.9), (hullH + 1.4) / 2 + 0.3, arkZ);
+
+  const sternStep1R = createBox(2.2, hullH - 0.3, hullD * 0.76, hullWoodMat, (hullW / 2 + 1.0), (hullH - 0.3) / 2 + 0.15, arkZ);
+  const sternStep2R = createBox(1.8, hullH - 0.8, hullD * 0.48, hullWoodMat, (hullW / 2 + 2.8), (hullH - 0.8) / 2 + 0.4, arkZ);
+  const sternProwR = createBox(0.9, hullH + 1.4, 1.4, darkTimberMat, (hullW / 2 + 3.9), (hullH + 1.4) / 2 + 0.3, arkZ);
+
+  worldGroup.add(arkHull, bowStep1L, bowStep2L, bowProwL, sternStep1R, sternStep2R, sternProwR);
+  wallMeshes.push(arkHull, bowStep1L, sternStep1R);
+
+  // 2) 선체 외벽 수평 띠목(wale timbers) & 수직 늑골 기둥(hull ribs)
+  [1.1, 3.1, 5.3].forEach(by => {
+    const waleF = createBox(hullW + 0.3, 0.28, 0.28, darkTimberMat, 0, by, arkZ + hullD / 2 + 0.1, false);
+    const waleB = createBox(hullW + 0.3, 0.28, 0.28, darkTimberMat, 0, by, arkZ - hullD / 2 - 0.1, false);
+    worldGroup.add(waleF, waleB);
+  });
+
+  [-11.2, -7.6, -3.8, 3.8, 7.6, 11.2].forEach(rx => {
+    const ribF = createBox(0.36, hullH, 0.32, darkTimberMat, rx, hullH / 2, arkZ + hullD / 2 + 0.12, false);
+    const ribB = createBox(0.36, hullH, 0.32, darkTimberMat, rx, hullH / 2, arkZ - hullD / 2 - 0.12, false);
+    worldGroup.add(ribF, ribB);
+  });
+
+  // 3) 상부 갑판 + 갑판 난간 + 길쭉한 상층 선실(cabin) & 박공 나무 지붕
+  const arkDeck = createBox(hullW + 2.4, 0.45, hullD + 0.8, deckWoodMat, 0, 6.4, arkZ);
+  const railBack = createBox(hullW + 2.2, 0.55, 0.28, trimTimberMat, 0, 6.85, arkZ - hullD / 2 - 0.2, false);
+  const railFrontL = createBox(9.2, 0.55, 0.28, trimTimberMat, -8.6, 6.85, arkZ + hullD / 2 + 0.2, false);
+  const railFrontR = createBox(9.2, 0.55, 0.28, trimTimberMat, 8.6, 6.85, arkZ + hullD / 2 + 0.2, false);
+
+  const cabinW = 19.6, cabinH = 2.35, cabinD = 4.5, cabinZ = arkZ - 1.85;
+  const arkCabin = createBox(cabinW, cabinH, cabinD, cabinWoodMat, 0, 7.75, cabinZ);
+  const roofLower = createBox(cabinW + 1.0, 0.38, cabinD + 0.9, roofTimberMat, 0, 9.1, cabinZ);
+  const roofUpper = createBox(cabinW + 0.3, 0.36, cabinD * 0.62, darkTimberMat, 0, 9.45, cabinZ);
+  const roofRidge = createBox(cabinW + 0.6, 0.26, 0.55, trimTimberMat, 0, 9.74, cabinZ);
+
+  worldGroup.add(arkDeck, railBack, railFrontL, railFrontR, arkCabin, roofLower, roofUpper, roofRidge);
+  wallMeshes.push(arkCabin, roofLower);
+
+  // 4) 선체 정면·후면 나무 창문(덧창 포함) + 상층 선실 채광 나무 창문
+  [-9.4, -5.6, 5.6, 9.4].forEach(wx => {
+    const winFront = createStage1ArkWoodenWindow(1.6, 1.35, true);
+    winFront.position.set(wx, 4.15, arkZ + hullD / 2 + 0.08);
+    const winBack = createStage1ArkWoodenWindow(1.6, 1.35, true);
+    winBack.position.set(wx, 4.15, arkZ - hullD / 2 - 0.08);
+    winBack.rotation.y = Math.PI;
+    worldGroup.add(winFront, winBack);
+  });
+
+  [-7.2, -3.6, 0, 3.6, 7.2].forEach(cwx => {
+    const topWinF = createStage1ArkWoodenWindow(1.35, 1.05, false);
+    topWinF.position.set(cwx, 7.8, cabinZ + cabinD / 2 + 0.06);
+    const topWinB = createStage1ArkWoodenWindow(1.35, 1.05, false);
+    topWinB.position.set(cwx, 7.8, cabinZ - cabinD / 2 - 0.06);
+    topWinB.rotation.y = Math.PI;
+    worldGroup.add(topWinF, topWinB);
+  });
+
+  // 5) 정면 중앙 대형 방주 나무 출입문 & 미끄럼 방지 가로목 탑승 경사로
+  const doorFrame = createBox(4.2, 4.3, 0.32, darkTimberMat, 0, 2.35, arkZ + hullD / 2 + 0.08, false);
+  const doorLeafL = createBox(1.75, 3.85, 0.36, cabinWoodMat, -0.92, 2.25, arkZ + hullD / 2 + 0.12, false);
+  const doorLeafR = createBox(1.75, 3.85, 0.36, cabinWoodMat, 0.92, 2.25, arkZ + hullD / 2 + 0.12, false);
+  const ramp = createBox(4.4, 0.4, 6.2, deckWoodMat, 0, 0.3, arkZ + 7.0);
+  const rampRailL = createBox(0.28, 0.65, 6.2, darkTimberMat, -2.1, 0.62, arkZ + 7.0, false);
+  const rampRailR = createBox(0.28, 0.65, 6.2, darkTimberMat, 2.1, 0.62, arkZ + 7.0, false);
+  worldGroup.add(doorFrame, doorLeafL, doorLeafR, ramp, rampRailL, rampRailR);
+  for (let rz = arkZ + 4.4; rz <= arkZ + 9.6; rz += 1.05) {
+    worldGroup.add(createBox(3.9, 0.12, 0.2, darkTimberMat, 0, 0.54, rz, false));
+  }
+
+  colliders.push({ minX: -15.8, maxX: 15.8, minZ: arkZ - 5.6, maxZ: arkZ + 7.5 });
+}
+
+function buildArkExteriorOceanWorld(halfW, halfD, wallH) {
+  noahOuterSeaWaves = [];
+  const seaY = 2.35; // 점프 시 미로 벽 너머로 한눈에 내려다보이는 출렁이는 해수면 높이
+  const seaSpan = 280;
+
+  const waterMatN = new THREE.MeshLambertMaterial({ map: makeNoahOceanWaterTex(28, 16) });
+  const waterMatS = new THREE.MeshLambertMaterial({ map: makeNoahOceanWaterTex(28, 16) });
+  const waterMatLR = new THREE.MeshLambertMaterial({ map: makeNoahOceanWaterTex(14, 24) });
+  const deepHorizonMat = new THREE.MeshBasicMaterial({ color: 0x0369a1 });
+
+  // 방주 사방을 빈틈없이 둘러싼 망망대해 수면
+  const northSea = createBox(halfW * 2 + seaSpan * 2, 1.6, seaSpan, waterMatN, 0, seaY - 0.8, -halfD - seaSpan / 2 - 0.8, false);
+  const southSea = createBox(halfW * 2 + seaSpan * 2, 1.6, seaSpan, waterMatS, 0, seaY - 0.8, halfD + seaSpan / 2 + 0.8, false);
+  const westSea = createBox(seaSpan, 1.6, halfD * 2 + 4, waterMatLR, -halfW - seaSpan / 2 - 0.8, seaY - 0.8, 0, false);
+  const eastSea = createBox(seaSpan, 1.6, halfD * 2 + 4, waterMatLR, halfW + seaSpan / 2 + 0.8, seaY - 0.8, 0, false);
+  worldGroup.add(northSea, southSea, westSea, eastSea);
+
+  // 방주 외벽 바깥쪽 배 현측(gunwale) 및 뱃머리·고물 곡선 목재 구조물
+  const outerHullMat = matVoxel('#5c2808', '#3b1704');
+  const outerRailMat = matVoxel('#92400e', '#78350f');
+  worldGroup.add(
+    createBox(halfW * 2 + 4.4, 1.2, 1.2, outerHullMat, 0, wallH - 0.5, -halfD - 1.2, false),
+    createBox(halfW * 2 + 4.4, 1.2, 1.2, outerHullMat, 0, wallH - 0.5, halfD + 1.2, false),
+    createBox(1.2, 1.2, halfD * 2 + 4.4, outerHullMat, -halfW - 1.2, wallH - 0.5, 0, false),
+    createBox(1.2, 1.2, halfD * 2 + 4.4, outerHullMat, halfW + 1.2, wallH - 0.5, 0, false),
+    // 북쪽(선수) & 남쪽(선미) 뾰족한 배 모양 연장부
+    createBox(halfW * 1.35, wallH * 0.78, 5.5, outerRailMat, 0, wallH * 0.39, -halfD - 4.2, false),
+    createBox(halfW * 0.72, wallH * 0.85, 5.5, outerHullMat, 0, wallH * 0.42, -halfD - 9.2, false),
+    createBox(2.4, wallH + 2.8, 3.2, outerHullMat, 0, (wallH + 2.8) / 2, -halfD - 12.5, false),
+    createBox(halfW * 1.35, wallH * 0.78, 5.5, outerRailMat, 0, wallH * 0.39, halfD + 4.2, false),
+    createBox(halfW * 0.72, wallH * 0.85, 5.5, outerHullMat, 0, wallH * 0.42, halfD + 9.2, false),
+    createBox(2.4, wallH + 2.4, 3.2, outerHullMat, 0, (wallH + 2.4) / 2, halfD + 12.5, false)
+  );
+
+  // 출렁이는 입체 파도 마루 & 하얀 물보라(whitecaps)
+  const waveCrestMat = new THREE.MeshLambertMaterial({ color: 0x38bdf8 });
+  const waveFoamMat = new THREE.MeshBasicMaterial({ color: 0xe0f2fe });
+  for (let i = 0; i < 64; i++) {
+    const side = i % 4;
+    const distOut = 7 + (Math.floor(i / 4) * 5.8) + (i % 3) * 2.2;
+    const along = ((i * 19) % 100 - 50) * 1.65;
+    let wx = 0, wz = 0, wLen = 9 + (i % 4) * 3.5, wThick = 1.6;
+    if (side === 0) { wx = along; wz = -halfD - distOut - 8; }
+    else if (side === 1) { wx = along; wz = halfD + distOut + 8; }
+    else if (side === 2) { wx = -halfW - distOut; wz = along; }
+    else { wx = halfW + distOut; wz = along; }
+
+    const wg = new THREE.Group();
+    const isEW = (side >= 2);
+    const crest = createBox(isEW ? wThick : wLen, 0.45, isEW ? wLen : wThick, waveCrestMat, 0, 0, 0, false);
+    const foam = createBox(isEW ? wThick * 0.65 : wLen * 0.82, 0.22, isEW ? wLen * 0.82 : wThick * 0.65, waveFoamMat, 0, 0.28, 0, false);
+    wg.add(crest, foam);
+    wg.position.set(wx, seaY + 0.12, wz);
+    worldGroup.add(wg);
+    noahOuterSeaWaves.push({ mesh: wg, baseX: wx, baseY: seaY + 0.12, baseZ: wz, phase: i * 0.55, isEW });
+  }
+
+  // 수평선 너머 구름 띠 (온통 물인 대홍수 바다 세상 분위기)
+  if (typeof createFluffyCloudGroup === 'function') {
+    const cloudCoords = [
+      [-halfW - 35, 22, -30], [halfW + 35, 24, -25],
+      [-halfW - 40, 21, 28],  [halfW + 40, 23, 30],
+      [-28, 25, -halfD - 42], [28, 24, -halfD - 38],
+      [-26, 23, halfD + 40],  [26, 25, halfD + 42]
+    ];
+    cloudCoords.forEach(([cx, cy, cz], idx) => {
+      const cl = createFluffyCloudGroup(1.25 + (idx % 2) * 0.25, false);
+      cl.position.set(cx, cy, cz);
+      worldGroup.add(cl);
+    });
+  }
+  worldGroup.add(createBox(700, 0.5, 700, deepHorizonMat, 0, seaY - 1.9, 0, false));
+}
+
+function buildArkInteriorCeilingGroup(halfW, halfD, wallH) {
+  const ceilingGroup = new THREE.Group();
+  const ceilTex = makeNoahArkWoodPlankTex('#7c3f14', '#5c2b09', '#2b1103', 14, 18);
+  const ceilMat = new THREE.MeshLambertMaterial({ map: ceilTex });
+  const beamMat = matVoxel('#451a03', '#290f02');
+
+  // 천장 목재 갑판 덮개
+  const roofSlab = createBox(halfW * 2 + 3, 0.55, halfD * 2 + 3, ceilMat, 0, wallH + 0.55, 0, false);
+  ceilingGroup.add(roofSlab);
+
+  // 1인칭 시점에서 올려다볼 때 입체감이 살아나는 가로·세로 대들보(서까래)
+  for (let z = -halfD + 6; z <= halfD - 6; z += 8.5) {
+    ceilingGroup.add(createBox(halfW * 2 + 1, 0.42, 0.65, beamMat, 0, wallH + 0.12, z, false));
+  }
+  [-halfW * 0.5, 0, halfW * 0.5].forEach(bx => {
+    ceilingGroup.add(createBox(0.7, 0.46, halfD * 2 + 1, beamMat, bx, wallH + 0.1, 0, false));
+  });
+
+  // [요청사항] 1인칭 시점('fps')일 때만 지붕이 보이도록 설정
+  ceilingGroup.visible = (window.globalCameraViewMode === 'fps');
+  window.noahArkCeilingGroup = ceilingGroup;
+  worldGroup.add(ceilingGroup);
+}
+
+// -------------------------------------------------------------------------
 // [스테이지 1] 초원 월드 & 동물 7쌍 랜덤 스폰
 // -------------------------------------------------------------------------
 function buildNoahStage1World() {
   clearWorld();
+  noahOuterSeaWaves = [];
+  window.noahArkCeilingGroup = null;
   scene.background = new THREE.Color(0x7dd3fc);
   scene.fog = new THREE.Fog(0x7dd3fc, 52, 135);
 
@@ -329,13 +692,7 @@ function buildNoahStage1World() {
   buildGrassAndTreeBorders(mapLimit, false);
 
   const arkZ = -19;
-  const arkHull = createBox(18, 6.2, 9.5, matVoxel('#92400e', '#78350f').clone(), 0, 3.1, arkZ);
-  const arkDeck = createBox(18.6, 0.4, 10.0, matVoxel('#d97706').clone(), 0, 6.4, arkZ);
-  const arkCabin = createBox(14, 2.3, 4.2, matVoxel('#b45309', '#92400e').clone(), 0, 7.75, arkZ - 1.8);
-  const ramp = createBox(4.2, 0.4, 6, matVoxel('#d97706'), 0, 0.3, arkZ + 6.8);
-  worldGroup.add(arkHull, arkDeck, arkCabin, ramp);
-  wallMeshes.push(arkHull, arkCabin);
-  colliders.push({ minX: -9.8, maxX: 9.8, minZ: arkZ - 5.5, maxZ: arkZ + 7.5 });
+  buildDetailedStage1NoahArk(arkZ);
 
   const rockSpots = isWide
     ? [[-13, 3], [13, 3], [-19, -6], [19, -6], [0, 21], [-24, 17], [24, 17], [-35, 6], [35, 6], [-28, 34], [28, 34]]
@@ -347,7 +704,7 @@ function buildNoahStage1World() {
 
   const innerTrees = [
     [-9, 11], [9, 11], [-16, 15], [16, 15], [-21, 2], [21, 2],
-    [-14, -12], [14, -12], [-27, 9], [27, 9], [0, 29],
+    [-17, -11], [17, -11], [-27, 9], [27, 9], [0, 29],
     [-6, 24], [6, 24], [-18, 24], [18, 24], [-25, -4], [25, -4]
   ];
   innerTrees.forEach(([tx, tz]) => {
@@ -425,26 +782,61 @@ function buildNoahArkInteriorMaze(stageNum) {
   clearWorld();
   noahStage3Trail = [];
   mazeRunCount++;
-  scene.background = new THREE.Color(0x18130f);
-  scene.fog = new THREE.Fog(0x18130f, 38, 105);
+  // 점프 시 방주 바깥 풍경이 온통 물인 바다 세상으로 보이도록 하늘/안개 및 외부 바다 생성
+  scene.background = new THREE.Color(0x38bdf8);
+  scene.fog = new THREE.Fog(0x38bdf8, 68, 220);
 
   const isHard = (currentMode === 'senior' || currentMode === 'timeattack');
   const halfW = isHard ? 36 : 26, halfD = isHard ? 48 : 34, wallH = 6.2;
 
-  const floorTex = stageNum === 2 ? makeArkFloorTex('#2e1a0f', '#170c06') : makeArkFloorTex('#1f242d', '#0f1318');
-  const wallTex = stageNum === 2 ? makeArkWallTex('#d9a05b', '#78350f') : makeArkWallTex('#e5c494', '#7c2d12');
+  // 바닥(짙은 역청 고동색)과 미로 벽(따뜻한 밝은 황금 호박색/삼나무 선박 판자)의 뚜렷한 색상 대비
+  const floorTex = stageNum === 2
+    ? makeDetailedArkPitchFloorTex('#24130a', '#160b05')
+    : makeDetailedArkPitchFloorTex('#1e1510', '#120c08');
   const floorMat = new THREE.MeshLambertMaterial({ map: floorTex });
-  const wallMat = new THREE.MeshLambertMaterial({ map: wallTex });
-  const topTrimMat = new THREE.MeshBasicMaterial({ color: stageNum === 2 ? 0xfbbf24 : 0x38bdf8 });
+  const topTrimMat = matVoxel(stageNum === 2 ? '#fbbf24' : '#f59e0b', '#92400e');
+  const ribPostMat = matVoxel('#6b2f0a', '#451a03');
 
   worldGroup.add(createBox(halfW * 2, 1, halfD * 2, floorMat, 0, -0.5, 0));
 
+  // 방주 바깥 사방 바다 풍경 & 1인칭 시점 전용 지붕 생성
+  buildArkExteriorOceanWorld(halfW, halfD, wallH);
+  buildArkInteriorCeilingGroup(halfW, halfD, wallH);
+
+  const wallBaseHex = stageNum === 2 ? '#d99548' : '#e0a254';
+  const wallGrainHex = stageNum === 2 ? '#9a581c' : '#a36120';
+  const wallSeamHex = '#421b06';
+
   function addMazeWall(x, z, w, d) {
     if (w <= 0.4 || d <= 0.4) return;
-    const m = createBox(w, wallH, d, wallMat.clone(), x, wallH / 2, z);
-    const trim = createBox(w + 0.06, 0.28, d + 0.06, topTrimMat, x, wallH + 0.14, z, false);
-    worldGroup.add(m, trim);
+    const spanLen = Math.max(w, d);
+    const repeatX = Math.max(1, Math.round(spanLen / 4.2));
+    const segWallTex = makeNoahArkWoodPlankTex(wallBaseHex, wallGrainHex, wallSeamHex, repeatX, 2);
+    const segWallMat = new THREE.MeshLambertMaterial({ map: segWallTex });
+
+    const m = createBox(w, wallH, d, segWallMat, x, wallH / 2, z);
+    const trim = createBox(w + 0.12, 0.30, d + 0.12, topTrimMat, x, wallH + 0.15, z, false);
+    const basePlinth = createBox(w + 0.10, 0.28, d + 0.10, ribPostMat, x, 0.14, z, false);
+    worldGroup.add(m, trim, basePlinth);
     wallMeshes.push(m);
+
+    // 배의 나무 벽 느낌을 살리는 양끝 및 중간 선체 나무 기둥(늑골 프레임)
+    if (w >= d && w >= 4.0) {
+      const postCount = Math.max(2, Math.floor(w / 6.5) + 1);
+      for (let i = 0; i < postCount; i++) {
+        const px = (x - w / 2 + 0.25) + (i / (postCount - 1)) * (w - 0.5);
+        const post = createBox(0.32, wallH + 0.1, d + 0.16, ribPostMat, px, wallH / 2, z, false);
+        worldGroup.add(post);
+      }
+    } else if (d > w && d >= 4.0) {
+      const postCount = Math.max(2, Math.floor(d / 6.5) + 1);
+      for (let i = 0; i < postCount; i++) {
+        const pz = (z - d / 2 + 0.25) + (i / (postCount - 1)) * (d - 0.5);
+        const post = createBox(w + 0.16, wallH + 0.1, 0.32, ribPostMat, x, wallH / 2, pz, false);
+        worldGroup.add(post);
+      }
+    }
+
     colliders.push({ minX: x - w / 2 - 0.38, maxX: x + w / 2 + 0.38, minZ: z - d / 2 - 0.38, maxZ: z + d / 2 + 0.38 });
   }
 
@@ -882,6 +1274,19 @@ function updateNoahStageFrame(dt, now) {
   }
 
   if (currentStage === 2 || currentStage === 3) {
+    if (window.noahArkCeilingGroup) {
+      window.noahArkCeilingGroup.visible = (window.globalCameraViewMode === 'fps');
+    }
+    if (noahOuterSeaWaves.length > 0) {
+      noahOuterSeaWaves.forEach(w => {
+        w.mesh.position.y = w.baseY + Math.sin(now * 0.0042 + w.phase) * 0.35;
+        if (w.isEW) {
+          w.mesh.position.z = w.baseZ + Math.cos(now * 0.0028 + w.phase) * 1.1;
+        } else {
+          w.mesh.position.x = w.baseX + Math.cos(now * 0.0028 + w.phase) * 1.1;
+        }
+      });
+    }
     arkFriends.forEach(f => {
       const swayX = f.baseX + Math.sin(now * 0.002 + f.phase) * 1.4;
       if (canMoveTo(swayX, f.baseZ, 0)) f.group.position.x = swayX;
