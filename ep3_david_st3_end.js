@@ -75,44 +75,262 @@ function updateDavidStage3QuestTrackerUI() {
 }
 
 // -------------------------------------------------------------------------
-// 2. 도시 바닥 석조 텍스처 & 건물 외벽 디테일 질감 텍스처 생성기
+// 2. 도시 바닥 고대 이스라엘 성읍 조약돌(Cobblestone) 포장 텍스처 & 건물 외벽 텍스처 생성기
 // -------------------------------------------------------------------------
 let _davidCityStoneTex = null;
-function makeDavidCityStoneTex() {
-  if (_davidCityStoneTex) return _davidCityStoneTex;
+function makeDavidCityStoneTex(repeatX = 36, repeatY = 36) {
+  if (_davidCityStoneTex && repeatX === 36 && repeatY === 36) return _davidCityStoneTex;
+
+  const W = 256;
+  const H = 256;
   const c = document.createElement('canvas');
-  c.width = 128;
-  c.height = 128;
+  c.width = W;
+  c.height = H;
   const ctx = c.getContext('2d');
 
-  ctx.fillStyle = '#d6c3a5';
-  ctx.fillRect(0, 0, 128, 128);
+  // 결정론적 난수 생성기 (타일 일관성 유지)
+  let seed = 77319042;
+  const rand = () => {
+    seed = (seed * 1664525 + 1013904223) >>> 0;
+    return seed / 4294967296;
+  };
 
-  const stonePalette = ['#e5d5bc', '#cbb492', '#decbb0', '#c2a882', '#dfd0b8'];
-  const tileW = 32, tileH = 16;
+  const wrapDelta = (d, max) => {
+    if (d > max * 0.5) return d - max;
+    if (d < -max * 0.5) return d + max;
+    return d;
+  };
 
-  for (let row = 0; row < 8; row++) {
-    const offsetX = (row % 2) * 16;
-    for (let col = -1; col < 5; col++) {
-      const x = col * tileW + offsetX;
-      const y = row * tileH;
-      ctx.fillStyle = stonePalette[(row * 3 + col + 10) % stonePalette.length];
-      ctx.fillRect(x + 1, y + 1, tileW - 2, tileH - 2);
+  // 고대 이스라엘 성읍(텔 단·브엘세바·다윗성) 자연석·강돌·현무암·석회암 조약돌 팔레트
+  const stonePalette = [
+    [168, 158, 140], // 밝은 석회암 조약돌
+    [148, 139, 125], // 따뜻한 회갈색 들돌
+    [128, 124, 116], // 중간 회색 강돌
+    [104, 102,  98], // 현무암 다크 그레이 조약돌
+    [158, 142, 118], // 황토빛 베이지 자연석
+    [136, 131, 118], // 올리브 그레이 조약돌
+    [115, 109, 100], // 짙은 회갈색 야석
+    [175, 165, 148], // 풍화된 연회색 석회암
+    [140, 126, 108], // 갈색빛 강돌
+    [ 92,  91,  88], // 짙은 현무암 조약돌
+    [152, 146, 136]  // 연한 애쉬 그레이 자연석
+  ];
 
-      ctx.fillStyle = 'rgba(255,255,255,0.18)';
-      ctx.fillRect(x + 2, y + 2, tileW - 4, 2);
-      ctx.fillStyle = 'rgba(87,65,42,0.22)';
-      ctx.fillRect(x + 1, y + tileH - 3, tileW - 2, 2);
+  const stones = [];
+
+  // 1단계: 중대형 타원형 조약돌 포아송 디스크(비격자 랜덤) 배치
+  const targetMain = 60;
+  let attempts = 0;
+  while (stones.length < targetMain && attempts < 4500) {
+    attempts++;
+    const cx = rand() * W;
+    const cy = rand() * H;
+    const minDist = 24.0 - Math.min(5.5, attempts * 0.002);
+    let ok = true;
+    for (let i = 0; i < stones.length; i++) {
+      const dx = wrapDelta(cx - stones[i].x, W);
+      const dy = wrapDelta(cy - stones[i].y, H);
+      if (Math.hypot(dx, dy) < minDist) {
+        ok = false;
+        break;
+      }
+    }
+    if (ok) {
+      const rx = 1.02 + rand() * 0.34;
+      const ry = 0.78 + rand() * 0.26;
+      const ang = (rand() - 0.5) * 1.05;
+      stones.push({
+        x: cx,
+        y: cy,
+        rx,
+        ry,
+        ang,
+        cosA: Math.cos(ang),
+        sinA: Math.sin(ang),
+        radius: 15.2 + rand() * 4.2,
+        lobeP1: rand() * Math.PI * 2,
+        lobeP2: rand() * Math.PI * 2,
+        lobeA1: 0.04 + rand() * 0.05,
+        lobeA2: 0.02 + rand() * 0.04,
+        col: stonePalette[Math.floor(rand() * stonePalette.length)],
+        grainPhase: rand() * 100
+      });
     }
   }
 
+  // 자연스러운 비정형 배치를 위한 반발 이완
+  for (let iter = 0; iter < 3; iter++) {
+    const mx = new Float32Array(stones.length);
+    const my = new Float32Array(stones.length);
+    for (let i = 0; i < stones.length; i++) {
+      for (let j = i + 1; j < stones.length; j++) {
+        const dx = wrapDelta(stones[j].x - stones[i].x, W);
+        const dy = wrapDelta(stones[j].y - stones[i].y, H);
+        const d = Math.hypot(dx, dy) || 0.001;
+        const targetD = 26.2;
+        if (d < targetD) {
+          const push = (targetD - d) * 0.25;
+          mx[i] -= (dx / d) * push;
+          my[i] -= (dy / d) * push;
+          mx[j] += (dx / d) * push;
+          my[j] += (dy / d) * push;
+        }
+      }
+    }
+    for (let i = 0; i < stones.length; i++) {
+      stones[i].x = (stones[i].x + mx[i] + W) % W;
+      stones[i].y = (stones[i].y + my[i] + H) % H;
+    }
+  }
+
+  // 2단계: 큰 조약돌 사이의 넓은 틈새(Pocket)에 작은 둥근 조약돌을 끼워 넣기
+  for (let gy = 0; gy < 32; gy++) {
+    for (let gx = 0; gx < 32; gx++) {
+      const cx = (gx + 0.5) * (W / 32);
+      const cy = (gy + 0.5) * (H / 32);
+      let nearestSurf = 1e9;
+      let nearestCenter = 1e9;
+      for (let i = 0; i < stones.length; i++) {
+        const st = stones[i];
+        const dx = wrapDelta(cx - st.x, W);
+        const dy = wrapDelta(cy - st.y, H);
+        const centerDist = Math.hypot(dx, dy);
+        if (centerDist < nearestCenter) nearestCenter = centerDist;
+        const rx = (dx * st.cosA + dy * st.sinA) / st.rx;
+        const ry = (-dx * st.sinA + dy * st.cosA) / st.ry;
+        const surfDist = Math.hypot(rx, ry) - st.radius;
+        if (surfDist < nearestSurf) nearestSurf = surfDist;
+      }
+      if (nearestSurf > 2.2 && nearestCenter > 13.5) {
+        const ang = (rand() - 0.5) * 1.4;
+        stones.push({
+          x: (cx + (rand() - 0.5) * 1.4 + W) % W,
+          y: (cy + (rand() - 0.5) * 1.4 + H) % H,
+          rx: 0.90 + rand() * 0.22,
+          ry: 0.84 + rand() * 0.20,
+          ang,
+          cosA: Math.cos(ang),
+          sinA: Math.sin(ang),
+          radius: Math.min(11.2, nearestSurf + 5.2),
+          lobeP1: rand() * Math.PI * 2,
+          lobeP2: rand() * Math.PI * 2,
+          lobeA1: 0.03 + rand() * 0.04,
+          lobeA2: 0.02 + rand() * 0.03,
+          col: stonePalette[Math.floor(rand() * stonePalette.length)],
+          grainPhase: rand() * 100
+        });
+      }
+    }
+  }
+
+  const imgData = ctx.createImageData(W, H);
+  const data = imgData.data;
+  const tau = Math.PI * 2;
+
+  const smin = (a, b, k) => {
+    const h = Math.max(k - Math.abs(a - b), 0.0) / k;
+    return Math.min(a, b) - h * h * k * 0.25;
+  };
+
+  for (let py = 0; py < H; py++) {
+    for (let px = 0; px < W; px++) {
+      const wx = px + 1.2 * Math.sin((py / H) * tau * 3 + 0.4);
+      const wy = py + 1.2 * Math.cos((px / W) * tau * 3 + 1.1);
+
+      let d1 = 1e9, d2 = 1e9, d3 = 1e9, d4 = 1e9;
+      let s1 = null;
+      let lx1 = 0, ly1 = 0;
+
+      for (let i = 0; i < stones.length; i++) {
+        const st = stones[i];
+        const dx = wrapDelta(wx - st.x, W);
+        const dy = wrapDelta(wy - st.y, H);
+        if (Math.abs(dx) > 48 || Math.abs(dy) > 48) continue;
+
+        const rx = (dx * st.cosA + dy * st.sinA) / st.rx;
+        const ry = (-dx * st.sinA + dy * st.cosA) / st.ry;
+        const theta = Math.atan2(ry, rx);
+        const lobe = 1.0 + st.lobeA1 * Math.cos(2 * theta + st.lobeP1) + st.lobeA2 * Math.sin(3 * theta + st.lobeP2);
+
+        // 조약돌 외곽 타원 경계로부터의 부호 거리 (내부 < 0, 외부 > 0)
+        const d = Math.hypot(rx, ry) - st.radius * lobe;
+
+        if (d < d1) {
+          d4 = d3; d3 = d2; d2 = d1; d1 = d;
+          s1 = st; lx1 = dx; ly1 = dy;
+        } else if (d < d2) {
+          d4 = d3; d3 = d2; d2 = d;
+        } else if (d < d3) {
+          d4 = d3; d3 = d;
+        } else if (d < d4) {
+          d4 = d;
+        }
+      }
+
+      // 이웃 조약돌과의 표면 이등분 거리 및 자체 볼록 타원 한계를 부드럽게 결합
+      const e12 = 0.55 * (d2 - d1);
+      const e13 = 0.55 * (d3 - d1);
+      const e14 = 0.55 * (d4 - d1);
+      const neighborClearance = smin(smin(e12, e13, 3.8), e14, 3.4);
+      const ownOvalLimit = -d1 + 1.8;
+      const pebbleDist = smin(neighborClearance, ownOvalLimit, 3.2);
+
+      const nHash = Math.sin(px * 12.9898 + py * 78.233) * 43758.5453;
+      const fineNoise = (nHash - Math.floor(nHash)) - 0.5;
+      const patchNoise =
+        Math.sin((px / W) * tau * 9 + (s1 ? s1.grainPhase : 0)) *
+        Math.cos((py / H) * tau * 9 - (s1 ? s1.grainPhase : 0));
+
+      const mortarGap = 0.95;
+      const idx = (py * W + px) * 4;
+
+      if (pebbleDist < mortarGap) {
+        // 조약돌 사이 짙은 흙·모르타르 줄눈
+        const depth = Math.max(0, Math.min(1, (pebbleDist + 1.2) / (mortarGap + 1.2)));
+        const mr = 42 + depth * 22 + fineNoise * 12;
+        const mg = 36 + depth * 19 + fineNoise * 10;
+        const mb = 30 + depth * 16 + fineNoise * 8;
+        data[idx]     = Math.max(0, Math.min(255, Math.round(mr)));
+        data[idx + 1] = Math.max(0, Math.min(255, Math.round(mg)));
+        data[idx + 2] = Math.max(0, Math.min(255, Math.round(mb)));
+        data[idx + 3] = 255;
+      } else {
+        // 둥글고 볼록한 조약돌 표면
+        const rim = Math.min(1.0, (pebbleDist - mortarGap) / 5.4);
+        const dome = Math.pow(rim, 0.46);
+
+        const normX = lx1 / (s1.radius * s1.rx);
+        const normY = ly1 / (s1.radius * s1.ry);
+        const sunDot = (-normX * 0.65 - normY * 0.76);
+        const shade = Math.max(-0.24, Math.min(0.22, sunDot * 0.19));
+        const centerCrown = Math.max(0, 1.0 - Math.hypot(normX, normY) * 0.85) * 0.08;
+
+        const factor = (0.65 + 0.35 * dome) + shade + centerCrown;
+        const weather = patchNoise * 8.5 + fineNoise * 11.5;
+
+        const r = s1.col[0] * factor + weather;
+        const g = s1.col[1] * factor + weather * 0.95;
+        const b = s1.col[2] * factor + weather * 0.88;
+
+        data[idx]     = Math.max(0, Math.min(255, Math.round(r)));
+        data[idx + 1] = Math.max(0, Math.min(255, Math.round(g)));
+        data[idx + 2] = Math.max(0, Math.min(255, Math.round(b)));
+        data[idx + 3] = 255;
+      }
+    }
+  }
+
+  ctx.putImageData(imgData, 0, 0);
+
   const tex = new THREE.CanvasTexture(c);
-  tex.magFilter = THREE.NearestFilter;
-  tex.minFilter = THREE.NearestFilter;
   tex.wrapS = THREE.RepeatWrapping;
   tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(36, 36);
-  _davidCityStoneTex = tex;
+  tex.repeat.set(repeatX, repeatY);
+  tex.needsUpdate = true;
+
+  if (repeatX === 36 && repeatY === 36) {
+    _davidCityStoneTex = tex;
+  }
   return tex;
 }
 
@@ -300,7 +518,7 @@ function buildDavidCastleWallPerimeter(limit, withSouthGate = true) {
 
   if (withSouthGate) {
     const outGrassMat = new THREE.MeshLambertMaterial({ map: makeGrassFieldTex() });
-    const highwayMat = matDavidCached('#e5c494', '#c29b61');
+    const highwayMat = new THREE.MeshLambertMaterial({ map: makeDavidCityStoneTex(2.2, 32) });
     const curbMat = matDavidCached('#94a3b8', '#64748b');
 
     const outerGround = createBox(limit * 3.0, 1.2, 130, outGrassMat, 0, -0.58, limit + 64, false);
@@ -1211,18 +1429,10 @@ function buildDavidStage3World() {
   }
 
   const cityStoneMat = new THREE.MeshLambertMaterial({ map: makeDavidCityStoneTex() });
-  const royalRoadMat = matDavidCached('#e5c494', '#c29b61');
-  const plazaMat = matDavidCached('#cbd5e1', '#94a3b8');
 
   const baseGround = createBox(mapLimit * 2.2, 1, mapLimit * 2.2, cityStoneMat, 0, -0.5, 0, false);
   baseGround.receiveShadow = true;
   worldGroup.add(baseGround);
-
-  worldGroup.add(
-    createBox(8.2, 0.06, mapLimit * 2, royalRoadMat, 0, 0.03, 0, false),
-    createBox(mapLimit * 2, 0.06, 7.4, royalRoadMat, 0, 0.03, 8, false),
-    createBox(22, 0.08, 18, plazaMat, 0, 0.04, 8, false)
-  );
 
   buildDavidCastleWallPerimeter(mapLimit, true);
   buildDavidCityPalace(0, -14);
