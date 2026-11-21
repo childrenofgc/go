@@ -12,19 +12,13 @@ function positionDavidStage3QuestTrackerBelowHUD() {
   const tracker = document.getElementById('david-st3-quest-tracker');
   if (!tracker || tracker.classList.contains('hidden')) return;
 
-  const hudTop = document.getElementById('hud-top');
-  const missionBox = document.getElementById('hud-mission-box');
-  let safeBottom = 88;
+  const menuBtn = document.getElementById('hud-menu-btn');
+  let safeBottom = 46;
 
-  if (missionBox && !missionBox.classList.contains('hidden')) {
-    const mRect = missionBox.getBoundingClientRect();
-    if (mRect && mRect.bottom > 0) {
-      safeBottom = Math.max(safeBottom, Math.ceil(mRect.bottom) + 8);
-    }
-  } else if (hudTop && !hudTop.classList.contains('hidden')) {
-    const hRect = hudTop.getBoundingClientRect();
-    if (hRect && hRect.bottom > 0) {
-      safeBottom = Math.max(safeBottom, Math.ceil(hRect.bottom) + 8);
+  if (menuBtn) {
+    const r = menuBtn.getBoundingClientRect();
+    if (r && r.bottom > 0) {
+      safeBottom = Math.max(42, Math.ceil(r.bottom) + 8);
     }
   }
 
@@ -38,8 +32,8 @@ function ensureDavidStage3QuestTrackerUI() {
     tracker = document.createElement('div');
     tracker.id = 'david-st3-quest-tracker';
     tracker.className =
-      'hidden fixed left-2.5 sm:left-3 z-20 px-2.5 py-1.5 rounded-xl bg-slate-900/75 backdrop-blur-sm border border-amber-400/80 text-white shadow-md flex flex-col gap-0.5 pointer-events-none';
-    tracker.style.top = '92px';
+      'hidden fixed left-2 z-20 px-2.5 py-1.5 rounded-xl bg-slate-900/75 backdrop-blur-sm border border-amber-400/80 text-white shadow-md flex flex-col gap-0.5 pointer-events-none';
+    tracker.style.top = '46px';
     tracker.innerHTML = `
       <div class="flex items-center gap-1.5">
         <span id="david-st3-quest-title" class="text-[11px] font-jua text-amber-300 leading-none">📜 퀘스트</span>
@@ -2605,6 +2599,7 @@ function startDavidStage3CovenantCutscene() {
   document.getElementById('context-action-btn').classList.add('hidden');
   document.getElementById('puzzle-build-btn').classList.add('hidden');
   document.getElementById('hud-mission-box').classList.add('hidden');
+  if (typeof hideMissionGuideBubbleImmediately === 'function') hideMissionGuideBubbleImmediately();
   if (targetObject && targetObject.beacon) targetObject.beacon.visible = false;
 
   if (targetObject && targetObject.label) {

@@ -5,7 +5,7 @@
 // =========================================================================
 
 window.__GAME_BUILD_VERSIONS__ = window.__GAME_BUILD_VERSIONS__ || {};
-window.__GAME_BUILD_VERSIONS__.core = '20261120_v14';
+window.__GAME_BUILD_VERSIONS__.core = '20261121_v15';
 
 // 퀴즈 선택지 순서 무작위 셔플 공용 헬퍼 (정답이 항상 1번에 고정되지 않도록 보장)
 function shuffleQuizOptions(opts, ansIdx = 0) {
@@ -482,9 +482,74 @@ function stopStageBgm() {
   }
 }
 
+function syncHudMenuInfo() {
+  const playerTag = document.getElementById('hud-player-tag');
+  if (playerTag) {
+    playerTag.textContent = explorerDisplayName || explorerName || '대원';
+  }
+  const levelBadge = document.getElementById('hud-level-badge');
+  if (levelBadge && typeof MODE_META !== 'undefined' && MODE_META[currentMode]) {
+    levelBadge.textContent = MODE_META[currentMode].badge;
+  }
+  const bgmBtn = document.getElementById('bgm-btn');
+  if (bgmBtn) {
+    bgmBtn.textContent = bgmEnabled ? '🎵 음악 끄기' : '🔇 음악 켜기';
+  }
+  const fsBtn = document.getElementById('fullscreen-btn');
+  if (fsBtn) {
+    const isFs = Boolean(document.fullscreenElement || document.webkitFullscreenElement);
+    fsBtn.textContent = isFs ? '🗗 창모드' : '⛶ 전체화면';
+  }
+}
+window.syncHudMenuInfo = syncHudMenuInfo;
+
+let isHudMenuOpen = false;
+function setHudMenuOpen(open) {
+  isHudMenuOpen = Boolean(open);
+  const dd = document.getElementById('hud-menu-dropdown');
+  const btn = document.getElementById('hud-menu-btn');
+  const chev = document.getElementById('hud-menu-chevron');
+  if (btn) btn.setAttribute('aria-expanded', isHudMenuOpen ? 'true' : 'false');
+  if (chev) chev.style.transform = isHudMenuOpen ? 'rotate(180deg)' : 'rotate(0deg)';
+  if (!dd) return;
+  if (dd._hideTimer) { clearTimeout(dd._hideTimer); dd._hideTimer = null; }
+  if (isHudMenuOpen) {
+    syncHudMenuInfo();
+    dd.classList.remove('hidden');
+    void dd.offsetWidth;
+    dd.classList.remove('menu-closed');
+    dd.classList.add('menu-open');
+  } else {
+    dd.classList.remove('menu-open');
+    dd.classList.add('menu-closed');
+    dd._hideTimer = setTimeout(() => {
+      if (!isHudMenuOpen) dd.classList.add('hidden');
+    }, 180);
+  }
+}
+window.setHudMenuOpen = setHudMenuOpen;
+
+function toggleHudMenu() {
+  if (typeof playSfx === 'function') playSfx('switch');
+  setHudMenuOpen(!isHudMenuOpen);
+}
+window.toggleHudMenu = toggleHudMenu;
+
+if (typeof document !== 'undefined') {
+  document.addEventListener('pointerdown', (e) => {
+    if (!isHudMenuOpen) return;
+    const wrap = document.getElementById('hud-menu-wrap');
+    if (wrap && !wrap.contains(e.target)) {
+      setHudMenuOpen(false);
+    }
+  });
+  document.addEventListener('fullscreenchange', syncHudMenuInfo);
+  document.addEventListener('webkitfullscreenchange', syncHudMenuInfo);
+}
+
 function toggleBgm() {
   bgmEnabled = !bgmEnabled;
-  document.getElementById('bgm-btn').textContent = bgmEnabled ? '🎵' : '🔇';
+  syncHudMenuInfo();
   if (bgmEnabled) {
     if (isPlaying) startStageBgm(currentStage);
     else startMenuAdventureBgm();
@@ -495,6 +560,313 @@ function toggleBgm() {
     }
   }
 }
+
+// =========================================================================
+// [전체 에피소드 공통] 정중앙 타이핑 말풍선 안내 & 우측 상단 구석 발광 [미션 안내] 버튼
+// (에피소드 4의 팝업·타이핑·버튼 흡수 애니메이션을 에피소드 1~4 전체에 동일하게 적용)
+// =========================================================================
+const MiracleGuideUI = {
+  isBubbleOpen: false,
+  isTyping: false,
+  isSucking: false,
+  activeFieldInfo: null,
+  activeStageInfo: null,
+  lastAutoKey: '',
+  fullText: '',
+  typedIdx: 0,
+  typeTimerId: null,
+  autoCloseTimerId: null,
+  suckTimerId: null,
+  suppressedDuringIntro: false
+};
+window.MiracleGuideUI = MiracleGuideUI;
+
+function _clearMiracleGuideTimers() {
+  if (MiracleGuideUI.typeTimerId) { clearInterval(MiracleGuideUI.typeTimerId); MiracleGuideUI.typeTimerId = null; }
+  if (MiracleGuideUI.autoCloseTimerId) { clearTimeout(MiracleGuideUI.autoCloseTimerId); MiracleGuideUI.autoCloseTimerId = null; }
+  if (MiracleGuideUI.suckTimerId) { clearTimeout(MiracleGuideUI.suckTimerId); MiracleGuideUI.suckTimerId = null; }
+}
+
+function positionMiracleGuideButton() {
+  // 우측 상단 구석(#hud-top-right 내부)에 정식 배치되었으므로 멀티플레이 HUD 간격만 동기화
+  if (typeof window.positionMultiplayerRightHud === 'function') {
+    window.positionMultiplayerRightHud();
+  }
+}
+window.positionMiracleGuideButton = positionMiracleGuideButton;
+
+function isAnyGlobalIntroOrCutsceneBlockingGuide() {
+  if (window.__isBuildingOpeningPreview) return true;
+  if (typeof pausedGameSession !== 'undefined' && pausedGameSession && pausedGameSession.active) return true;
+  const hudTopEl = document.getElementById('hud-top');
+  if (!hudTopEl || hudTopEl.classList.contains('hidden')) return true;
+  if (currentEpisode === 'exodus' && typeof stage2CountdownActive !== 'undefined' && stage2CountdownActive) return true;
+  if (currentEpisode === 'noah' && typeof doveCutscene !== 'undefined' && doveCutscene && doveCutscene.active) return true;
+  if (currentEpisode === 'exodus' && typeof pillarCutscene !== 'undefined' && pillarCutscene && pillarCutscene.active) return true;
+  if (currentEpisode === 'exodus' && typeof seaPartingCutscene !== 'undefined' && seaPartingCutscene && seaPartingCutscene.active) return true;
+  if (currentEpisode === 'exodus' && typeof sinaiCutscene !== 'undefined' && sinaiCutscene && sinaiCutscene.active) return true;
+  if (currentEpisode === 'david' && typeof davidOpeningState !== 'undefined' && davidOpeningState && davidOpeningState.active) return true;
+  if (currentEpisode === 'david' && typeof davidStage2Dialogue !== 'undefined' && davidStage2Dialogue && davidStage2Dialogue.active) return true;
+  if (currentEpisode === 'david' && typeof davidAnointCutscene !== 'undefined' && davidAnointCutscene && davidAnointCutscene.active) return true;
+  if (currentEpisode === 'david' && typeof davidStage2Cutscene !== 'undefined' && davidStage2Cutscene && davidStage2Cutscene.active) return true;
+  if (currentEpisode === 'david' && typeof davidStage3Cutscene !== 'undefined' && davidStage3Cutscene && davidStage3Cutscene.active) return true;
+  if (currentEpisode === 'miracle' && typeof miracleStageCutscene !== 'undefined' && miracleStageCutscene && miracleStageCutscene.active) return true;
+  if (currentEpisode === 'miracle' && typeof window.__ep4OpeningVideoActive !== 'undefined' && window.__ep4OpeningVideoActive) return true;
+  if (currentEpisode === 'miracle' && window.miracleOpenWorldIntroFlyover && window.miracleOpenWorldIntroFlyover.active) return true;
+  if (currentEpisode === 'miracle' && typeof miracleDialogState !== 'undefined' && miracleDialogState && miracleDialogState.active) return true;
+  if (
+    currentEpisode === 'miracle' &&
+    typeof miracleSubMode !== 'undefined' && miracleSubMode === 'main2_loaves' &&
+    typeof miracleActiveMiniState !== 'undefined' && miracleActiveMiniState &&
+    miracleActiveMiniState.introFlyover && miracleActiveMiniState.introFlyover.active
+  ) return true;
+  if (MiracleGuideUI.suppressedDuringIntro) return true;
+  const bf = document.getElementById('black-fade');
+  if (bf && parseFloat(bf.style.opacity || '0') > 0.25) return true;
+  return false;
+}
+
+function updateMiracleGuideButtonVisibility() {
+  const btn = document.getElementById('miracle-guide-btn');
+  if (!btn) return;
+  const hudTop = document.getElementById('hud-top');
+  const isHudVisible = Boolean(hudTop && !hudTop.classList.contains('hidden'));
+  const showBtn = isHudVisible && !window.isMiracleMultiplayerMode;
+  if (!showBtn) {
+    btn.classList.add('hidden');
+    positionMiracleGuideButton();
+    return;
+  }
+  btn.classList.remove('hidden');
+  const lbl = document.getElementById('miracle-guide-btn-label');
+  if (lbl) {
+    lbl.textContent = (currentEpisode === 'miracle' && MiracleGuideUI.activeFieldInfo) ? '진행 미션' : '미션 안내';
+  }
+  positionMiracleGuideButton();
+}
+window.updateMiracleGuideButtonVisibility = updateMiracleGuideButtonVisibility;
+
+function hideMissionGuideBubbleImmediately() {
+  _clearMiracleGuideTimers();
+  MiracleGuideUI.isBubbleOpen = false;
+  MiracleGuideUI.isTyping = false;
+  MiracleGuideUI.isSucking = false;
+  const bubble = document.getElementById('miracle-guide-bubble');
+  if (bubble) {
+    bubble.classList.add('hidden');
+    bubble.style.transition = 'none';
+    bubble.style.transform = 'translate(-50%, -50%) scale(1)';
+    bubble.style.opacity = '1';
+  }
+}
+window.hideMissionGuideBubbleImmediately = hideMissionGuideBubbleImmediately;
+
+window.showMiracleGuideBubble = function (opts = {}) {
+  if (window.isMiracleMultiplayerMode) return;
+  const bubble = document.getElementById('miracle-guide-bubble');
+  const titleEl = document.getElementById('miracle-guide-bubble-title');
+  const textEl = document.getElementById('miracle-guide-bubble-text');
+  const cursorEl = document.getElementById('miracle-guide-cursor');
+  const progRow = document.getElementById('miracle-guide-bubble-progress-row');
+  const progEl = document.getElementById('miracle-guide-bubble-progress');
+  const extraEl = document.getElementById('miracle-guide-bubble-extra');
+  const cancelBtn = document.getElementById('miracle-guide-bubble-cancel-btn');
+  if (!bubble || !textEl) return;
+
+  _clearMiracleGuideTimers();
+  updateMiracleGuideButtonVisibility();
+
+  const title = opts.title || '✨ 탐험 안내';
+  const text = String(opts.text || '').trim() || '목표를 향해 모험을 시작해 보세요!';
+  const progressText = opts.progressText || '';
+  const extraText = opts.extraText || '';
+  const canCancel = Boolean(opts.canCancel);
+  const autoCloseMs = typeof opts.autoCloseMs === 'number' ? opts.autoCloseMs : 2300;
+
+  if (titleEl) titleEl.textContent = title;
+  if (progRow) {
+    const showProg = Boolean(progressText || extraText);
+    progRow.classList.toggle('hidden', !showProg);
+    if (progEl) progEl.textContent = progressText;
+    if (extraEl) extraEl.textContent = extraText;
+  }
+  if (cancelBtn) cancelBtn.classList.toggle('hidden', !canCancel);
+
+  // 우측 상단 미션안내 버튼에서 정중앙으로 튀어나오는(팝업) 탄성 애니메이션 시작점 계산
+  const btn = document.getElementById('miracle-guide-btn');
+  let dx = Math.round((window.innerWidth || 1000) * 0.42);
+  let dy = -Math.round((window.innerHeight || 700) * 0.38);
+
+  try {
+    const tr = (btn && !btn.classList.contains('hidden')) ? btn.getBoundingClientRect() : null;
+    if (tr && tr.width > 0) {
+      const bubbleCenterX = window.innerWidth * 0.5;
+      const bubbleCenterY = window.innerHeight * 0.46; // 말풍선 CSS 기준 (left: 50%, top: 46%)
+      dx = (tr.left + tr.width * 0.5) - bubbleCenterX;
+      dy = (tr.top + tr.height * 0.5) - bubbleCenterY;
+    }
+  } catch (e) {}
+
+  bubble.style.transition = 'none';
+  bubble.style.transform = `translate(calc(-50% + ${dx.toFixed(1)}px), calc(-50% + ${dy.toFixed(1)}px)) scale(0.08) rotate(10deg)`;
+  bubble.style.opacity = '0';
+  bubble.classList.remove('hidden');
+
+  void bubble.offsetWidth;
+
+  bubble.style.transition = 'transform 0.45s cubic-bezier(0.22, 1.15, 0.36, 1), opacity 0.35s ease-out';
+  bubble.style.transform = 'translate(-50%, -50%) scale(1) rotate(0deg)';
+  bubble.style.opacity = '1';
+
+  MiracleGuideUI.isBubbleOpen = true;
+  MiracleGuideUI.isSucking = false;
+  MiracleGuideUI.isTyping = true;
+  MiracleGuideUI.fullText = text;
+  MiracleGuideUI.typedIdx = 0;
+  textEl.textContent = '';
+  if (cursorEl) cursorEl.classList.remove('hidden');
+
+  const scheduleAutoSuck = () => {
+    MiracleGuideUI.isTyping = false;
+    if (cursorEl) cursorEl.classList.add('hidden');
+    if (autoCloseMs > 0) {
+      MiracleGuideUI.autoCloseTimerId = setTimeout(() => {
+        window.dismissMiracleGuideBubbleToButton();
+      }, autoCloseMs);
+    }
+  };
+
+  MiracleGuideUI.typeTimerId = setInterval(() => {
+    MiracleGuideUI.typedIdx = Math.min(text.length, MiracleGuideUI.typedIdx + 2);
+    textEl.textContent = text.slice(0, MiracleGuideUI.typedIdx);
+    if (MiracleGuideUI.typedIdx >= text.length) {
+      clearInterval(MiracleGuideUI.typeTimerId);
+      MiracleGuideUI.typeTimerId = null;
+      scheduleAutoSuck();
+    }
+  }, 26);
+};
+
+window.onMiracleGuideBubbleClick = function () {
+  if (!MiracleGuideUI.isBubbleOpen || MiracleGuideUI.isSucking) return;
+  if (MiracleGuideUI.isTyping) {
+    if (MiracleGuideUI.typeTimerId) { clearInterval(MiracleGuideUI.typeTimerId); MiracleGuideUI.typeTimerId = null; }
+    const textEl = document.getElementById('miracle-guide-bubble-text');
+    const cursorEl = document.getElementById('miracle-guide-cursor');
+    if (textEl) textEl.textContent = MiracleGuideUI.fullText;
+    if (cursorEl) cursorEl.classList.add('hidden');
+    MiracleGuideUI.isTyping = false;
+    MiracleGuideUI.typedIdx = MiracleGuideUI.fullText.length;
+    if (MiracleGuideUI.autoCloseTimerId) clearTimeout(MiracleGuideUI.autoCloseTimerId);
+    MiracleGuideUI.autoCloseTimerId = setTimeout(() => {
+      window.dismissMiracleGuideBubbleToButton();
+    }, 1100);
+  } else {
+    window.dismissMiracleGuideBubbleToButton();
+  }
+};
+
+window.dismissMiracleGuideBubbleToButton = function () {
+  const bubble = document.getElementById('miracle-guide-bubble');
+  const btn = document.getElementById('miracle-guide-btn');
+  if (!bubble || bubble.classList.contains('hidden') || MiracleGuideUI.isSucking) return;
+
+  _clearMiracleGuideTimers();
+  MiracleGuideUI.isTyping = false;
+  MiracleGuideUI.isSucking = true;
+
+  let dx = Math.round((window.innerWidth || 1000) * 0.42);
+  let dy = -Math.round((window.innerHeight || 700) * 0.38);
+  try {
+    const br = bubble.getBoundingClientRect();
+    const tr = (btn && !btn.classList.contains('hidden')) ? btn.getBoundingClientRect() : null;
+    if (br && br.width > 0 && tr && tr.width > 0) {
+      dx = (tr.left + tr.width * 0.5) - (br.left + br.width * 0.5);
+      dy = (tr.top + tr.height * 0.5) - (br.top + br.height * 0.5);
+    }
+  } catch (e) {}
+
+  bubble.style.transition = 'transform 0.52s cubic-bezier(0.45, -0.15, 0.85, 0.35), opacity 0.46s ease-in';
+  bubble.style.transform = `translate(calc(-50% + ${dx.toFixed(1)}px), calc(-50% + ${dy.toFixed(1)}px)) scale(0.08) rotate(10deg)`;
+  bubble.style.opacity = '0';
+
+  MiracleGuideUI.suckTimerId = setTimeout(() => {
+    bubble.classList.add('hidden');
+    bubble.style.transition = 'none';
+    bubble.style.transform = 'translate(-50%, -50%) scale(1)';
+    bubble.style.opacity = '1';
+    MiracleGuideUI.isBubbleOpen = false;
+    MiracleGuideUI.isSucking = false;
+    if (btn && !btn.classList.contains('hidden')) {
+      btn.classList.remove('absorb-pop');
+      void btn.offsetWidth;
+      btn.classList.add('absorb-pop');
+    }
+  }, 530);
+};
+
+window.openMiracleGuideFromButton = function () {
+  setHudMenuOpen(false);
+  if (typeof playSfx === 'function') playSfx('switch');
+  if (currentEpisode === 'miracle' && MiracleGuideUI.activeFieldInfo) {
+    const f = MiracleGuideUI.activeFieldInfo;
+    window.showMiracleGuideBubble({
+      title: f.title || '✨ 진행중인 미션',
+      text: f.goal || '',
+      progressText: f.progressText || '',
+      extraText: f.extraText || '',
+      canCancel: true,
+      autoCloseMs: 4200
+    });
+  } else if (MiracleGuideUI.activeStageInfo) {
+    const s = MiracleGuideUI.activeStageInfo;
+    window.showMiracleGuideBubble({
+      title: `💬 ${s.title || '현재 목표'}`,
+      text: s.text || '',
+      progressText: s.badge || '',
+      canCancel: false,
+      autoCloseMs: 3600
+    });
+  } else {
+    const fallbackText = (document.getElementById('hud-mission-text') || {}).textContent || '목표를 향해 모험을 시작해 보세요!';
+    const fallbackTitle = (document.getElementById('hud-stage-badge') || {}).textContent || '탐험 안내';
+    window.showMiracleGuideBubble({
+      title: `💬 ${fallbackTitle}`,
+      text: fallbackText,
+      canCancel: false,
+      autoCloseMs: 3000
+    });
+  }
+};
+
+window.syncMiracleStageGuideFromHUD = function (stageTitle, missionText, counterText) {
+  if (window.isMiracleMultiplayerMode) return;
+  const sub = (currentEpisode === 'miracle' && typeof miracleSubMode !== 'undefined') ? miracleSubMode : `st${currentStage}`;
+  const normalizedMission = String(missionText || '').replace(/\s*\(현재\s*\d+\/\d+개\)/g, '');
+  const key = `stage|${currentEpisode}|${sub}|${normalizedMission}`;
+  MiracleGuideUI.activeStageInfo = {
+    key,
+    title: stageTitle || '탐험 안내',
+    text: missionText || '',
+    badge: counterText || ''
+  };
+  updateMiracleGuideButtonVisibility();
+
+  // 인트로 영상·플라이오버·암전·대화창·카운트다운·컷신 진행 중에는 자동 팝업 보류 (종료 직후 노출!)
+  if (isAnyGlobalIntroOrCutsceneBlockingGuide()) return;
+  if (currentEpisode === 'miracle' && MiracleGuideUI.activeFieldInfo) return;
+
+  if (missionText && MiracleGuideUI.lastAutoKey !== key) {
+    MiracleGuideUI.lastAutoKey = key;
+    window.showMiracleGuideBubble({
+      title: `💬 ${stageTitle || '현재 목표'}`,
+      text: missionText,
+      progressText: counterText || '',
+      canCancel: false,
+      autoCloseMs: 2500
+    });
+  }
+};
 
 let melodyTimer = null;
 function speakText(text) {
@@ -532,7 +904,8 @@ function speakText(text) {
 }
 
 function speakCurrentMission() {
-  speakText(document.getElementById('hud-mission-text').textContent);
+  const el = document.getElementById('hud-mission-text');
+  if (el) speakText(el.textContent);
 }
 
 function showToast(msg) {
@@ -987,7 +1360,273 @@ function openEpisodeStageSelectModal(epKey) {
   modal.classList.add('flex');
 }
 
+let pausedGameSession = { active: false };
+window.pausedGameSession = pausedGameSession;
+
+function updateMapReturnButtonVisibility() {
+  const btn = document.getElementById('map-return-game-btn');
+  if (!btn) return;
+  btn.classList.toggle('hidden', !pausedGameSession.active);
+}
+window.updateMapReturnButtonVisibility = updateMapReturnButtonVisibility;
+
+function discardPausedGameSession(runPluginCleanup = true) {
+  const wasActive = Boolean(pausedGameSession.active);
+  const wasMp = Boolean(pausedGameSession.wasMultiplayer);
+  pausedGameSession.active = false;
+  pausedGameSession.wasMultiplayer = false;
+  updateMapReturnButtonVisibility();
+
+  const labelsEl = document.getElementById('labels-container');
+  if (labelsEl) labelsEl.style.visibility = '';
+
+  if (wasActive && runPluginCleanup) {
+    const epPlugin = getActiveEpisodePlugin();
+    if (epPlugin && typeof epPlugin.onCloseScreen === 'function') epPlugin.onCloseScreen();
+    if (wasMp && window.MiracleMultiplayer && typeof window.MiracleMultiplayer.leaveRoom === 'function') {
+      window.MiracleMultiplayer.leaveRoom();
+    }
+  }
+}
+window.discardPausedGameSession = discardPausedGameSession;
+
+function openWorldMapFromGame() {
+  setHudMenuOpen(false);
+  hideMissionGuideBubbleImmediately();
+
+  const hudTop = document.getElementById('hud-top');
+  const inGameHudVisible = Boolean(hudTop && !hudTop.classList.contains('hidden'));
+  const hasBlockingCutscene = Boolean(
+    (currentEpisode === 'exodus' && stage2CountdownActive) ||
+    (currentEpisode === 'noah' && doveCutscene.active) ||
+    (currentEpisode === 'exodus' && (pillarCutscene.active || seaPartingCutscene.active || sinaiCutscene.active)) ||
+    (currentEpisode === 'david' && (
+      (typeof davidOpeningState !== 'undefined' && davidOpeningState && davidOpeningState.active) ||
+      (typeof davidStage2Dialogue !== 'undefined' && davidStage2Dialogue && davidStage2Dialogue.active) ||
+      (typeof davidAnointCutscene !== 'undefined' && davidAnointCutscene && davidAnointCutscene.active) ||
+      (typeof davidStage2Cutscene !== 'undefined' && davidStage2Cutscene && davidStage2Cutscene.active) ||
+      (typeof davidStage3Cutscene !== 'undefined' && davidStage3Cutscene && davidStage3Cutscene.active)
+    )) ||
+    (currentEpisode === 'miracle' && (
+      (typeof miracleStageCutscene !== 'undefined' && miracleStageCutscene && miracleStageCutscene.active) ||
+      window.__ep4OpeningVideoActive ||
+      (window.miracleOpenWorldIntroFlyover && window.miracleOpenWorldIntroFlyover.active)
+    ))
+  );
+
+  // 진행 중인 실제 플레이가 아니거나 컷신/오프닝 중이면 기본 월드맵 전환 사용
+  if (!inGameHudVisible || hasBlockingCutscene) {
+    openScreen('screen-map');
+    return;
+  }
+
+  // 열려 있던 인게임 팝업/대화창/조준창은 안전하게 닫고 상태 보존
+  if (typeof window.closeDavidAimOverlay === 'function') window.closeDavidAimOverlay();
+  const davidDlg = document.getElementById('david-npc-dialog');
+  if (davidDlg) davidDlg.classList.add('hidden');
+  if (typeof davidDialogTargetNpc !== 'undefined') davidDialogTargetNpc = null;
+  if (typeof window.closeMiracleNotebookModal === 'function') window.closeMiracleNotebookModal();
+  const mDlg = document.getElementById('miracle-dialog-modal');
+  if (mDlg) mDlg.classList.add('hidden');
+  if (typeof miracleDialogState !== 'undefined' && miracleDialogState) miracleDialogState.active = false;
+
+  const isElVisible = (id) => {
+    const el = document.getElementById(id);
+    return Boolean(el && !el.classList.contains('hidden'));
+  };
+
+  pausedGameSession = {
+    active: true,
+    episode: currentEpisode,
+    stage: currentStage,
+    mode: currentMode,
+    wasPlaying: isPlaying,
+    wasTimeAttackActive: isTimeAttackActive,
+    wasMultiplayer: Boolean(window.isMiracleMultiplayerMode),
+    playerPos: playerPos.clone(),
+    playerFacing,
+    cameraYaw,
+    cameraTargetYaw,
+    miracleActiveFieldInfo: MiracleGuideUI.activeFieldInfo ? Object.assign({}, MiracleGuideUI.activeFieldInfo) : null,
+    miracleActiveStageInfo: MiracleGuideUI.activeStageInfo ? Object.assign({}, MiracleGuideUI.activeStageInfo) : null,
+    vis: {
+      timerBox: isElVisible('hud-timer-box'),
+      blockBox: isElVisible('hud-block-box'),
+      certBtn: isElVisible('cert-open-btn'),
+      puzzleBtn: isElVisible('puzzle-build-btn'),
+      contextBtn: isElVisible('context-action-btn'),
+      miracleLeft: isElVisible('miracle-hud-left'),
+      miracleS1: isElVisible('miracle-s1-ui'),
+      miracleSower: isElVisible('miracle-sower-btn-wrap'),
+      miracleBreakfast: isElVisible('miracle-breakfast-ui'),
+      miracleMiniNav: isElVisible('miracle-mini-nav'),
+      davidSt1Panel: isElVisible('david-st1-panel'),
+      davidSt3Tracker: isElVisible('david-st3-quest-tracker'),
+      mpOnlineBadge: isElVisible('mp-online-badge'),
+      mpHud: isElVisible('miracle-mp-hud'),
+      mpHarvest: isElVisible('mp-harvest-btn-wrap')
+    }
+  };
+  window.pausedGameSession = pausedGameSession;
+
+  // 게임 진행 및 타이머 일시정지 (3D 월드와 오브젝트 상태는 그대로 유지!)
+  isPlaying = false;
+  isTimeAttackActive = false;
+  joyX = 0; joyY = 0; keys = {}; currentMoveSpeed = 0;
+
+  if (typeof window.stopMiracleOpenWorldOgg === 'function') {
+    window.stopMiracleOpenWorldOgg(false);
+  }
+  stopStageBgm();
+
+  // 인게임 HUD 및 3D 라벨 임시 숨김
+  hudTop.classList.add('hidden');
+  document.getElementById('joystick-zone').style.display = 'none';
+  document.getElementById('cam-bottom-bar').style.display = 'none';
+  document.getElementById('action-zone').style.display = 'none';
+  const labelsEl = document.getElementById('labels-container');
+  if (labelsEl) labelsEl.style.visibility = 'hidden';
+
+  [
+    'miracle-hud-left', 'miracle-s1-ui', 'miracle-sower-btn-wrap', 'miracle-breakfast-ui',
+    'david-st1-panel', 'david-st3-quest-tracker',
+    'mp-online-badge', 'miracle-mp-hud', 'mp-harvest-btn-wrap', 'mp-local-bubble'
+  ].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.classList.add('hidden');
+  });
+
+  // 월드맵 화면 표시 & [◀ 돌아가기] 버튼 활성화
+  ['screen-opening', 'screen-class', 'screen-map'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (id === 'screen-map') { el.classList.remove('hidden'); el.classList.add('flex'); }
+    else { el.classList.add('hidden'); el.classList.remove('flex'); }
+  });
+  closeEpisodeStageSelectModal();
+  closeEndingWorldMapChoiceModal();
+  const mapBadge = document.getElementById('map-selected-badge');
+  if (mapBadge && MODE_META[currentMode]) {
+    mapBadge.textContent = `${MODE_META[currentMode].badge} · ${explorerDisplayName || explorerName}`;
+  }
+  updateWorldMapEpisodePinsUI();
+  updateMapReturnButtonVisibility();
+  playSfx('switch');
+  startMenuAdventureBgm();
+}
+window.openWorldMapFromGame = openWorldMapFromGame;
+
+function resumeGameFromWorldMap() {
+  if (!pausedGameSession || !pausedGameSession.active) return;
+  const snap = pausedGameSession;
+  pausedGameSession = { active: false };
+  window.pausedGameSession = pausedGameSession;
+  updateMapReturnButtonVisibility();
+
+  // 월드맵 및 관련 모달 숨김
+  ['screen-opening', 'screen-class', 'screen-map'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.classList.add('hidden'); el.classList.remove('flex'); }
+  });
+  closeEpisodeStageSelectModal();
+  closeEndingWorldMapChoiceModal();
+
+  // HUD 및 3D 라벨 복원
+  const labelsEl = document.getElementById('labels-container');
+  if (labelsEl) labelsEl.style.visibility = '';
+  const hudTop = document.getElementById('hud-top');
+  if (hudTop) hudTop.classList.remove('hidden');
+  document.getElementById('joystick-zone').style.display = 'block';
+  document.getElementById('cam-bottom-bar').style.display = 'flex';
+  document.getElementById('action-zone').style.display = 'flex';
+  setHudMenuOpen(false);
+
+  // 플레이어 위치·시점 및 게임 루프 재개
+  isMenuBgmActive = false;
+  joyX = 0; joyY = 0; keys = {}; currentMoveSpeed = 0;
+  if (snap.playerPos) playerPos.copy(snap.playerPos);
+  playerFacing = snap.playerFacing;
+  cameraYaw = snap.cameraYaw;
+  cameraTargetYaw = snap.cameraTargetYaw;
+  isPlaying = snap.wasPlaying;
+  isTimeAttackActive = snap.wasTimeAttackActive;
+  if (playerGroup) {
+    playerGroup.position.copy(playerPos);
+    playerGroup.rotation.y = (window.globalCameraViewMode === 'fps') ? (cameraYaw + Math.PI) : playerFacing;
+  }
+  snapCameraToPlayer();
+
+  // 저장해 둔 보조 UI 가시성 복원
+  const v = snap.vis || {};
+  const restoreVis = (id, show, flexMode = false) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.classList.toggle('hidden', !show);
+    if (flexMode) el.classList.toggle('flex', Boolean(show));
+  };
+  restoreVis('hud-timer-box', v.timerBox, true);
+  restoreVis('hud-block-box', v.blockBox, true);
+  restoreVis('cert-open-btn', v.certBtn);
+  restoreVis('puzzle-build-btn', v.puzzleBtn);
+  restoreVis('context-action-btn', v.contextBtn);
+  restoreVis('miracle-mini-nav', v.miracleMiniNav);
+
+  MiracleGuideUI.activeFieldInfo = snap.miracleActiveFieldInfo || null;
+  MiracleGuideUI.activeStageInfo = snap.miracleActiveStageInfo || MiracleGuideUI.activeStageInfo;
+
+  if (snap.episode === 'miracle') {
+    restoreVis('miracle-hud-left', v.miracleLeft);
+    restoreVis('miracle-s1-ui', v.miracleS1);
+    restoreVis('miracle-sower-btn-wrap', v.miracleSower);
+    restoreVis('miracle-breakfast-ui', v.miracleBreakfast);
+    if (typeof updateMiracleNotebookHudBadge === 'function') updateMiracleNotebookHudBadge();
+    if (snap.wasMultiplayer) {
+      restoreVis('mp-online-badge', v.mpOnlineBadge);
+      restoreVis('miracle-mp-hud', v.mpHud);
+      restoreVis('mp-harvest-btn-wrap', v.mpHarvest);
+      if (window.MiracleMultiplayer && typeof window.MiracleMultiplayer.syncHUD === 'function') {
+        window.MiracleMultiplayer.syncHUD();
+      }
+    }
+  } else if (snap.episode === 'david') {
+    if (snap.stage === 1 && typeof updateDavidStage1UI === 'function') {
+      updateDavidStage1UI();
+    } else {
+      restoreVis('david-st1-panel', v.davidSt1Panel);
+    }
+    if (snap.stage === 3 && typeof updateDavidStage3QuestTrackerUI === 'function') {
+      updateDavidStage3QuestTrackerUI();
+    } else {
+      restoreVis('david-st3-quest-tracker', v.davidSt3Tracker);
+    }
+  }
+
+  syncHudMenuInfo();
+  updateMiracleGuideButtonVisibility();
+  if (typeof window.positionMultiplayerRightHud === 'function') window.positionMultiplayerRightHud();
+
+  // 해당 스테이지 BGM 재개
+  if (bgmEnabled) {
+    if (
+      snap.episode === 'miracle' &&
+      typeof miracleSubMode !== 'undefined' &&
+      miracleSubMode === 'openworld' &&
+      typeof window.playMiracleOpenWorldOgg === 'function'
+    ) {
+      window.playMiracleOpenWorldOgg();
+    } else {
+      startStageBgm(currentStage);
+    }
+  }
+  playSfx('rescue');
+  showToast('▶ 이전 탐험으로 돌아왔어요!');
+}
+window.resumeGameFromWorldMap = resumeGameFromWorldMap;
+
 function openScreen(screenId) {
+  setHudMenuOpen(false);
+  hideMissionGuideBubbleImmediately();
+
   ['screen-opening', 'screen-class', 'screen-map'].forEach(id => {
     const el = document.getElementById(id);
     if (id === screenId) { el.classList.remove('hidden'); el.classList.add('flex'); }
@@ -997,6 +1636,7 @@ function openScreen(screenId) {
   closeEndingWorldMapChoiceModal();
 
   if (screenId) {
+    discardPausedGameSession(false);
     isTimeAttackActive = false;
     isPlaying = false;
     stage2CountdownActive = false;
@@ -1013,6 +1653,10 @@ function openScreen(screenId) {
       window.MiracleMultiplayer.leaveRoom();
     }
     document.getElementById('hud-top').classList.add('hidden');
+    const guideBtn = document.getElementById('miracle-guide-btn');
+    if (guideBtn) guideBtn.classList.add('hidden');
+    const miniNav = document.getElementById('miracle-mini-nav');
+    if (miniNav) miniNav.classList.add('hidden');
     document.getElementById('joystick-zone').style.display = 'none';
     document.getElementById('cam-bottom-bar').style.display = 'none';
     document.getElementById('action-zone').style.display = 'none';
@@ -1025,6 +1669,7 @@ function openScreen(screenId) {
       startMenuAdventureBgm();
       if (screenId === 'screen-map') {
         updateWorldMapEpisodePinsUI();
+        updateMapReturnButtonVisibility();
       }
     } else if (screenId === 'screen-opening') {
       isMenuBgmActive = false;
@@ -2775,6 +3420,15 @@ function snapCameraToPlayer() {
 }
 
 function startVoxelGame(mode, targetStage = 1, fromMapSelect = false) {
+  discardPausedGameSession(true);
+  setHudMenuOpen(false);
+  hideMissionGuideBubbleImmediately();
+  MiracleGuideUI.lastAutoKey = '';
+  MiracleGuideUI.activeFieldInfo = null;
+  MiracleGuideUI.suppressedDuringIntro = false;
+  const miniNavEl = document.getElementById('miracle-mini-nav');
+  if (miniNavEl) miniNavEl.classList.add('hidden');
+
   isMenuBgmActive = false;
   currentMode = mode; currentStage = targetStage; isPlaying = true;
   lastSpokenStageKey = '';
@@ -2820,8 +3474,8 @@ function startVoxelGame(mode, targetStage = 1, fromMapSelect = false) {
   }
 
   document.getElementById('hud-top').classList.remove('hidden');
-  document.getElementById('hud-player-tag').textContent = `${explorerDisplayName || explorerName}`;
-  document.getElementById('hud-mode-btn').textContent = `${MODE_META[mode].badge} · 🗺️맵`;
+  syncHudMenuInfo();
+  updateMiracleGuideButtonVisibility();
   document.getElementById('joystick-zone').style.display = 'block';
   document.getElementById('cam-bottom-bar').style.display = 'flex';
   document.getElementById('action-zone').style.display = 'flex';
@@ -2848,7 +3502,8 @@ function startVoxelGame(mode, targetStage = 1, fromMapSelect = false) {
   }
 
   guideArrowGroup.visible = (mode !== 'senior');
-  document.getElementById('hud-compass-hint').classList.toggle('hidden', mode === 'senior');
+  const compassHintEl = document.getElementById('hud-compass-hint');
+  if (compassHintEl) compassHintEl.classList.toggle('hidden', mode === 'senior');
 
   const runEp4Opening = (
     currentEpisode === 'miracle' &&
@@ -2903,6 +3558,8 @@ function startVoxelGame(mode, targetStage = 1, fromMapSelect = false) {
 
 function openTimeAttackRetryModal() {
   isPlaying = false; isTimeAttackActive = false; playSfx('wrong');
+  setHudMenuOpen(false);
+  hideMissionGuideBubbleImmediately();
   document.getElementById('retry-modal-icon').textContent = '⏰';
   document.getElementById('retry-modal-title').textContent = '시간이 모두 끝났어요!';
   document.getElementById('retry-modal-desc').innerHTML = '아쉽게도 제한 시간 안에 미션을 완료하지 못했어요.<br/>다시 한 번 힘을 내서 도전해 볼까요?';
@@ -2912,6 +3569,8 @@ function openTimeAttackRetryModal() {
 
 function openSoldierCaughtRetryModal() {
   isPlaying = false; isTimeAttackActive = false; playSfx('wrong');
+  setHudMenuOpen(false);
+  hideMissionGuideBubbleImmediately();
   document.getElementById('retry-modal-icon').textContent = '🛡️';
   document.getElementById('retry-modal-title').textContent = '이집트 병사에게 3번 잡혔어요!';
   document.getElementById('retry-modal-desc').innerHTML = '바위와 산호초는 점프(🦘)로 뛰어넘고,<br/>물구덩이는 좌우로 피해서 빠르게 달려보세요!';
@@ -2923,6 +3582,8 @@ function retryCurrentStage() {
   const rm = document.getElementById('retry-modal');
   rm.classList.add('hidden'); rm.classList.remove('flex');
   lastSpokenStageKey = '';
+  MiracleGuideUI.lastAutoKey = '';
+  hideMissionGuideBubbleImmediately();
 
   currentRunCanIssueCert = false;
   if (playerProgressData[currentEpisode]) {
@@ -2990,21 +3651,15 @@ function updateStageHUD() {
   const missionText = document.getElementById('hud-mission-text');
   const missionBox = document.getElementById('hud-mission-box');
   if (missionBox) {
-    // 에피소드 4에서는 상단 상시 안내창 대신 중앙 타이핑 말풍선 + 우측 상단 발광 안내 버튼을 사용!
-    missionBox.classList.toggle('hidden', currentEpisode === 'miracle');
+    // [전체 에피소드 공통] 상단 상시 안내창 대신 정중앙 말풍선 + 우측 상단 발광 [미션 안내] 버튼으로 통합!
+    missionBox.classList.add('hidden');
   }
+  syncHudMenuInfo();
   updateCarriedBlocksVisual();
 
   const epPlugin = getActiveEpisodePlugin();
   if (epPlugin && typeof epPlugin.updateHUD === 'function') {
     epPlugin.updateHUD(currentStage, badge, countIcon, countText, missionText);
-    if (currentEpisode === 'miracle' && typeof window.syncMiracleStageGuideFromHUD === 'function') {
-      window.syncMiracleStageGuideFromHUD(
-        badge ? badge.textContent : '',
-        missionText ? missionText.textContent : '',
-        countText ? countText.textContent : ''
-      );
-    }
   } else if (currentEpisode === 'noah') {
     countIcon.textContent = '🐾';
     if (currentStage === 1) {
@@ -3049,17 +3704,21 @@ function updateStageHUD() {
     }
   }
 
+  // 모든 에피소드(1~4)의 스테이지 시작/전환 미션 메시지를 정중앙 말풍선 → 우측 상단 미션안내 버튼으로 동기화!
+  if (typeof window.syncMiracleStageGuideFromHUD === 'function') {
+    window.syncMiracleStageGuideFromHUD(
+      badge ? badge.textContent : '',
+      missionText ? missionText.textContent : '',
+      countText ? countText.textContent : ''
+    );
+  }
+
   const isHudVisible = !document.getElementById('hud-top').classList.contains('hidden');
   const stageKey = `${currentEpisode}_${currentStage}`;
-  // 에피소드 4 시작 시 영상, 플라이오버 연출이 진행 중이거나 억제(suppressed) 상태인지 완벽 확인
-  const isEp4IntroActive = (currentEpisode === 'miracle' && currentStage === 1 && (
-    window.__ep4OpeningVideoActive || 
-    (window.miracleOpenWorldIntroFlyover && window.miracleOpenWorldIntroFlyover.active) ||
-    (window.MiracleGuideUI && window.MiracleGuideUI.suppressedDuringIntro)
-  ));
+  const isBlocked = isAnyGlobalIntroOrCutsceneBlockingGuide();
 
-  // 인트로가 모두 끝났을 때만 음성을 출력하도록 조건 추가
-  if (isHudVisible && lastSpokenStageKey !== stageKey && !isEp4IntroActive) {
+  // 인트로·암전·카운트다운·대화창이 모두 끝났을 때만 음성을 출력하도록 조건 통합
+  if (isHudVisible && lastSpokenStageKey !== stageKey && !isBlocked) {
     lastSpokenStageKey = stageKey;
     speakText(missionText.textContent);
   }
@@ -3154,6 +3813,8 @@ function updateWallTransparency() {
 
 function openStageClearModal(st) {
   isPlaying = false; isTimeAttackActive = false; playSfx('clear');
+  setHudMenuOpen(false);
+  hideMissionGuideBubbleImmediately();
   recordPlayerStageClear(currentEpisode, st);
 
   document.getElementById('hud-mission-box').classList.add('hidden');
@@ -3208,6 +3869,8 @@ function openStageClearModal(st) {
 function proceedNextStage() {
   const modal = document.getElementById('stage-modal');
   modal.classList.add('hidden'); modal.classList.remove('flex');
+  setHudMenuOpen(false);
+  hideMissionGuideBubbleImmediately();
 
   const epPlugin = getActiveEpisodePlugin();
   if (epPlugin && typeof epPlugin.proceedNextStage === 'function') {
@@ -3240,7 +3903,10 @@ function proceedNextStage() {
       currentStage = 2; isPlaying = true;
       if (currentMode === 'timeattack') { timeRemaining = 10.0; timeAttackFirstRechargeUsed = false; isTimeAttackActive = true; }
       buildNoahArkInteriorMaze(2); startStageBgm(2);
-      setTimeout(() => { bf.style.opacity = '0'; }, 250);
+      setTimeout(() => {
+        bf.style.opacity = '0';
+        updateStageHUD();
+      }, 250);
     }, 5350);
   } else if (currentStage === 2) {
     if (currentEpisode === 'exodus') {
@@ -3259,7 +3925,10 @@ function proceedNextStage() {
         }
         buildExodusStage3World();
         startStageBgm(3);
-        setTimeout(() => { bf.style.opacity = '0'; }, 250);
+        setTimeout(() => {
+          bf.style.opacity = '0';
+          updateStageHUD();
+        }, 250);
       }, 3600);
       return;
     }
@@ -3305,6 +3974,8 @@ function triggerContextAction() {
 
   if (currentEpisode === 'noah' && currentStage === 2) {
     isTimeAttackActive = false;
+    setHudMenuOpen(false);
+    hideMissionGuideBubbleImmediately();
     document.getElementById('context-action-btn').classList.add('hidden');
     document.getElementById('hud-mission-box').classList.add('hidden');
     if (targetObject.label) targetObject.label.style.opacity = '0';
@@ -3315,6 +3986,8 @@ function triggerContextAction() {
   } else if (currentEpisode === 'exodus' && currentStage === 2) {
     isPlaying = false;
     isTimeAttackActive = false;
+    setHudMenuOpen(false);
+    hideMissionGuideBubbleImmediately();
     document.getElementById('context-action-btn').classList.add('hidden');
     document.getElementById('hud-mission-box').classList.add('hidden');
     if (targetObject.label) targetObject.label.style.opacity = '0';
@@ -3332,6 +4005,8 @@ function triggerContextAction() {
   } else if (currentEpisode === 'exodus' && currentStage === 3) {
     isPlaying = false;
     isTimeAttackActive = false;
+    setHudMenuOpen(false);
+    hideMissionGuideBubbleImmediately();
     document.getElementById('context-action-btn').classList.add('hidden');
     document.getElementById('hud-mission-box').classList.add('hidden');
     if (targetObject.label) targetObject.label.style.opacity = '0';
@@ -3370,6 +4045,8 @@ function triggerContextAction() {
 }
 
 function showEndingCertificate() {
+  setHudMenuOpen(false);
+  hideMissionGuideBubbleImmediately();
   const alreadyGenerated = document.getElementById('cert-code').dataset.generated;
 
   // [전체 에피소드 공통 요청사항] 2회차 이상의 시도나 맵 재선택으로 엔딩에 들어온 경우에는
@@ -3684,6 +4361,10 @@ function buildRandomOpeningPreviewWorld(forcedId = null) {
     speakText = origSpeakFn;
     window.playMiracleOpenWorldOgg = origOggFn;
     if (typeof hideAllMiracleCustomUI === 'function') hideAllMiracleCustomUI();
+    if (typeof hideAllDavidCustomUI === 'function') hideAllDavidCustomUI();
+    if (typeof davidOpeningState !== 'undefined' && davidOpeningState) davidOpeningState.active = false;
+    hideMissionGuideBubbleImmediately();
+    updateMiracleGuideButtonVisibility();
     const dUi = document.getElementById('david-custom-ui');
     if (dUi) dUi.classList.add('hidden');
     const lblCont = document.getElementById('labels-container');
@@ -3795,6 +4476,9 @@ function initEngine(skipInitialPreview = false) {
     
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, mobNow ? 1.25 : 2));
     renderer.setSize(window.innerWidth, window.innerHeight);
+    if (typeof positionMiracleLeftHudBelowTopBar === 'function') positionMiracleLeftHudBelowTopBar();
+    if (typeof positionDavidStage3QuestTrackerBelowHUD === 'function') positionDavidStage3QuestTrackerBelowHUD();
+    if (typeof window.positionMultiplayerRightHud === 'function') window.positionMultiplayerRightHud();
   };
   window.addEventListener('resize', handleViewportResize);
   window.addEventListener('orientationchange', () => setTimeout(handleViewportResize, 120));
@@ -3809,6 +4493,10 @@ function initEngine(skipInitialPreview = false) {
     updateBlazingPillars(dt, now);
 
     if (!isPlaying && !stage2CountdownActive && document.getElementById('hud-top').classList.contains('hidden')) {
+      if (pausedGameSession && pausedGameSession.active) {
+        renderer.render(scene, camera);
+        return;
+      }
       const ang = now * 0.00028;
       const pm = window.openingPreviewMeta || { cx: 0, cy: 3, cz: -10, rad: 28, camY: 14 };
       camera.position.set(pm.cx + Math.sin(ang) * pm.rad, pm.camY, pm.cz + Math.cos(ang) * pm.rad);

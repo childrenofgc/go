@@ -342,7 +342,7 @@
       align-items: center;
       justify-content: center;
       gap: 4px;
-      padding: 6px 11px;
+      padding: 5px 10px;
       border-radius: 9999px;
       background: linear-gradient(135deg, #fef08a 0%, #f59e0b 60%, #d97706 100%);
       border: 2px solid #fffbeb;
@@ -357,6 +357,35 @@
       animation: miracleGuideAbsorbPop 0.36s cubic-bezier(0.22, 1.25, 0.36, 1), miracleGuideSlowGlow 2.8s ease-in-out infinite;
     }
     .miracle-guide-btn.hidden { display: none !important; }
+    @media (max-width: 640px) {
+      .miracle-guide-btn {
+        padding: 3.5px 8px;
+        gap: 3px;
+        border-width: 1.5px;
+      }
+    }
+
+    /* 좌측 상단 펼침/접힘 통합 메뉴 드롭다운 애니메이션 (탐험수첩 버튼 위로 펼쳐짐) */
+    .hud-menu-dropdown {
+      transform-origin: top left;
+      transition: transform 0.18s cubic-bezier(0.22, 1.15, 0.36, 1), opacity 0.16s ease;
+    }
+    .hud-menu-dropdown.menu-closed {
+      opacity: 0;
+      transform: translateY(-6px) scaleY(0.9);
+      pointer-events: none;
+    }
+    .hud-menu-dropdown.menu-open {
+      opacity: 1;
+      transform: translateY(0) scaleY(1);
+      pointer-events: auto;
+    }
+    @media (orientation: landscape) and (max-height: 460px) {
+      #hud-menu-dropdown {
+        max-height: calc(100dvh - 52px);
+        overflow-y: auto;
+      }
+    }
 
     .miracle-guide-bubble {
       position: fixed;
@@ -490,49 +519,131 @@
     </div>
   </div>
 
-  <!-- 상단 HUD (얇고 슬림한 디자인 & 반투명 그림자 & 전체화면 토글 버튼 포함) -->
-  <div id="hud-top" class="hidden fixed top-1.5 left-2 right-2 z-20 flex flex-col gap-1 pointer-events-none">
-    <div class="flex items-center justify-between gap-1">
-      <div class="mc-panel px-2 py-0.5 rounded-lg flex items-center gap-1 pointer-events-auto">
-        <span id="hud-avatar-icon" class="text-sm">🧔🏻</span>
-        <span id="hud-player-tag" class="font-jua text-white text-[11px] sm:text-xs">대원</span>
-        <span class="text-amber-400 text-xs">·</span>
-        <span id="hud-stage-badge" class="font-jua text-amber-300 text-[11px] sm:text-xs">스테이지 1</span>
-      </div>
+  <!-- 상단 HUD (좌측: 펼침/접힘 통합 메뉴 + 우측: 진행 정보창 · 구석 발광 미션안내 버튼 · 아래 내비게이터) -->
+  <div id="hud-top" class="hidden fixed top-1.5 left-2 right-2 z-[25] flex items-start justify-between gap-1.5 pointer-events-none">
+    <!-- 좌측 상단: 메뉴 버튼 & 아래로 탐험수첩 위로 펼쳐지는 메뉴 패널 -->
+    <div id="hud-menu-wrap" class="relative flex flex-col items-start pointer-events-auto z-30">
+      <button id="hud-menu-btn" type="button" onclick="toggleHudMenu()" aria-expanded="false" aria-controls="hud-menu-dropdown"
+              class="mc-panel px-2.5 py-1 sm:py-1.5 rounded-xl flex items-center gap-1.5 text-amber-100 hover:brightness-110 active:translate-y-[1px] transition-all cursor-pointer shrink-0">
+        <span class="text-xs sm:text-sm leading-none">☰</span>
+        <span class="font-jua text-xs sm:text-sm leading-none">메뉴</span>
+        <span id="hud-menu-chevron" class="text-[10px] text-amber-300 leading-none transition-transform duration-200">▾</span>
+      </button>
 
-      <div class="flex items-center gap-1 pointer-events-auto">
-        <div id="hud-block-box" class="hidden mc-panel px-2 py-0.5 rounded-lg items-center gap-1 bg-amber-950/75">
-          <span class="text-xs">🪵</span>
-          <span id="hud-block-text" class="font-jua text-amber-200 text-[11px]">통나무 0/2개</span>
+      <!-- 메뉴 버튼을 누르면 탐험수첩 버튼 위로 펼쳐지고, 다시 누르면 접히는 메뉴 목록 -->
+      <div id="hud-menu-dropdown" class="hud-menu-dropdown menu-closed hidden absolute left-0 top-full mt-1.5 w-[216px] sm:w-[236px] p-2 rounded-2xl bg-slate-900/95 border-2 border-amber-400/90 shadow-2xl backdrop-blur-md flex flex-col gap-1.5 z-40">
+        <!-- 1. 플레이어 정보 -->
+        <div class="flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-slate-800/85 border border-slate-700/80">
+          <span id="hud-avatar-icon" class="text-base leading-none shrink-0">🧔🏻</span>
+          <div class="min-w-0 flex-1">
+            <div class="text-[9px] text-amber-300/85 font-bold leading-none mb-0.5">플레이어 정보</div>
+            <div id="hud-player-tag" class="font-jua text-white text-xs sm:text-sm truncate leading-tight">대원</div>
+          </div>
         </div>
 
-        <div id="hud-timer-box" class="hidden mc-panel px-2 py-0.5 rounded-lg items-center gap-1 bg-rose-950/75 border-rose-400/80">
-          <span class="text-xs">⏰</span>
-          <span id="hud-timer-val" class="font-jua text-rose-200 text-[11px] sm:text-xs">10.0초</span>
+        <!-- 2. 현재 맵(스테이지 1-3) 이름 -->
+        <div class="flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-slate-800/85 border border-slate-700/80">
+          <span class="text-sm leading-none shrink-0">📍</span>
+          <div class="min-w-0 flex-1">
+            <div class="text-[9px] text-amber-300/85 font-bold leading-none mb-0.5">현재 맵</div>
+            <div id="hud-stage-badge" class="font-jua text-amber-300 text-xs sm:text-sm truncate leading-tight">스테이지 1</div>
+          </div>
         </div>
 
-        <div class="mc-panel px-2 py-0.5 rounded-lg flex items-center gap-1">
-          <span id="hud-counter-icon" class="text-xs">🐾</span>
-          <span id="hud-counter-text" class="font-jua text-emerald-300 text-[11px] sm:text-xs">0/7쌍</span>
+        <!-- 3. 월드 맵 -->
+        <button id="hud-mode-btn" type="button" onclick="openWorldMapFromGame()"
+                class="mc-btn-slim w-full px-2.5 py-1.5 rounded-xl bg-amber-500/95 hover:bg-amber-400 text-slate-950 font-jua text-xs sm:text-sm flex items-center justify-between">
+          <span>🗺️ 월드 맵</span>
+          <span class="text-[10px] opacity-80">이동 ▶</span>
+        </button>
+
+        <!-- 4. 유치반, 유년반, 소년반 등 레벨 정보 -->
+        <div class="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-xl bg-slate-800/85 border border-slate-700/80">
+          <span class="text-[10px] text-slate-300 font-bold shrink-0">🎖️ 레벨</span>
+          <span id="hud-level-badge" class="font-jua text-emerald-300 text-xs truncate">🌱 유년반</span>
         </div>
 
-        <button id="hud-mode-btn" type="button" onclick="openScreen('screen-map')" class="mc-btn-slim px-2 py-0.5 rounded-lg bg-amber-500/90 hover:bg-amber-400 text-slate-950 font-jua text-[11px]">
-          🗺️맵
-        </button>
-        <button id="bgm-btn" type="button" onclick="toggleBgm()" class="mc-btn-slim w-6 h-6 rounded-lg bg-slate-800/85 text-white text-xs flex items-center justify-center" title="배경음악 켜기/끄기">
-          🎵
-        </button>
-        <button id="fullscreen-btn" type="button" onclick="toggleGameFullscreen()" class="mc-btn-slim w-6 h-6 rounded-lg bg-slate-800/85 text-white text-xs flex items-center justify-center" title="전체화면 전환">
-          ⛶
-        </button>
+        <!-- 5. 음악끄기, 전체화면 -->
+        <div class="grid grid-cols-2 gap-1.5 pt-0.5">
+          <button id="bgm-btn" type="button" onclick="toggleBgm()"
+                  class="mc-btn-slim px-2 py-1.5 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-amber-100 font-jua text-[11px] flex items-center justify-center gap-1 whitespace-nowrap" title="배경음악 켜기/끄기">
+            🎵 음악 끄기
+          </button>
+          <button id="fullscreen-btn" type="button" onclick="toggleGameFullscreen()"
+                  class="mc-btn-slim px-2 py-1.5 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-amber-100 font-jua text-[11px] flex items-center justify-center gap-1 whitespace-nowrap" title="전체화면 전환">
+            ⛶ 전체화면
+          </button>
+        </div>
       </div>
     </div>
 
-    <div id="hud-mission-box" onclick="speakCurrentMission()" class="mc-panel px-2.5 py-0.5 rounded-lg self-center max-w-lg w-full text-center pointer-events-auto cursor-pointer">
-      <p class="text-amber-100 font-jua text-[11px] sm:text-xs truncate leading-tight">
-        🔊 <span id="hud-mission-text">미션 안내</span>
-      </p>
-      <p id="hud-compass-hint" class="text-[9px] text-amber-300/85 leading-tight">💛 머리 위 노란 화살표를 따라가 보세요! (터치 시 음성 안내)</p>
+    <!-- 우측 상단: 진행 정보창(좌) + 구석 발광 [미션 안내] 버튼(우) / '미션 안내' 버튼 바로 아래 내비게이터 -->
+    <div id="hud-top-right" class="flex flex-col items-end gap-1.5 pointer-events-none min-w-0 max-w-[78vw]">
+      <div class="flex items-center justify-end gap-1 sm:gap-1.5 flex-wrap pointer-events-auto">
+        <div id="hud-block-box" class="hidden mc-panel px-2 py-1 rounded-xl items-center gap-1 bg-amber-950/75">
+          <span class="text-xs">🪵</span>
+          <span id="hud-block-text" class="font-jua text-amber-200 text-[10px] sm:text-xs whitespace-nowrap">통나무 0/2개</span>
+        </div>
+
+        <div id="hud-timer-box" class="hidden mc-panel px-2 py-1 rounded-xl items-center gap-1 bg-rose-950/75 border-rose-400/80">
+          <span class="text-xs">⏰</span>
+          <span id="hud-timer-val" class="font-jua text-rose-200 text-[10px] sm:text-xs whitespace-nowrap">10.0초</span>
+        </div>
+
+        <div id="hud-progress-box" class="mc-panel px-2 py-1 rounded-xl flex items-center gap-1 max-w-[54vw] sm:max-w-none">
+          <span id="hud-counter-icon" class="text-xs shrink-0">🐾</span>
+          <span id="hud-counter-text" class="font-jua text-emerald-300 text-[10px] sm:text-xs truncate">0/7쌍</span>
+        </div>
+
+        <!-- 우측 상단 구석 천천히 발광하는 [미션 안내] 버튼 (모든 에피소드 공통 · 중앙 말풍선이 빨려 들어가 저장됨!) -->
+        <button id="miracle-guide-btn" type="button" onclick="window.openMiracleGuideFromButton()"
+                aria-label="현재 미션 안내 다시 보기"
+                class="hidden miracle-guide-btn font-jua text-[11px] sm:text-xs shrink-0">
+          <span class="text-xs sm:text-sm leading-none">💬</span>
+          <span id="miracle-guide-btn-label" class="leading-none whitespace-nowrap">미션 안내</span>
+        </button>
+      </div>
+
+      <!-- '미션 안내' 버튼 바로 아래로 이동한 초슬림 미니 나침반/거리 내비게이터 -->
+      <div id="miracle-mini-nav" class="hidden miracle-mini-nav pointer-events-auto" title="목표 방향과 거리 안내">
+        <div class="nav-dial">
+          <svg id="miracle-nav-arrow" class="nav-arrow" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M12 2L18.5 19.5L12 15.5L5.5 19.5L12 2Z" fill="#fde047" stroke="#92400e" stroke-width="1.4" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <span id="miracle-nav-target" class="font-jua text-[10px] sm:text-[11px] text-amber-100 truncate flex-1">목표 탐색</span>
+        <span id="miracle-nav-dist" class="font-jua text-[10px] sm:text-[11px] text-emerald-300 shrink-0">0m</span>
+      </div>
+    </div>
+
+    <!-- 호환성 유지용 숨김 미션 텍스트 저장소 (모든 에피소드에서 중앙 말풍선 + 우측 상단 미션 안내 버튼으로 통합) -->
+    <div id="hud-mission-box" class="hidden" aria-hidden="true">
+      <span id="hud-mission-text">미션 안내</span>
+      <span id="hud-compass-hint"></span>
+    </div>
+  </div>
+
+  <!-- 모든 에피소드 공통: 화면 정중앙 타이핑 말풍선 안내창 (완료 시 우측 상단 미션안내 버튼으로 빨려 들어가듯 축소 이동!) -->
+  <div id="miracle-guide-bubble" onclick="window.onMiracleGuideBubbleClick()" class="hidden miracle-guide-bubble pointer-events-auto cursor-pointer text-left">
+    <div class="flex items-center justify-between gap-2 mb-1.5">
+      <span id="miracle-guide-bubble-title" class="px-2.5 py-0.5 rounded-full bg-amber-600 text-white font-jua text-xs sm:text-sm truncate">💬 탐험 안내</span>
+      <button id="miracle-guide-bubble-cancel-btn" type="button"
+              onclick="event.stopPropagation(); window.dismissMiracleGuideBubbleToButton(); if (typeof window.cancelActiveMiracleFieldEvent === 'function') window.cancelActiveMiracleFieldEvent();"
+              class="hidden px-4 py-1 rounded-lg bg-rose-500 hover:bg-rose-400 text-white font-jua text-[11px] shrink-0 shadow">
+        미션 포기 ✕
+      </button>
+    </div>
+    <p class="font-jua text-sm sm:text-base text-slate-900 leading-relaxed min-h-[42px]">
+      <span id="miracle-guide-bubble-text"></span><span id="miracle-guide-cursor" class="miracle-guide-cursor">▌</span>
+    </p>
+    <div id="miracle-guide-bubble-progress-row" class="hidden flex items-center justify-between gap-2 mt-2 pt-1.5 border-t border-amber-300/80">
+      <span id="miracle-guide-bubble-progress" class="px-2 py-0.5 rounded-full bg-amber-400 text-slate-950 font-jua text-[11px]"></span>
+      <span id="miracle-guide-bubble-extra" class="text-[11px] font-bold text-amber-900 truncate"></span>
+    </div>
+    <div class="flex items-center justify-between gap-2 mt-2">
+      <span class="text-[10px] text-amber-800/80 font-bold">👆 터치하면 우측 상단 안내 버튼에 쏙 들어가요!</span>
+      <button type="button" onclick="event.stopPropagation(); window.dismissMiracleGuideBubbleToButton();"
+              class="px-3 py-1 rounded-full bg-amber-200 hover:bg-amber-300 text-amber-950 font-jua text-[11px] shrink-0 shadow">확인 ▶</button>
     </div>
   </div>
 
@@ -690,7 +801,10 @@
             <p class="text-[10px] sm:text-xs text-slate-600">도트 지도 위의 탐험 경로(1→2→3→4)를 따라 에피소드를 선택하세요!</p>
           </div>
         </div>
-        <div class="flex items-center gap-1.5">
+        <div class="flex items-center gap-1.5 flex-wrap justify-end">
+          <button id="map-return-game-btn" type="button" onclick="resumeGameFromWorldMap()" class="hidden mc-btn px-2.5 py-0.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-white font-jua text-[10px] sm:text-xs shadow">
+            ◀ 돌아가기
+          </button>
           <span id="map-selected-badge" class="px-2 py-0.5 rounded-full bg-amber-200 border border-amber-500 font-jua text-amber-950 text-[10px] sm:text-xs">🌱 유년반</span>
           <button type="button" onclick="openScreen('screen-class')" class="mc-btn px-2.5 py-0.5 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-800 font-jua text-[10px] sm:text-xs">
             ◀ 반 변경
@@ -862,22 +976,22 @@
     </div>
   </div>
 
-<!-- 게임 스크립트 로드 (전체 스크립트 캐시 강제 갱신 ?v=14 및 버전 일관성 자동 검증 적용) -->
-  <script src="core.js?v=14"></script>
-  <script src="ep1_noah.js?v=14"></script>
-  <script src="ep2_exodus.js?v=14"></script>
-  <script src="ep3_david_base.js?v=14"></script>
-  <script src="ep3_david_st1_2.js?v=14"></script>
-  <script src="ep3_david_st3_end.js?v=14"></script>
-  <script src="ep4_miracle_base.js?v=14"></script>
-  <script src="ep4_miracle_assets.js?v=14"></script>
-  <script src="ep4_miracle_world.js?v=14"></script>
-  <script src="ep4_miracle_stages.js?v=14"></script>
-  <script src="ep4_multiplayer.js?v=14"></script>
+<!-- 게임 스크립트 로드 (전체 스크립트 캐시 강제 갱신 ?v=15 및 버전 일관성 자동 검증 적용) -->
+  <script src="core.js?v=15"></script>
+  <script src="ep1_noah.js?v=15"></script>
+  <script src="ep2_exodus.js?v=15"></script>
+  <script src="ep3_david_base.js?v=15"></script>
+  <script src="ep3_david_st1_2.js?v=15"></script>
+  <script src="ep3_david_st3_end.js?v=15"></script>
+  <script src="ep4_miracle_base.js?v=15"></script>
+  <script src="ep4_miracle_assets.js?v=15"></script>
+  <script src="ep4_miracle_world.js?v=15"></script>
+  <script src="ep4_miracle_stages.js?v=15"></script>
+  <script src="ep4_multiplayer.js?v=15"></script>
   <script>
     // GitHub Pages CDN·브라우저 부분 캐시로 신·구버전 스크립트가 뒤섞여 로드되는 현상을 자동 감지해 1회 강제 새로고침
     (function verifyScriptBuildConsistency() {
-      const EXPECTED = '20261120_v14';
+      const EXPECTED = '20261121_v15';
       const vers = window.__GAME_BUILD_VERSIONS__ || {};
       const keys = ['core', 'ep4_base', 'ep4_assets', 'ep4_world', 'ep4_stages', 'ep4_mp'];
       const mismatch = keys.some(k => vers[k] !== EXPECTED);

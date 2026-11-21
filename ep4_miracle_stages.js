@@ -4,7 +4,7 @@
 // - 스테이지 3(십자가 사건): 넓어진 골고다 언덕 정상 고원과 세 십자가 등장 연출 적용
 // =========================================================================
 window.__GAME_BUILD_VERSIONS__ = window.__GAME_BUILD_VERSIONS__ || {};
-window.__GAME_BUILD_VERSIONS__.ep4_stages = '20261120_v14';
+window.__GAME_BUILD_VERSIONS__.ep4_stages = '20261121_v15';
 
 // 스테이지 3: 예수님과 플레이어가 무거운 십자가를 지고 걷는 통일 속도 (아무리 세게 터치해도 이 속도로 제한!)
 const MIRACLE_STAGE3_CROSS_WALK_SPEED = 1.65;
@@ -50,6 +50,14 @@ window.getMiracleGroundHeight = function (x, z, st) {
 
 // 월드맵 에피소드 4 선택 모달에서 2회차/해금 플레이어가 특정 메인 스테이지로 바로 진입하는 헬퍼
 window.startMiracleDirectSubStage = function (subId) {
+  if (typeof discardPausedGameSession === 'function') discardPausedGameSession(true);
+  if (typeof setHudMenuOpen === 'function') setHudMenuOpen(false);
+  if (typeof hideMissionGuideBubbleImmediately === 'function') hideMissionGuideBubbleImmediately();
+  if (window.MiracleGuideUI) {
+    window.MiracleGuideUI.lastAutoKey = '';
+    window.MiracleGuideUI.activeFieldInfo = null;
+    window.MiracleGuideUI.suppressedDuringIntro = false;
+  }
   currentEpisode = 'miracle';
   const stageMap = { main1_boat: 1, main1_galilee: 1, main2_loaves: 2, main3_cross: 3, main4_tomb: 4 };
   const stNum = stageMap[subId] || 1;
@@ -59,7 +67,8 @@ window.startMiracleDirectSubStage = function (subId) {
   isPlaying = true;
   if (typeof loadMiracleNotebookProgress === 'function') loadMiracleNotebookProgress();
   document.getElementById('hud-top').classList.remove('hidden');
-  document.getElementById('hud-mode-btn').textContent = `${MODE_META[currentMode].badge} · 🗺️맵`;
+  if (typeof syncHudMenuInfo === 'function') syncHudMenuInfo();
+  if (typeof updateMiracleGuideButtonVisibility === 'function') updateMiracleGuideButtonVisibility();
   document.getElementById('joystick-zone').style.display = 'block';
   document.getElementById('cam-bottom-bar').style.display = 'flex';
   document.getElementById('action-zone').style.display = 'flex';

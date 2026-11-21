@@ -4,7 +4,7 @@
 // - 확장된 오픈월드 지형 고도 계산기(넓어진 골고다 언덕 포함) 및 소프트 로우 폴리곤 자연물 팩토리
 // =========================================================================
 window.__GAME_BUILD_VERSIONS__ = window.__GAME_BUILD_VERSIONS__ || {};
-window.__GAME_BUILD_VERSIONS__.ep4_base = '20261120_v14';
+window.__GAME_BUILD_VERSIONS__.ep4_base = '20261121_v15';
 
 // =========================================================================
 // 🎬 [에피소드 4 오프닝 영상 주소 설정]
@@ -4389,275 +4389,7 @@ window.markEp4OpeningVideoWatched = function () {
   } catch (e) {}
 };
 
-const MiracleGuideUI = {
-  activeStageInfo: null,   // { key, title, text, badge }
-  activeFieldInfo: null,   // { title, goal, progressText, extraText, ratio, warn }
-  lastAutoKey: '',
-  isBubbleOpen: false,
-  isTyping: false,
-  isSucking: false,
-  fullText: '',
-  typedIdx: 0,
-  typeTimerId: null,
-  autoCloseTimerId: null,
-  suckTimerId: null,
-  suppressedDuringIntro: false
-};
-window.MiracleGuideUI = MiracleGuideUI;
-
-function _clearMiracleGuideTimers() {
-  if (MiracleGuideUI.typeTimerId) { clearInterval(MiracleGuideUI.typeTimerId); MiracleGuideUI.typeTimerId = null; }
-  if (MiracleGuideUI.autoCloseTimerId) { clearTimeout(MiracleGuideUI.autoCloseTimerId); MiracleGuideUI.autoCloseTimerId = null; }
-  if (MiracleGuideUI.suckTimerId) { clearTimeout(MiracleGuideUI.suckTimerId); MiracleGuideUI.suckTimerId = null; }
-}
-
-function positionMiracleGuideButton() {
-  const btn = document.getElementById('miracle-guide-btn');
-  if (!btn || btn.classList.contains('hidden')) return;
-  const hudTop = document.getElementById('hud-top');
-  let safeY = 48;
-  if (hudTop && !hudTop.classList.contains('hidden')) {
-    const firstRow = hudTop.firstElementChild;
-    const r = firstRow ? firstRow.getBoundingClientRect() : hudTop.getBoundingClientRect();
-    if (r && r.bottom > 0) safeY = Math.max(44, Math.ceil(r.bottom) + 8);
-  }
-  btn.style.top = `${safeY}px`;
-}
-
-function updateMiracleGuideButtonVisibility() {
-  ensureMiracleCustomUI();
-  const btn = document.getElementById('miracle-guide-btn');
-  if (!btn) return;
-  const inEp4Single = (
-    typeof currentEpisode !== 'undefined' && currentEpisode === 'miracle' &&
-    typeof isPlaying !== 'undefined' && isPlaying &&
-    !window.isMiracleMultiplayerMode
-  );
-  if (!inEp4Single) {
-    btn.classList.add('hidden');
-    return;
-  }
-  btn.classList.remove('hidden');
-  const lbl = document.getElementById('miracle-guide-btn-label');
-  if (lbl) {
-    lbl.textContent = MiracleGuideUI.activeFieldInfo ? '진행 미션' : '미션 안내';
-  }
-  positionMiracleGuideButton();
-}
-window.updateMiracleGuideButtonVisibility = updateMiracleGuideButtonVisibility;
-
-window.showMiracleGuideBubble = function (opts = {}) {
-  ensureMiracleCustomUI();
-  if (window.isMiracleMultiplayerMode) return;
-  const bubble = document.getElementById('miracle-guide-bubble');
-  const titleEl = document.getElementById('miracle-guide-bubble-title');
-  const textEl = document.getElementById('miracle-guide-bubble-text');
-  const cursorEl = document.getElementById('miracle-guide-cursor');
-  const progRow = document.getElementById('miracle-guide-bubble-progress-row');
-  const progEl = document.getElementById('miracle-guide-bubble-progress');
-  const extraEl = document.getElementById('miracle-guide-bubble-extra');
-  const cancelBtn = document.getElementById('miracle-guide-bubble-cancel-btn');
-  if (!bubble || !textEl) return;
-
-  _clearMiracleGuideTimers();
-  updateMiracleGuideButtonVisibility();
-
-  const title = opts.title || '✨ 탐험 안내';
-  const text = String(opts.text || '').trim() || '빛기둥을 따라 다음 모험을 시작해 보세요!';
-  const progressText = opts.progressText || '';
-  const extraText = opts.extraText || '';
-  const canCancel = Boolean(opts.canCancel);
-  const autoCloseMs = typeof opts.autoCloseMs === 'number' ? opts.autoCloseMs : 2300;
-
-  if (titleEl) titleEl.textContent = title;
-  if (progRow) {
-    const showProg = Boolean(progressText || extraText);
-    progRow.classList.toggle('hidden', !showProg);
-    if (progEl) progEl.textContent = progressText;
-    if (extraEl) extraEl.textContent = extraText;
-  }
-  if (cancelBtn) cancelBtn.classList.toggle('hidden', !canCancel);
-
-  // 우측 상단 안내 버튼에서 튀어나오는(팝업) 애니메이션을 위해 시작 위치 계산
-      const btn = document.getElementById('miracle-guide-btn');
-      let dx = Math.round((window.innerWidth || 1000) * 0.42);
-      let dy = -Math.round((window.innerHeight || 700) * 0.38);
-      
-      try {
-        const tr = (btn && !btn.classList.contains('hidden')) ? btn.getBoundingClientRect() : null;
-        if (tr && tr.width > 0) {
-          const bubbleCenterX = window.innerWidth * 0.5;
-          const bubbleCenterY = window.innerHeight * 0.46; // 말풍선 CSS 기준 (left: 50%, top: 46%)
-          dx = (tr.left + tr.width * 0.5) - bubbleCenterX;
-          dy = (tr.top + tr.height * 0.5) - bubbleCenterY;
-        }
-      } catch (e) {}
-
-      // 1. 시작 지점: 안내 버튼 위치에서 작고 기울어진 상태(scale 0.08, rotate 10deg)로 셋팅
-      bubble.style.transition = 'none';
-      bubble.style.transform = `translate(calc(-50% + ${dx.toFixed(1)}px), calc(-50% + ${dy.toFixed(1)}px)) scale(0.08) rotate(10deg)`;
-      bubble.style.opacity = '0';
-      bubble.classList.remove('hidden');
-      
-      // DOM 업데이트 강제 반영
-      void bubble.offsetWidth;
-      
-      // 2. 정중앙으로 날아오며 톡 튀어나오는 탄성(cubic-bezier) 효과 적용
-      bubble.style.transition = 'transform 0.45s cubic-bezier(0.22, 1.15, 0.36, 1), opacity 0.35s ease-out';
-      bubble.style.transform = 'translate(-50%, -50%) scale(1) rotate(0deg)';
-      bubble.style.opacity = '1';
-
-  MiracleGuideUI.isBubbleOpen = true;
-  MiracleGuideUI.isSucking = false;
-  MiracleGuideUI.isTyping = true;
-  MiracleGuideUI.fullText = text;
-  MiracleGuideUI.typedIdx = 0;
-  textEl.textContent = '';
-  if (cursorEl) cursorEl.classList.remove('hidden');
-
-  const scheduleAutoSuck = () => {
-    MiracleGuideUI.isTyping = false;
-    if (cursorEl) cursorEl.classList.add('hidden');
-    if (autoCloseMs > 0) {
-      MiracleGuideUI.autoCloseTimerId = setTimeout(() => {
-        window.dismissMiracleGuideBubbleToButton();
-      }, autoCloseMs);
-    }
-  };
-
-  MiracleGuideUI.typeTimerId = setInterval(() => {
-    MiracleGuideUI.typedIdx = Math.min(text.length, MiracleGuideUI.typedIdx + 2);
-    textEl.textContent = text.slice(0, MiracleGuideUI.typedIdx);
-    if (MiracleGuideUI.typedIdx >= text.length) {
-      clearInterval(MiracleGuideUI.typeTimerId);
-      MiracleGuideUI.typeTimerId = null;
-      scheduleAutoSuck();
-    }
-  }, 26);
-};
-
-window.onMiracleGuideBubbleClick = function () {
-  if (!MiracleGuideUI.isBubbleOpen || MiracleGuideUI.isSucking) return;
-  if (MiracleGuideUI.isTyping) {
-    // 타이핑 중 클릭하면 전체 문장을 즉시 완성하고 잠시 뒤 버튼으로 흡수!
-    if (MiracleGuideUI.typeTimerId) { clearInterval(MiracleGuideUI.typeTimerId); MiracleGuideUI.typeTimerId = null; }
-    const textEl = document.getElementById('miracle-guide-bubble-text');
-    const cursorEl = document.getElementById('miracle-guide-cursor');
-    if (textEl) textEl.textContent = MiracleGuideUI.fullText;
-    if (cursorEl) cursorEl.classList.add('hidden');
-    MiracleGuideUI.isTyping = false;
-    MiracleGuideUI.typedIdx = MiracleGuideUI.fullText.length;
-    if (MiracleGuideUI.autoCloseTimerId) clearTimeout(MiracleGuideUI.autoCloseTimerId);
-    MiracleGuideUI.autoCloseTimerId = setTimeout(() => {
-      window.dismissMiracleGuideBubbleToButton();
-    }, 1100);
-  } else {
-    window.dismissMiracleGuideBubbleToButton();
-  }
-};
-
-window.dismissMiracleGuideBubbleToButton = function () {
-  const bubble = document.getElementById('miracle-guide-bubble');
-  const btn = document.getElementById('miracle-guide-btn');
-  if (!bubble || bubble.classList.contains('hidden') || MiracleGuideUI.isSucking) return;
-
-  _clearMiracleGuideTimers();
-  MiracleGuideUI.isTyping = false;
-  MiracleGuideUI.isSucking = true;
-
-  let dx = Math.round((window.innerWidth || 1000) * 0.42);
-  let dy = -Math.round((window.innerHeight || 700) * 0.38);
-  try {
-    const br = bubble.getBoundingClientRect();
-    const tr = (btn && !btn.classList.contains('hidden')) ? btn.getBoundingClientRect() : null;
-    if (br && br.width > 0 && tr && tr.width > 0) {
-      dx = (tr.left + tr.width * 0.5) - (br.left + br.width * 0.5);
-      dy = (tr.top + tr.height * 0.5) - (br.top + br.height * 0.5);
-    }
-  } catch (e) {}
-
-  bubble.style.transition = 'transform 0.52s cubic-bezier(0.45, -0.15, 0.85, 0.35), opacity 0.46s ease-in';
-  bubble.style.transform = `translate(calc(-50% + ${dx.toFixed(1)}px), calc(-50% + ${dy.toFixed(1)}px)) scale(0.08) rotate(10deg)`;
-  bubble.style.opacity = '0';
-
-  MiracleGuideUI.suckTimerId = setTimeout(() => {
-    bubble.classList.add('hidden');
-    bubble.style.transition = 'none';
-    bubble.style.transform = 'translate(-50%, -50%) scale(1)';
-    bubble.style.opacity = '1';
-    MiracleGuideUI.isBubbleOpen = false;
-    MiracleGuideUI.isSucking = false;
-    if (btn && !btn.classList.contains('hidden')) {
-      btn.classList.remove('absorb-pop');
-      void btn.offsetWidth;
-      btn.classList.add('absorb-pop');
-    }
-  }, 530);
-};
-
-window.openMiracleGuideFromButton = function () {
-  if (typeof playSfx === 'function') playSfx('switch');
-  if (MiracleGuideUI.activeFieldInfo) {
-    const f = MiracleGuideUI.activeFieldInfo;
-    window.showMiracleGuideBubble({
-      title: f.title || '✨ 진행중인 미션',
-      text: f.goal || '',
-      progressText: f.progressText || '',
-      extraText: f.extraText || '',
-      canCancel: true,
-      autoCloseMs: 4200
-    });
-  } else if (MiracleGuideUI.activeStageInfo) {
-    const s = MiracleGuideUI.activeStageInfo;
-    window.showMiracleGuideBubble({
-      title: `💬 ${s.title || '현재 목표'}`,
-      text: s.text || '',
-      progressText: s.badge || '',
-      canCancel: false,
-      autoCloseMs: 3600
-    });
-  } else {
-    window.showMiracleGuideBubble({
-      title: '💬 탐험 안내',
-      text: '빛기둥이 비추는 메인 스테이지를 순서대로 진행하고, 빛의 원이 있는 사건을 체험해 보세요!',
-      canCancel: false,
-      autoCloseMs: 3000
-    });
-  }
-};
-
-window.syncMiracleStageGuideFromHUD = function (stageTitle, missionText, counterText) {
-  if (typeof currentEpisode === 'undefined' || currentEpisode !== 'miracle') return;
-  if (window.isMiracleMultiplayerMode) return;
-  const sub = (typeof miracleSubMode !== 'undefined') ? miracleSubMode : 'openworld';
-  const key = `stage|${sub}|${missionText}`;
-  MiracleGuideUI.activeStageInfo = {
-    key,
-    title: stageTitle || '에피소드 4 안내',
-    text: missionText || '',
-    badge: counterText || ''
-  };
-  updateMiracleGuideButtonVisibility();
-
-  // 인트로 영상·탑뷰/버드뷰 플라이오버·대화창 진행 중에는 중앙 말풍선 자동 팝업을 잠시 보류 (종료 직후 노출!)
-  const owFly = window.miracleOpenWorldIntroFlyover && window.miracleOpenWorldIntroFlyover.active;
-  const s2Fly = (sub === 'main2_loaves' && typeof miracleActiveMiniState !== 'undefined' && miracleActiveMiniState && miracleActiveMiniState.introFlyover && miracleActiveMiniState.introFlyover.active);
-  const dlgOpen = (typeof miracleDialogState !== 'undefined' && miracleDialogState && miracleDialogState.active);
-  const vidOpen = Boolean(window.__ep4OpeningVideoActive);
-  if (owFly || s2Fly || dlgOpen || vidOpen || MiracleGuideUI.suppressedDuringIntro) return;
-  if (MiracleGuideUI.activeFieldInfo) return; // 필드 미션 진행 중엔 필드 미션 안내 우선
-
-  if (missionText && MiracleGuideUI.lastAutoKey !== key) {
-    MiracleGuideUI.lastAutoKey = key;
-    window.showMiracleGuideBubble({
-      title: `💬 ${stageTitle || '현재 목표'}`,
-      text: missionText,
-      progressText: counterText || '',
-      canCancel: false,
-      autoCloseMs: 2500
-    });
-  }
-};
+// (정중앙 타이핑 말풍선 안내 및 우측 상단 발광 [미션 안내] 버튼 제어는 전체 에피소드 공통으로 core.js로 통합되었습니다.)
 
 window.playEp4OpeningVideoThen = function (onComplete) {
   ensureMiracleCustomUI();
@@ -4788,7 +4520,7 @@ window.runEp4OpeningSequence = function () {
         // 탑뷰 조망 연출이 끝나고 플레이어에게 조작권이 넘어온 순간 음성 안내 트리거!
         if (typeof updateStageHUD === 'function') updateStageHUD(); 
         
-        if (MiracleGuideUI.activeStageInfo && MiracleGuideUI.activeStageInfo.text) {
+        if (!MiracleGuideUI.isBubbleOpen && MiracleGuideUI.activeStageInfo && MiracleGuideUI.activeStageInfo.text) {
           MiracleGuideUI.lastAutoKey = MiracleGuideUI.activeStageInfo.key;
           window.showMiracleGuideBubble({
             title: `💬 ${MiracleGuideUI.activeStageInfo.title || '탐험 시작!'}`,
@@ -4813,7 +4545,7 @@ window.runEp4OpeningSequence = function () {
       // 플라이오버 연출이 생략되었을 경우에도 음성 안내 정상 트리거!
       if (typeof updateStageHUD === 'function') updateStageHUD(); 
       
-      if (MiracleGuideUI.activeStageInfo && MiracleGuideUI.activeStageInfo.text) {
+      if (!MiracleGuideUI.isBubbleOpen && MiracleGuideUI.activeStageInfo && MiracleGuideUI.activeStageInfo.text) {
         MiracleGuideUI.lastAutoKey = MiracleGuideUI.activeStageInfo.key;
         window.showMiracleGuideBubble({
           title: `💬 ${MiracleGuideUI.activeStageInfo.title || '탐험 시작!'}`,
@@ -4832,10 +4564,10 @@ function ensureMiracleCustomUI() {
   if (!uiRoot) {
     uiRoot = document.createElement('div');
     uiRoot.id = 'miracle-custom-ui';
-    uiRoot.className = 'fixed inset-0 pointer-events-none z-20 flex flex-col items-center';
+    uiRoot.className = 'fixed inset-0 pointer-events-none flex flex-col items-center';
     uiRoot.innerHTML = `
-      <div id="miracle-hud-left" class="hidden fixed left-2 sm:left-3 z-20 flex flex-col items-start gap-2 pointer-events-auto" style="top: 48px;">
-        <!-- 정사각 가죽 양장 책 모양 [탐험 / 수첩] 버튼 (숫자 제거 · 모달 타이틀 옆으로 이동!) -->
+      <div id="miracle-hud-left" class="hidden fixed left-2 z-20 flex flex-col items-start gap-2 pointer-events-auto" style="top: 44px;">
+        <!-- 정사각 가죽 양장 책 모양 [탐험 / 수첩] 버튼 (메뉴 버튼 바로 아래 배치 · 메뉴를 누르면 메뉴가 이 위로 펼쳐짐) -->
         <button id="miracle-notebook-btn" type="button" onclick="openMiracleNotebookModal('all')" aria-label="탐험수첩 열기"
                 class="miracle-book-btn font-jua">
           <svg class="book-emblem" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -4847,17 +4579,6 @@ function ensureMiracleCustomUI() {
             <span>수첩</span>
           </span>
         </button>
-
-        <!-- [소년반 및 멀티플레이 전용] 초슬림 미니 나침반/거리 내비게이터 (모바일 세로·가로형 화면 가림 최소화) -->
-        <div id="miracle-mini-nav" class="hidden miracle-mini-nav" title="목표 방향과 거리 안내">
-          <div class="nav-dial">
-            <svg id="miracle-nav-arrow" class="nav-arrow" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <path d="M12 2L18.5 19.5L12 15.5L5.5 19.5L12 2Z" fill="#fde047" stroke="#92400e" stroke-width="1.4" stroke-linejoin="round"/>
-            </svg>
-          </div>
-          <span id="miracle-nav-target" class="font-jua text-[10px] sm:text-[11px] text-amber-100 truncate flex-1">목표 탐색</span>
-          <span id="miracle-nav-dist" class="font-jua text-[10px] sm:text-[11px] text-emerald-300 shrink-0">0m</span>
-        </div>
 
         <div id="miracle-parable-banner" class="hidden px-2.5 py-1 rounded-xl bg-emerald-900/90 border border-emerald-300 text-emerald-100 font-jua text-[11px] shadow">
           🌱 예수님이 들려주신 비유 체험
@@ -4888,39 +4609,6 @@ function ensureMiracleCustomUI() {
                 class="hidden mc-btn px-3 py-1 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 font-jua text-xs shadow">
           🗺️ 오픈월드로 돌아가기
         </button>
-      </div>
-
-      <!-- 우측 상단 천천히 발광하는 미션 안내 버튼 (중앙 말풍선이 이 버튼으로 빨려 들어가 저장됨!) -->
-      <button id="miracle-guide-btn" type="button" onclick="window.openMiracleGuideFromButton()"
-              aria-label="현재 미션 안내 다시 보기"
-              class="hidden miracle-guide-btn fixed right-2 sm:right-3 z-20 pointer-events-auto font-jua text-xs sm:text-sm"
-              style="top: 48px;">
-        <span class="text-sm leading-none">💬</span>
-        <span id="miracle-guide-btn-label" class="leading-none">미션 안내</span>
-      </button>
-
-      <!-- 화면 정중앙 타이핑 말풍선 안내창 (완료 시 우측 상단 발광 버튼으로 빨려 들어가듯 축소 이동!) -->
-      <div id="miracle-guide-bubble" onclick="window.onMiracleGuideBubbleClick()" class="hidden miracle-guide-bubble pointer-events-auto cursor-pointer text-left">
-        <div class="flex items-center justify-between gap-2 mb-1.5">
-          <span id="miracle-guide-bubble-title" class="px-2.5 py-0.5 rounded-full bg-amber-600 text-white font-jua text-xs sm:text-sm truncate">💬 탐험 안내</span>
-          <button id="miracle-guide-bubble-cancel-btn" type="button"
-                  onclick="event.stopPropagation(); window.dismissMiracleGuideBubbleToButton(); if (typeof window.cancelActiveMiracleFieldEvent === 'function') window.cancelActiveMiracleFieldEvent();"
-                  class="hidden px-4 py-1 rounded-lg bg-rose-500 hover:bg-rose-400 text-white font-jua text-[11px] shrink-0 shadow">
-            미션 포기 ✕
-          </button>
-        </div>
-        <p class="font-jua text-sm sm:text-base text-slate-900 leading-relaxed min-h-[42px]">
-          <span id="miracle-guide-bubble-text"></span><span id="miracle-guide-cursor" class="miracle-guide-cursor">▌</span>
-        </p>
-        <div id="miracle-guide-bubble-progress-row" class="hidden flex items-center justify-between gap-2 mt-2 pt-1.5 border-t border-amber-300/80">
-          <span id="miracle-guide-bubble-progress" class="px-2 py-0.5 rounded-full bg-amber-400 text-slate-950 font-jua text-[11px]"></span>
-          <span id="miracle-guide-bubble-extra" class="text-[11px] font-bold text-amber-900 truncate"></span>
-        </div>
-        <div class="flex items-center justify-between gap-2 mt-2">
-          <span class="text-[10px] text-amber-800/80 font-bold">👆 터치하면 우측 상단 안내 버튼에 쏙 들어가요!</span>
-          <button type="button" onclick="event.stopPropagation(); window.dismissMiracleGuideBubbleToButton();"
-                  class="px-3 py-1 rounded-full bg-amber-200 hover:bg-amber-300 text-amber-950 font-jua text-[11px] shrink-0 shadow">확인 ▶</button>
-        </div>
       </div>
       
       <!-- 오픈월드 조망(플라이오버) 스킵 버튼 -->
@@ -5046,7 +4734,7 @@ function ensureMiracleCustomUI() {
       </div>
 
       <!-- [하단 대화창: 거절 버튼 + 완료 미션 다시하기 버튼 지원] -->
-      <div id="miracle-dialog-modal" class="hidden pointer-events-auto mt-auto mb-28 mc-panel bg-amber-50/95 border-4 border-amber-700 rounded-3xl p-4 max-w-md w-[92%] text-slate-900 shadow-2xl flex flex-col gap-2">
+      <div id="miracle-dialog-modal" class="hidden relative z-30 pointer-events-auto mt-auto mb-28 mc-panel bg-amber-50/95 border-4 border-amber-700 rounded-3xl p-4 max-w-md w-[92%] text-slate-900 shadow-2xl flex flex-col gap-2">
         <div class="flex items-center justify-between gap-2">
           <span id="miracle-dialog-speaker" class="px-3 py-0.5 rounded-full bg-amber-800 text-amber-100 font-jua text-xs sm:text-sm">주민</span>
           <span id="miracle-dialog-cat-badge" class="px-2.5 py-0.5 rounded-full bg-amber-200 text-amber-950 font-jua text-[11px]">🟡 소문</span>
@@ -5074,16 +4762,11 @@ function ensureMiracleCustomUI() {
 function positionMiracleLeftHudBelowTopBar() {
   const leftHud = document.getElementById('miracle-hud-left');
   if (!leftHud || leftHud.classList.contains('hidden')) return;
-  const missionBox = document.getElementById('hud-mission-box');
-  const hudTop = document.getElementById('hud-top');
-  let safeY = 48;
-  if (missionBox && !missionBox.classList.contains('hidden')) {
-    const r = missionBox.getBoundingClientRect();
-    if (r && r.bottom > 0) safeY = Math.max(safeY, Math.ceil(r.bottom) + 8);
-  } else if (hudTop && !hudTop.classList.contains('hidden')) {
-    const firstRow = hudTop.firstElementChild;
-    const r = firstRow ? firstRow.getBoundingClientRect() : hudTop.getBoundingClientRect();
-    if (r && r.bottom > 0) safeY = Math.max(44, Math.ceil(r.bottom) + 8);
+  const menuBtn = document.getElementById('hud-menu-btn');
+  let safeY = 44;
+  if (menuBtn) {
+    const r = menuBtn.getBoundingClientRect();
+    if (r && r.bottom > 0) safeY = Math.max(40, Math.ceil(r.bottom) + 8);
   }
   leftHud.style.top = `${safeY}px`;
   positionMiracleGuideButton();
@@ -5183,11 +4866,14 @@ window.hideMiracleMissionStatusUI = function () {
 };
 
 window.updateMiracleMiniNavigatorUI = function (info) {
-  ensureMiracleCustomUI();
   const nav = document.getElementById('miracle-mini-nav');
   if (!nav) return;
+  const wasHidden = nav.classList.contains('hidden');
   if (!info || !info.visible) {
     nav.classList.add('hidden');
+    if (!wasHidden && typeof window.positionMultiplayerRightHud === 'function') {
+      window.positionMultiplayerRightHud();
+    }
     return;
   }
   nav.classList.remove('hidden');
@@ -5199,10 +4885,14 @@ window.updateMiracleMiniNavigatorUI = function (info) {
   }
   if (targetEl) targetEl.textContent = info.label || '목표 지점';
   if (distEl) distEl.textContent = info.distText || '';
+  if (wasHidden && typeof window.positionMultiplayerRightHud === 'function') {
+    window.positionMultiplayerRightHud();
+  }
 };
 
 window.openMiracleNotebookModal = function (tabKey = 'all') {
   ensureMiracleCustomUI();
+  if (typeof setHudMenuOpen === 'function') setHudMenuOpen(false);
   currentNotebookTab = tabKey;
   const modal = document.getElementById('miracle-notebook-modal');
   const listEl = document.getElementById('miracle-notebook-list');
@@ -5424,17 +5114,15 @@ window.replayMiracleDialogMission = function () {
 };
 
 function hideAllMiracleCustomUI() {
-  _clearMiracleGuideTimers();
-  MiracleGuideUI.isBubbleOpen = false;
-  MiracleGuideUI.isTyping = false;
-  MiracleGuideUI.isSucking = false;
   MiracleGuideUI.activeFieldInfo = null;
   window.__ep4OpeningVideoActive = false;
 
+  if (typeof hideMissionGuideBubbleImmediately === 'function') {
+    hideMissionGuideBubbleImmediately();
+  }
+
   const leftHud = document.getElementById('miracle-hud-left');
   const msBox = document.getElementById('miracle-mission-status-box');
-  const guideBtn = document.getElementById('miracle-guide-btn');
-  const guideBub = document.getElementById('miracle-guide-bubble');
   const vidModal = document.getElementById('ep4-opening-video-modal');
   const vidSlot = document.getElementById('ep4-opening-video-slot');
   const miniNav = document.getElementById('miracle-mini-nav');
@@ -5444,12 +5132,10 @@ function hideAllMiracleCustomUI() {
   const sowerWrap = document.getElementById('miracle-sower-btn-wrap');
   const bfUi = document.getElementById('miracle-breakfast-ui');
   const flareLayer = document.getElementById('miracle-sun-flare-layer');
-  const flySkip = document.getElementById('ep4-flyover-skip-wrap'); // 추가
-  if (flySkip) flySkip.classList.add('hidden');                     // 추가
+  const flySkip = document.getElementById('ep4-flyover-skip-wrap');
+  if (flySkip) flySkip.classList.add('hidden');
   if (leftHud) leftHud.classList.add('hidden');
   if (msBox) msBox.classList.add('hidden');
-  if (guideBtn) guideBtn.classList.add('hidden');
-  if (guideBub) guideBub.classList.add('hidden');
   if (vidSlot) vidSlot.innerHTML = '';
   if (vidModal) { vidModal.classList.add('hidden'); vidModal.classList.remove('flex'); }
   if (miniNav) miniNav.classList.add('hidden');
@@ -5463,4 +5149,7 @@ function hideAllMiracleCustomUI() {
     flareLayer.style.display = 'none';
   }
   miracleDialogState.active = false;
+  if (typeof updateMiracleGuideButtonVisibility === 'function') {
+    updateMiracleGuideButtonVisibility();
+  }
 }

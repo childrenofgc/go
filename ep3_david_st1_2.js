@@ -551,12 +551,16 @@ function buildDavidStage1World() {
   if (guideArrowGroup) guideArrowGroup.visible = (currentMode !== 'senior');
   snapCameraToPlayer();
   updateDavidStage1UI();
-  updateStageHUD();
+  if (!window.__isBuildingOpeningPreview) {
+    davidOpeningState.active = true;
+    updateStageHUD();
 
-  startDavidStage1Opening(() => {
-    playSheepBaaSound(1.05, 0.08);
-    showToast('🐑 언덕 위 초원에서 바위 뒤에 숨어 있는 양 5마리를 찾아 목초지로 데려오세요!');
-  });
+    startDavidStage1Opening(() => {
+      updateStageHUD();
+      playSheepBaaSound(1.05, 0.08);
+      showToast('🐑 언덕 위 초원에서 바위 뒤에 숨어 있는 양 5마리를 찾아 목초지로 데려오세요!');
+    });
+  }
 }
 
 // -------------------------------------------------------------------------
@@ -1053,6 +1057,11 @@ function updateDavidStage1UI() {
     if (hungerRow) hungerRow.classList.add('hidden');
     defRow.classList.remove('hidden');
     defRow.classList.add('flex');
+    const menuBtn = document.getElementById('hud-menu-btn');
+    if (menuBtn) {
+      const r = menuBtn.getBoundingClientRect();
+      if (r && r.bottom > 0) defRow.style.top = `${Math.max(42, Math.ceil(r.bottom) + 8)}px`;
+    }
     defTimer.textContent = `${Math.max(0, davidDefenseTimer).toFixed(1)}초`;
     if (lossBadge) {
       lossBadge.textContent = `🐑 사라진 양: ${davidLostSheepCount}/${davidMaxAllowedLost}마리`;
@@ -1777,6 +1786,7 @@ function startDavidStage1AnointCutscene() {
   document.getElementById('context-action-btn').classList.add('hidden');
   document.getElementById('puzzle-build-btn').classList.add('hidden');
   document.getElementById('hud-mission-box').classList.add('hidden');
+  if (typeof hideMissionGuideBubbleImmediately === 'function') hideMissionGuideBubbleImmediately();
   if (targetObject && targetObject.label) targetObject.label.style.opacity = '0';
   if (targetObject && targetObject.spotRing) targetObject.spotRing.visible = false;
 
@@ -2194,6 +2204,7 @@ window.advanceDavidStage2Dialogue = function () {
     isPlaying = true;
     if (currentMode === 'timeattack') isTimeAttackActive = true;
     snapCameraToPlayer();
+    updateStageHUD();
     startStageBgm(2);
     showToast('🪨 시냇가에서 물맷돌 5개를 모두 모아야 조준창이 열립니다! 먼저 5개를 모아오세요!');
   }
@@ -2624,6 +2635,7 @@ function buildDavidStage2World() {
   }
   if (guideArrowGroup) guideArrowGroup.visible = (currentMode !== 'senior');
   snapCameraToPlayer();
+  davidOpeningState.active = true;
   updateStageHUD();
 
   startDavidStage2OpeningAndDialogue();
@@ -3011,6 +3023,7 @@ function startDavidStage2VictoryCutscene() {
   document.getElementById('context-action-btn').classList.add('hidden');
   document.getElementById('puzzle-build-btn').classList.add('hidden');
   document.getElementById('hud-mission-box').classList.add('hidden');
+  if (typeof hideMissionGuideBubbleImmediately === 'function') hideMissionGuideBubbleImmediately();
   if (targetObject && targetObject.label) targetObject.label.style.opacity = '0';
 
   davidGoliathHazards.forEach(hz => {
