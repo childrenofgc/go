@@ -476,8 +476,9 @@ function startStageBgm(st) {
 
 function stopStageBgm() {
   if (bgmTimeout) { clearTimeout(bgmTimeout); bgmTimeout = null; }
-  if (typeof window.stopMiracleOpenWorldOgg === 'function' && (!isPlaying || isMenuBgmActive || !bgmEnabled)) {
-    window.stopMiracleOpenWorldOgg(isMenuBgmActive || !isPlaying);
+  // 영상 재생 중(__ep4OpeningVideoActive)일 때도 오픈월드 BGM을 확실히 정지하도록 조건 추가
+  if (typeof window.stopMiracleOpenWorldOgg === 'function' && (!isPlaying || isMenuBgmActive || !bgmEnabled || window.__ep4OpeningVideoActive)) {
+    window.stopMiracleOpenWorldOgg(isMenuBgmActive || !isPlaying || window.__ep4OpeningVideoActive);
   }
 }
 
@@ -2224,7 +2225,7 @@ function buildEndingWorld() {
   }
 }
 
-const GOOGLE_SHEET_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbzDNecO6FM2ZXkdGwhp_XSR3wJ3fX17a029betjsm8sMOWgqeHWsB2rRMtROmB1NUQ-/exec';
+const GOOGLE_SHEET_WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbxAcGwFLUxFM-BLZGQpUjWMRhQklklXFXdGILvD-SbMgvGulElPgJ0ynyabd-tsC5ex/exec';
 
 function getAndIncrementPlayCount(playerName) {
   const key = 'bible_game_plays_' + (playerName || 'guest');
@@ -2340,7 +2341,7 @@ function ensureGlobalCameraViewToggleUI() {
     if (window.globalCameraViewMode === 'default') {
       btn.innerHTML = '<span class="text-sm leading-none">🎥</span><span id="global-camera-view-label" class="text-[9px] text-sky-200 mt-0.5 leading-none">기본</span>';
     } else if (window.globalCameraViewMode === 'topdown') {
-      btn.innerHTML = '<span class="text-sm leading-none">🚁</span><span id="global-camera-view-label" class="text-[9px] text-indigo-300 mt-0.5 leading-none">탑다운</span>';
+      btn.innerHTML = '<span class="text-sm leading-none">🚁</span><span id="global-camera-view-label" class="text-[9px] text-indigo-300 mt-0.5 leading-none">내려봄</span>';
     } else if (window.globalCameraViewMode === 'fps') {
       btn.innerHTML = '<span class="text-sm leading-none">👀</span><span id="global-camera-view-label" class="text-[9px] text-emerald-300 mt-0.5 leading-none">1인칭</span>';
     } else {
@@ -2415,9 +2416,9 @@ window.cycleGlobalCameraViewMode = function () {
     setPlayerMeshVisibilityForCamera(false);
     showToast('🎥 카메라: [기본 시점]');
   } else if (window.globalCameraViewMode === 'topdown') {
-    btn.innerHTML = '<span class="text-sm leading-none">🚁</span><span id="global-camera-view-label" class="text-[9px] text-indigo-300 mt-0.5 leading-none">탑다운</span>';
+    btn.innerHTML = '<span class="text-sm leading-none">🚁</span><span id="global-camera-view-label" class="text-[9px] text-indigo-300 mt-0.5 leading-none">내려봄</span>';
     setPlayerMeshVisibilityForCamera(false);
-    showToast('🚁 카메라: [탑다운 시점]');
+    showToast('🚁 카메라: [내려봄 시점]');
   } else if (window.globalCameraViewMode === 'fps') {
     btn.innerHTML = '<span class="text-sm leading-none">👀</span><span id="global-camera-view-label" class="text-[9px] text-emerald-300 mt-0.5 leading-none">1인칭</span>';
     setPlayerMeshVisibilityForCamera(true);
@@ -2507,59 +2508,68 @@ function applyCoreCameraByMode() {
 
   // [에피소드 4 스테이지 2·3 기본 시점 고정 + 스테이지 2 시작 버드뷰 언덕 스윕 인트로]
   const isMiracleStage2Or3Locked = (
-    currentEpisode === 'miracle' &&
-    typeof miracleSubMode !== 'undefined' &&
-    (miracleSubMode === 'main2_loaves' || miracleSubMode === 'main3_cross')
-  );
-  if (isMiracleStage2Or3Locked) {
-    setPlayerMeshVisibilityForCamera(false);
-    const st = (typeof miracleActiveMiniState !== 'undefined') ? miracleActiveMiniState : null;
-    const defDist = (currentStage === 1 || currentStage === 4) ? 11.5 : 8.4;
-    const defH = (currentStage === 1 || currentStage === 4) ? 8.5 : 7.0;
-    const defCamX = playerPos.x + sinY * defDist;
-    const defCamY = playerPos.y + defH;
-    const defCamZ = playerPos.z + cosY * defDist;
+        currentEpisode === 'miracle' &&
+        typeof miracleSubMode !== 'undefined' &&
+        (miracleSubMode === 'main2_loaves' || miracleSubMode === 'main3_cross')
+      );
+      if (isMiracleStage2Or3Locked) {
+        const st = (typeof miracleActiveMiniState !== 'undefined') ? miracleActiveMiniState : null;
 
-    if (miracleSubMode === 'main2_loaves' && st && st.introFlyover && st.introFlyover.active) {
-      const dur = Math.max(0.1, st.introFlyover.duration || 3.4);
-      const u = Math.max(0, Math.min(1, (st.introFlyover.timer || 0) / dur));
-      const ease = (x) => x * x * (3 - 2 * x);
-      if (u < 0.62) {
-        // 1구간: 높은 버드뷰로 벳새다 언덕과 48+ 군중·예수님을 천천히 한 바퀴 훑어보기!
-        const s = ease(u / 0.62);
-        const angle = -0.65 + s * 1.30;
-        const bx = Math.sin(angle) * 20.0;
-        const by = 30.0 - s * 4.5;
-        const bz = -10.0 + Math.cos(angle) * 22.0;
-        camera.position.set(bx, by, bz);
-        camera.lookAt(0, 4.5 + s * 2.5, -16.0 - s * 4.0);
-      } else {
-        // 2구간: 버드뷰 종료점에서 캐릭터 기본 시점(3인칭 후방)으로 매끄럽게 하강 착륙!
-        const d = ease((u - 0.62) / 0.38);
-        const endAngle = 0.65;
-        const startBx = Math.sin(endAngle) * 20.0;
-        const startBy = 25.5;
-        const startBz = -10.0 + Math.cos(endAngle) * 22.0;
-        camera.position.set(
-          startBx + (defCamX - startBx) * d,
-          startBy + (defCamY - startBy) * d,
-          startBz + (defCamZ - startBz) * d
-        );
-        camera.lookAt(
-          playerPos.x * d,
-          7.0 + (playerPos.y + 1.5 - 7.0) * d,
-          -20.0 + (playerPos.z - (-20.0)) * d
-        );
+        if (miracleSubMode === 'main2_loaves' && st && st.introFlyover && st.introFlyover.active) {
+          setPlayerMeshVisibilityForCamera(false);
+          
+          // 착륙할 목표점(새로운 기본 카메라 좌표) 계산
+          const aspect = window.innerWidth / Math.max(1, window.innerHeight);
+          const isPortrait = aspect < 1.0;
+          const distMult = isPortrait ? 1.0 : 0.85;
+          const hMult = isPortrait ? 0.55 : 0.45;
+          const finalDist = 11.5 * distMult;
+          const finalH = 8.5 * hMult;
+
+          const targetLookY = playerPos.y + 2.4;
+          const defCamX = playerPos.x + sinY * finalDist;
+          const defCamY = playerPos.y + finalH;
+          const defCamZ = playerPos.z + cosY * finalDist;
+
+          const dur = Math.max(0.1, st.introFlyover.duration || 3.4);
+          const u = Math.max(0, Math.min(1, (st.introFlyover.timer || 0) / dur));
+          const ease = (x) => x * x * (3 - 2 * x);
+          
+          if (u < 0.62) {
+            // 1구간: 높은 버드뷰로 벳새다 언덕 훑어보기
+            const s = ease(u / 0.62);
+            const angle = -0.65 + s * 1.30;
+            const bx = Math.sin(angle) * 20.0;
+            const by = 30.0 - s * 4.5;
+            const bz = -10.0 + Math.cos(angle) * 22.0;
+            camera.position.set(bx, by, bz);
+            camera.lookAt(0, 4.5 + s * 2.5, -16.0 - s * 4.0);
+          } else {
+            // 2구간: 버드뷰 종료점에서 새로운 기본 시점 카메라로 매끄럽게 하강 착륙!
+            const d = ease((u - 0.62) / 0.38);
+            const endAngle = 0.65;
+            const startBx = Math.sin(endAngle) * 20.0;
+            const startBy = 25.5;
+            const startBz = -10.0 + Math.cos(endAngle) * 22.0;
+            camera.position.set(
+              startBx + (defCamX - startBx) * d,
+              startBy + (defCamY - startBy) * d,
+              startBz + (defCamZ - startBz) * d
+            );
+            camera.lookAt(
+              playerPos.x * d,
+              7.0 + (targetLookY - 7.0) * d,
+              -20.0 + (playerPos.z - (-20.0)) * d
+            );
+          }
+          return; // 인트로 컷신 중일 때만 여기서 종료
+        }
+        
+        // 인트로가 끝나거나 스테이지 3일 경우, 과거 시점 고정 코드를 타지 않고
+        // 자연스럽게 함수 하단의 '새로운 기본 카메라' 로직으로 연결되도록 통과시킵니다.
       }
-      return;
-    }
 
-    camera.position.set(defCamX, defCamY, defCamZ);
-    camera.lookAt(playerPos.x, playerPos.y + 1.5, playerPos.z);
-    return;
-  }
-
-  // [에피소드 4 오픈월드 시작 시네마틱 탑뷰 조망 → 마을 상공 통과 → 캐릭터 시선 하강 연출]
+  // [에피소드 4 오픈월드 시작 시네마틱 탑뷰 조망 → 마을 상공 270도 회전 → 캐릭터 시선 하강 연출]
   const isMiracleOwFlyover = (
     currentEpisode === 'miracle' &&
     typeof miracleSubMode !== 'undefined' &&
@@ -2570,11 +2580,13 @@ function applyCoreCameraByMode() {
   if (isMiracleOwFlyover) {
     setPlayerMeshVisibilityForCamera(false);
     const fl = window.miracleOpenWorldIntroFlyover;
-    const dur = Math.max(0.1, fl.duration || 5.4);
+    const dur = Math.max(0.1, fl.duration || 8.5); // 270도 회전에 맞춰 시간 연장
     const u = Math.max(0, Math.min(1, (fl.timer || 0) / dur));
-    const ease = (x) => x * x * (3 - 2 * x);
+    
+    // 시작과 끝을 극도로 부드럽게 가감속하는 Cubic Easing 함수 적용
+    const easeInOutCubic = (x) => x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
 
-    // 최종 도착할 캐릭터 시점 목표 좌표 (기본 / 1인칭 / 올려다보기 어느 모드든 자연스럽게 연결!)
+    // 최종 도착할 캐릭터 시점 목표 좌표 계산
     let endCamX, endCamY, endCamZ, endLookX, endLookY, endLookZ;
     if (window.globalCameraViewMode === 'fps') {
       endCamX = playerPos.x - sinY * 0.15;
@@ -2584,7 +2596,7 @@ function applyCoreCameraByMode() {
       endLookY = playerPos.y + 2.12;
       endLookZ = endCamZ - cosY * 18.0;
     } else if (window.globalCameraViewMode === 'lookup') {
-      const lowDist = 5.4;
+      const lowDist = 6.2;
       endCamX = playerPos.x + sinY * lowDist;
       endCamZ = playerPos.z + cosY * lowDist;
       const gH = Math.max(playerPos.y, getBaseGroundHeight(endCamX, endCamZ));
@@ -2592,52 +2604,62 @@ function applyCoreCameraByMode() {
       endLookX = playerPos.x - sinY * 8.0;
       endLookY = playerPos.y + 5.2;
       endLookZ = playerPos.z - cosY * 8.0;
-    } else {
+    } else if (window.globalCameraViewMode === 'topdown') {
       endCamX = playerPos.x + sinY * 11.5;
       endCamY = playerPos.y + 8.5;
       endCamZ = playerPos.z + cosY * 11.5;
       endLookX = playerPos.x;
       endLookY = playerPos.y + 1.5;
       endLookZ = playerPos.z;
+    } else {
+      const aspect = window.innerWidth / Math.max(1, window.innerHeight);
+      const isPortrait = aspect < 1.0;
+      const distMult = isPortrait ? 1.0 : 0.85;
+      const hMult = isPortrait ? 0.55 : 0.45;
+      endCamX = playerPos.x + sinY * (11.5 * distMult);
+      endCamY = playerPos.y + (8.5 * hMult);
+      endCamZ = playerPos.z + cosY * (11.5 * distMult);
+      endLookX = playerPos.x;
+      endLookY = playerPos.y + 2.4;
+      endLookZ = playerPos.z;
     }
 
-    if (u < 0.28) {
-      // 1구간: 높은 탑뷰에서 예루살렘 성전~갈릴리 전체 오픈월드를 한눈에 조망!
-      const s = ease(u / 0.28);
-      const px = 6.0 + (-4.0 - 6.0) * s;
-      const py = 64.0 + (48.0 - 64.0) * s;
-      const pz = 68.0 + (28.0 - 68.0) * s;
-      const lx = 0.0;
-      const ly = 2.0 - s * 0.5;
-      const lz = 36.0 + (2.0 - 36.0) * s;
-      camera.position.set(px, py, pz);
-      camera.lookAt(lx, ly, lz);
-    } else if (u < 0.72) {
-      // 2구간: 탑뷰 고도를 유지하며 유대 마을 지붕 위와 광장·우물 상공을 쭉 가로질러 비행!
-      const s = ease((u - 0.28) / 0.44);
-      const px = -4.0 + (3.0 - (-4.0)) * s + Math.sin(s * Math.PI) * 9.5;
-      const py = 48.0 + (29.0 - 48.0) * s;
-      const pz = 28.0 + (-24.0 - 28.0) * s;
-      const lx = Math.sin(s * Math.PI) * 3.5;
-      const ly = 1.5;
-      const lz = 2.0 + (playerPos.z + 8.0 - 2.0) * s;
-      camera.position.set(px, py, pz);
-      camera.lookAt(lx, ly, lz);
-    } else {
-      // 3구간: 마을 상공에서 플레이어 캐릭터의 시선 위치로 매끄럽게 하강 착륙!
-      const d = ease((u - 0.72) / 0.28);
-      const startX = 3.0, startY = 29.0, startZ = -24.0;
-      const startLookX = 0.0, startLookY = 1.5, startLookZ = playerPos.z + 8.0;
-      camera.position.set(
-        startX + (endCamX - startX) * d,
-        startY + (endCamY - startY) * d,
-        startZ + (endCamZ - startZ) * d
-      );
-      camera.lookAt(
-        startLookX + (endLookX - startLookX) * d,
-        startLookY + (endLookY - startLookY) * d,
-        startLookZ + (endLookZ - startLookZ) * d
-      );
+    // 270도(1.5 Pi) 나선형 비행 궤적 연산 (구간 끊김 없는 완벽한 곡선)
+    const s = easeInOutCubic(u);
+    
+    // 시작 각도 설정: 270도를 시계방향으로 돌며 캐릭터 등 뒤 방향으로 일치시킴
+    const startAngle = Math.PI * 1.5; 
+    const revolveAngle = startAngle - (1.5 * Math.PI) * s; 
+    
+    // 비행 반경: 상공 65m 반경에서 캐릭터 중심점으로 서서히 좁혀짐
+    const radius = 65 * (1 - s); 
+    const flyY = playerPos.y + 55 * (1 - s) + endCamY * s;
+    
+    // 궤적의 중심점을 마을 중앙(0, -15)에서 캐릭터 현재 위치로 자연스럽게 이동
+    const centerX = 0 * (1 - s) + playerPos.x * s;
+    const centerZ = -15 * (1 - s) + playerPos.z * s;
+    
+    const flyX = centerX + Math.cos(revolveAngle) * radius;
+    const flyZ = centerZ + Math.sin(revolveAngle) * radius;
+
+    // 카메라를 부드럽게 최종 좌표로 수렴 (s가 1에 가까워질수록 목표 카메라 좌표에 100% 일치)
+    camera.position.set(
+      flyX * (1 - s) + endCamX * s,
+      flyY,
+      flyZ * (1 - s) + endCamZ * s
+    );
+
+    // 시선 처리: 마을 중앙을 넓게 내려다보다가 서서히 플레이어의 머리 방향으로 시선 고정
+    const lookX = 0 * (1 - s) + endLookX * s;
+    const lookY = 2.0 * (1 - s) + endLookY * s;
+    const lookZ = -15 * (1 - s) + endLookZ * s;
+    
+    camera.lookAt(lookX, lookY, lookZ);
+
+    // 플라이오버가 완전히 종료되었을 때 SKIP 버튼 숨김 처리
+    if (u >= 1) {
+      const skipWrap = document.getElementById('ep4-flyover-skip-wrap');
+      if (skipWrap) skipWrap.classList.add('hidden');
     }
     return;
   }
@@ -2677,23 +2699,24 @@ function applyCoreCameraByMode() {
     camera.lookAt(playerPos.x, playerPos.y + 1.5, playerPos.z);
     
   } else {
-    // [새로운 입체형 기본 카메라] 에피소드 4 전용 
-    setPlayerMeshVisibilityForCamera(false);
+    // [새로운 입체형 기본 카메라] 에피소드 4 기본 시점 (야외 반투명 연동 + 실내 부드러운 벽 보정)
+        setPlayerMeshVisibilityForCamera(false);
 
-    const aspect = window.innerWidth / Math.max(1, window.innerHeight);
-    const isPortrait = aspect < 1.0;
-    const isIndoor = (currentStage === 2 || currentStage === 3) && currentEpisode !== 'miracle';
+        const aspect = window.innerWidth / Math.max(1, window.innerHeight);
+        const isPortrait = aspect < 1.0;
+        const isIndoor = (currentStage === 2 || currentStage === 3) && currentEpisode !== 'miracle';
 
-    const baseDist = (currentStage === 1 || currentStage === 4) ? 11.5 : (currentEpisode === 'exodus' ? 11.2 : 8.4);
-    const baseH = (currentStage === 1 || currentStage === 4) ? 8.5 : (currentEpisode === 'exodus' ? 8.0 : 7.0);
+        // 에피소드 4는 스테이지에 상관없이 통합된 11.5 / 8.5 기준 거리를 사용하도록 수정
+        const baseDist = (currentEpisode === 'miracle') ? 11.5 : ((currentStage === 1 || currentStage === 4) ? 11.5 : (currentEpisode === 'exodus' ? 11.2 : 8.4));
+        const baseH = (currentEpisode === 'miracle') ? 8.5 : ((currentStage === 1 || currentStage === 4) ? 8.5 : (currentEpisode === 'exodus' ? 8.0 : 7.0));
 
     let distMult = 1.0, hMult = 1.0;
 
     if (isPortrait) {
-      if (isIndoor) { distMult = 0.7; hMult = 0.45; } 
+      if (isIndoor) { distMult = 0.7; hMult = 0.45; }
       else { distMult = 1.0; hMult = 0.55; }
     } else {
-      distMult = 0.85; hMult = 0.45;       
+      distMult = 0.85; hMult = 0.45;
     }
 
     const finalDist = baseDist * distMult;
@@ -2707,33 +2730,45 @@ function applyCoreCameraByMode() {
     );
 
     const dirToCam = new THREE.Vector3().subVectors(idealCamPos, lookTarget);
-    const targetDist = dirToCam.length();
+    const fullTargetDist = dirToCam.length();
     dirToCam.normalize();
 
-    if (typeof raycaster !== 'undefined' && typeof wallMeshes !== 'undefined' && wallMeshes.length > 0) {
+    let desiredDist = fullTargetDist;
+
+    // 좁은 실내(방주 내부 등)에서만 벽 충돌 보정을 적용하고, 야외 오픈월드는 기존 반투명(updateWallTransparency)에 맡겨 떨림을 원천 차단
+    if (isIndoor && typeof raycaster !== 'undefined' && typeof wallMeshes !== 'undefined' && wallMeshes.length > 0) {
       raycaster.set(lookTarget, dirToCam);
+      raycaster.far = fullTargetDist;
       const hits = raycaster.intersectObjects(wallMeshes, true);
-      
-      let closestDist = targetDist;
+
+      let closestDist = fullTargetDist;
       for (let i = 0; i < hits.length; i++) {
         if (hits[i].distance < closestDist && !(hits[i].object.userData && hits[i].object.userData._isGroundSurface)) {
           closestDist = hits[i].distance;
         }
       }
 
-      if (closestDist < targetDist) {
-        const safeDist = Math.max(0.5, closestDist - 0.3);
-        idealCamPos.copy(lookTarget).add(dirToCam.multiplyScalar(safeDist));
+      if (closestDist < fullTargetDist) {
+        desiredDist = Math.max(1.2, closestDist - 0.35);
       }
     }
 
-    camera.position.copy(idealCamPos);
+    // 거리 변화 시 순간 이동 대신 부드러운 보간 적용
+    if (typeof window._smoothDefaultCamDist !== 'number' || window._smoothDefaultCamDist <= 0) {
+      window._smoothDefaultCamDist = desiredDist;
+    } else {
+      const lerpRate = desiredDist < window._smoothDefaultCamDist ? 0.32 : 0.14;
+      window._smoothDefaultCamDist += (desiredDist - window._smoothDefaultCamDist) * lerpRate;
+    }
+
+    camera.position.copy(lookTarget).add(dirToCam.multiplyScalar(window._smoothDefaultCamDist));
     camera.lookAt(lookTarget);
   }
 }
 
 function snapCameraToPlayer() {
   if (!playerGroup || !camera) return;
+  window._smoothDefaultCamDist = null;
   ensureGlobalCameraViewToggleUI();
   playerGroup.position.copy(playerPos);
   applyCoreCameraByMode();
@@ -2769,7 +2804,7 @@ function startVoxelGame(mode, targetStage = 1, fromMapSelect = false) {
 
   rebuildPlayerAppearance();
   
-  // 에피소드 1~3은 '탑다운', 에피소드 4는 '기본' 시점으로 자동 설정
+  // 에피소드 1~3은 '내려봄', 에피소드 4는 '기본' 시점으로 자동 설정
   window.globalCameraViewMode = (currentEpisode === 'miracle') ? 'default' : 'topdown';
 
   ensureGlobalCameraViewToggleUI();
@@ -2780,7 +2815,7 @@ function startVoxelGame(mode, targetStage = 1, fromMapSelect = false) {
     if (window.globalCameraViewMode === 'default') {
       viewBtn.innerHTML = '<span class="text-sm leading-none">🎥</span><span id="global-camera-view-label" class="text-[9px] text-sky-200 mt-0.5 leading-none">기본</span>';
     } else {
-      viewBtn.innerHTML = '<span class="text-sm leading-none">🚁</span><span id="global-camera-view-label" class="text-[9px] text-indigo-300 mt-0.5 leading-none">탑다운</span>';
+      viewBtn.innerHTML = '<span class="text-sm leading-none">🚁</span><span id="global-camera-view-label" class="text-[9px] text-indigo-300 mt-0.5 leading-none">내려봄</span>';
     }
   }
 
@@ -3016,7 +3051,15 @@ function updateStageHUD() {
 
   const isHudVisible = !document.getElementById('hud-top').classList.contains('hidden');
   const stageKey = `${currentEpisode}_${currentStage}`;
-  if (isHudVisible && lastSpokenStageKey !== stageKey) {
+  // 에피소드 4 시작 시 영상, 플라이오버 연출이 진행 중이거나 억제(suppressed) 상태인지 완벽 확인
+  const isEp4IntroActive = (currentEpisode === 'miracle' && currentStage === 1 && (
+    window.__ep4OpeningVideoActive || 
+    (window.miracleOpenWorldIntroFlyover && window.miracleOpenWorldIntroFlyover.active) ||
+    (window.MiracleGuideUI && window.MiracleGuideUI.suppressedDuringIntro)
+  ));
+
+  // 인트로가 모두 끝났을 때만 음성을 출력하도록 조건 추가
+  if (isHudVisible && lastSpokenStageKey !== stageKey && !isEp4IntroActive) {
     lastSpokenStageKey = stageKey;
     speakText(missionText.textContent);
   }

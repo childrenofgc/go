@@ -14,13 +14,31 @@ window.miracleOpenWorldIntroFlyover = {
 };
 
 window.startMiracleOpenWorldTopViewFlyover = function (onFinish) {
+  const watchedCount = window.getEp4OpeningVideoWatchCount();
+  
   window.miracleOpenWorldIntroFlyover = {
     active: true,
     timer: 0,
-    duration: 5.4,
+    duration: 8.5, // 270도 회전에 맞춰 시간 연장
     doneCallback: (typeof onFinish === 'function') ? onFinish : null
   };
+  
+  // 2회차 이상(영상 시청 기록 있음)일 때만 연출 SKIP 버튼 노출!
+  if (watchedCount >= 1) {
+    const skipWrap = document.getElementById('ep4-flyover-skip-wrap');
+    if (skipWrap) skipWrap.classList.remove('hidden');
+  }
+  
   if (typeof applyCoreCameraByMode === 'function') applyCoreCameraByMode();
+};
+
+window.skipMiracleOpenWorldFlyover = function () {
+  if (window.miracleOpenWorldIntroFlyover && window.miracleOpenWorldIntroFlyover.active) {
+    // 시간을 끝까지 강제로 당겨 부드럽게 즉시 착륙하도록 처리
+    window.miracleOpenWorldIntroFlyover.timer = window.miracleOpenWorldIntroFlyover.duration; 
+    const skipWrap = document.getElementById('ep4-flyover-skip-wrap');
+    if (skipWrap) skipWrap.classList.add('hidden');
+  }
 };
 
 let miracleWorldMissionObjects = [];
@@ -6157,11 +6175,15 @@ function buildMiracleOpenWorld(restoreSavedPos = false) {
   updateMiracleNotebookHudBadge();
   updateStageHUD();
 
-  showToast(
-    miracleIsPostResurrection
-      ? '✨ 부활 이후의 갈릴리와 예루살렘 오픈월드입니다! 엠마오·도마·바닷가 아침식사를 체험하고 감람산으로 오르세요!'
-      : '🗺️ 성경 오픈월드에 오신 것을 환영합니다! 빛기둥이 켜진 순서(1→2→3→4)대로 메인 스테이지를 진행해 보세요!'
-  );
+  // 인트로 연출(영상+플라이오버)이 예정된 처음 시작 시점에는 토스트 출력을 생략 (연출이 모두 끝난 후 출력!)
+  const isIntroPending = (window.MiracleGuideUI && window.MiracleGuideUI.suppressedDuringIntro);
+  if (!isIntroPending) {
+    showToast(
+      miracleIsPostResurrection
+        ? '✨ 부활 이후의 갈릴리와 예루살렘 오픈월드입니다! 엠마오·도마·바닷가 아침식사를 체험하고 감람산으로 오르세요!'
+        : '🗺️ 성경 오픈월드에 오신 것을 환영합니다! 빛기둥이 켜진 순서(1→2→3→4)대로 메인 스테이지를 진행해 보세요!'
+    );
+  }
 
   if (typeof playMiracleOpenWorldOgg === 'function') {
     playMiracleOpenWorldOgg();
@@ -6193,10 +6215,17 @@ function updateMiracleOpenWorldFrame(dt, now) {
   if (window.miracleOpenWorldIntroFlyover && window.miracleOpenWorldIntroFlyover.active) {
     window.miracleOpenWorldIntroFlyover.timer += dt;
     if (typeof applyCoreCameraByMode === 'function') applyCoreCameraByMode();
-    if (window.miracleOpenWorldIntroFlyover.timer >= (window.miracleOpenWorldIntroFlyover.duration || 5.4)) {
+    
+    // 기본 시간을 5.4초에서 8.5초로 변경
+    if (window.miracleOpenWorldIntroFlyover.timer >= (window.miracleOpenWorldIntroFlyover.duration || 8.5)) {
       const doneCb = window.miracleOpenWorldIntroFlyover.doneCallback;
       window.miracleOpenWorldIntroFlyover.active = false;
       window.miracleOpenWorldIntroFlyover.doneCallback = null;
+      
+      // 연출이 자연스럽게 종료되면 SKIP 버튼도 함께 숨김 처리
+      const skipWrap = document.getElementById('ep4-flyover-skip-wrap');
+      if (skipWrap) skipWrap.classList.add('hidden');
+
       if (typeof snapCameraToPlayer === 'function') snapCameraToPlayer();
       if (typeof doneCb === 'function') doneCb();
     }

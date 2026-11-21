@@ -288,6 +288,7 @@ const MIRACLE_BGM_CANDIDATES = [
 ];
 
 function canPlayMiracleOpenWorldOgg() {
+  if (window.__ep4OpeningVideoActive) return false; // 추가: 영상 재생 중에는 터치해도 BGM 켜짐 원천 차단
   if (typeof currentEpisode !== 'undefined' && currentEpisode !== 'miracle') return false;
   if (miracleSubMode !== 'openworld') return false;
   if (typeof isPlaying !== 'undefined' && !isPlaying) return false;
@@ -4708,7 +4709,7 @@ window.playEp4OpeningVideoThen = function (onComplete) {
   if (playFallbackBtn) playFallbackBtn.classList.add('hidden');
   if (statusTxt) {
     statusTxt.textContent = canSkipNow
-      ? '🎬 에피소드 4 오프닝 영상 (2회차 이상 · 우측 상단 SKIP 가능)'
+      ? '🎬 에피소드 4 오프닝 영상'
       : '🎬 에피소드 4 오프닝 영상이 재생 중입니다...';
   }
 
@@ -4716,7 +4717,7 @@ window.playEp4OpeningVideoThen = function (onComplete) {
   const ytId = _parseEp4YouTubeId(url);
   if (ytId) {
     const iframe = document.createElement('iframe');
-    iframe.className = 'w-full h-full border-0 rounded-2xl';
+    iframe.className = 'w-full h-full border-0 bg-black'; // rounded-2xl 제거하여 전체화면 핏 맞춤
     iframe.allow = 'autoplay; encrypted-media; fullscreen';
     iframe.allowFullscreen = true;
     iframe.src = `https://www.youtube.com/embed/${ytId}?autoplay=1&rel=0&playsinline=1&enablejsapi=1`;
@@ -4729,8 +4730,9 @@ window.playEp4OpeningVideoThen = function (onComplete) {
     }
   } else {
     const video = document.createElement('video');
-    video.className = 'w-full h-full object-contain rounded-2xl bg-black';
+    video.className = 'w-full h-full object-contain bg-black'; // rounded-2xl 제거
     video.src = url;
+    video.volume = 0.3; // 영상 볼륨 30%로 고정
     video.playsInline = true;
     video.autoplay = true;
     video.controls = false;
@@ -4773,6 +4775,19 @@ window.runEp4OpeningSequence = function () {
     if (typeof window.startMiracleOpenWorldTopViewFlyover === 'function') {
       window.startMiracleOpenWorldTopViewFlyover(() => {
         MiracleGuideUI.suppressedDuringIntro = false;
+        
+        // 오픈월드 환영 메시지를 플라이오버가 완전히 끝난 이 시점에 출력!
+        if (typeof showToast === 'function') {
+          showToast(
+            miracleIsPostResurrection
+              ? '✨ 부활 이후의 갈릴리와 예루살렘 오픈월드입니다! 엠마오·도마·바닷가 아침식사를 체험하고 감람산으로 오르세요!'
+              : '🗺️ 성경 오픈월드에 오신 것을 환영합니다! 빛기둥이 켜진 순서(1→2→3→4)대로 메인 스테이지를 진행해 보세요!'
+          );
+        }
+
+        // 탑뷰 조망 연출이 끝나고 플레이어에게 조작권이 넘어온 순간 음성 안내 트리거!
+        if (typeof updateStageHUD === 'function') updateStageHUD(); 
+        
         if (MiracleGuideUI.activeStageInfo && MiracleGuideUI.activeStageInfo.text) {
           MiracleGuideUI.lastAutoKey = MiracleGuideUI.activeStageInfo.key;
           window.showMiracleGuideBubble({
@@ -4786,6 +4801,18 @@ window.runEp4OpeningSequence = function () {
       });
     } else {
       MiracleGuideUI.suppressedDuringIntro = false;
+
+      if (typeof showToast === 'function') {
+        showToast(
+          miracleIsPostResurrection
+            ? '✨ 부활 이후의 갈릴리와 예루살렘 오픈월드입니다! 엠마오·도마·바닷가 아침식사를 체험하고 감람산으로 오르세요!'
+            : '🗺️ 성경 오픈월드에 오신 것을 환영합니다! 빛기둥이 켜진 순서(1→2→3→4)대로 메인 스테이지를 진행해 보세요!'
+        );
+      }
+      
+      // 플라이오버 연출이 생략되었을 경우에도 음성 안내 정상 트리거!
+      if (typeof updateStageHUD === 'function') updateStageHUD(); 
+      
       if (MiracleGuideUI.activeStageInfo && MiracleGuideUI.activeStageInfo.text) {
         MiracleGuideUI.lastAutoKey = MiracleGuideUI.activeStageInfo.key;
         window.showMiracleGuideBubble({
@@ -4895,19 +4922,31 @@ function ensureMiracleCustomUI() {
                   class="px-3 py-1 rounded-full bg-amber-200 hover:bg-amber-300 text-amber-950 font-jua text-[11px] shrink-0 shadow">확인 ▶</button>
         </div>
       </div>
+      
+      <!-- 오픈월드 조망(플라이오버) 스킵 버튼 -->
+      <div id="ep4-flyover-skip-wrap" class="hidden fixed top-20 right-4 sm:right-6 z-50 pointer-events-auto">
+        <button type="button" onclick="if(window.skipMiracleOpenWorldFlyover) window.skipMiracleOpenWorldFlyover();"
+                class="mc-btn px-4 py-2 rounded-full bg-slate-900/80 border border-amber-300 text-amber-200 font-jua text-xs sm:text-sm shadow-lg backdrop-blur-sm">
+          ⏭️ 조망 연출 SKIP
+        </button>
+      </div>
 
-      <!-- 에피소드 4 오프닝 영상 모달 (1회차 전체 재생 · 2회차부터 우측 상단 SKIP 버튼 활성화) -->
-      <div id="ep4-opening-video-modal" class="hidden pointer-events-auto fixed inset-0 z-50 bg-black/95 flex-col items-center justify-center p-3 sm:p-6">
-        <div class="w-full max-w-4xl flex items-center justify-between mb-2">
-          <span id="ep4-opening-video-status" class="font-jua text-xs sm:text-sm text-amber-200">🎬 에피소드 4 오프닝 영상</span>
+      <!-- 에피소드 4 오프닝 영상 모달 (전체화면 꽉 채우기 + SKIP 버튼 오버레이) -->
+      <div id="ep4-opening-video-modal" class="hidden pointer-events-auto fixed inset-0 z-50 bg-black flex-col items-center justify-center">
+        
+        <!-- 상단 오버레이 UI (상태 텍스트 & SKIP 버튼) -->
+        <div class="absolute top-0 inset-x-0 p-4 sm:p-6 flex items-center justify-between z-20 bg-gradient-to-b from-black/80 to-transparent">
+          <span id="ep4-opening-video-status" class="font-jua text-xs sm:text-sm text-amber-200 drop-shadow-md">🎬 에피소드 4 오프닝 영상</span>
           <button id="ep4-opening-video-skip-btn" type="button"
-                  class="hidden mc-btn px-4 py-1.5 rounded-full bg-amber-400 hover:bg-amber-300 text-slate-950 font-jua text-xs sm:text-sm shadow-lg">
+                  class="hidden mc-btn px-5 py-2 rounded-full bg-amber-400 hover:bg-amber-300 text-slate-950 font-jua text-sm sm:text-base shadow-lg">
             ⏭️ SKIP
           </button>
         </div>
-        <div id="ep4-opening-video-slot" class="w-full max-w-4xl aspect-video bg-slate-950 rounded-2xl border-2 border-amber-400/60 overflow-hidden shadow-2xl flex items-center justify-center"></div>
+
+        <div id="ep4-opening-video-slot" class="w-full h-full bg-black flex items-center justify-center relative z-10"></div>
+        
         <button id="ep4-opening-video-play-btn" type="button"
-                class="hidden mt-3 mc-btn px-6 py-2.5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-white font-jua text-sm sm:text-base shadow-xl">
+                class="hidden absolute z-30 mc-btn px-6 py-2.5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-white font-jua text-sm sm:text-base shadow-xl">
           ▶ 오프닝 영상 재생하기
         </button>
       </div>
@@ -5405,6 +5444,8 @@ function hideAllMiracleCustomUI() {
   const sowerWrap = document.getElementById('miracle-sower-btn-wrap');
   const bfUi = document.getElementById('miracle-breakfast-ui');
   const flareLayer = document.getElementById('miracle-sun-flare-layer');
+  const flySkip = document.getElementById('ep4-flyover-skip-wrap'); // 추가
+  if (flySkip) flySkip.classList.add('hidden');                     // 추가
   if (leftHud) leftHud.classList.add('hidden');
   if (msBox) msBox.classList.add('hidden');
   if (guideBtn) guideBtn.classList.add('hidden');
