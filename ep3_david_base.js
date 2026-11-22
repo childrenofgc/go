@@ -794,6 +794,7 @@ function runDavidBlackoutSequence(slides, onComplete) {
   const prevTimeAttack = isTimeAttackActive;
   isPlaying = false;
   isTimeAttackActive = false;
+  if (typeof setInGameHudControlsVisible === 'function') setInGameHudControlsVisible(false);
 
   overlay.classList.remove('hidden');
   overlay.classList.add('flex');

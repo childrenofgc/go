@@ -2751,6 +2751,7 @@ function startDavidEndingBlackoutAndCert() {
     ],
     () => {
       isPlaying = true;
+      if (typeof setInGameHudControlsVisible === 'function') setInGameHudControlsVisible(true);
       joyX = 0;
       joyY = 0;
       keys = {};

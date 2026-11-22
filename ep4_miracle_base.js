@@ -4,7 +4,7 @@
 // - 확장된 오픈월드 지형 고도 계산기(넓어진 골고다 언덕 포함) 및 소프트 로우 폴리곤 자연물 팩토리
 // =========================================================================
 window.__GAME_BUILD_VERSIONS__ = window.__GAME_BUILD_VERSIONS__ || {};
-window.__GAME_BUILD_VERSIONS__.ep4_base = '20261121_v15';
+window.__GAME_BUILD_VERSIONS__.ep4_base = '20261122_v16';
 
 // =========================================================================
 // 🎬 [에피소드 4 오프닝 영상 주소 설정]
@@ -4422,10 +4422,11 @@ window.playEp4OpeningVideoThen = function (onComplete) {
   }
 
   window.__ep4OpeningVideoActive = true;
+  if (typeof setInGameHudControlsVisible === 'function') setInGameHudControlsVisible(false);
   if (typeof stopStageBgm === 'function') stopStageBgm();
 
   const watchedCount = window.getEp4OpeningVideoWatchCount();
-  const canSkipNow = watchedCount >= 1; // 1회차: SKIP 숨김 · 2회차부터 SKIP 버튼 표시!
+  const canSkipNow = watchedCount >= 1; // 1회차: 건너뛰기 숨김 · 2회차부터 건너뛰기 버튼 표시!
   let finished = false;
   const finishOnce = (markWatched = true) => {
     if (finished) return;
@@ -4500,61 +4501,50 @@ window.playEp4OpeningVideoThen = function (onComplete) {
 window.runEp4OpeningSequence = function () {
   MiracleGuideUI.suppressedDuringIntro = true;
   MiracleGuideUI.lastAutoKey = '';
+  if (typeof setInGameHudControlsVisible === 'function') setInGameHudControlsVisible(false);
+
+  const onEnterPlayableOpenWorld = () => {
+    MiracleGuideUI.suppressedDuringIntro = false;
+    // 조망 연출이 끝나고 캐릭터 시점에서 본격 시작할 때 조이스틱·메뉴·정보창 인터페이스 표시!
+    if (typeof setInGameHudControlsVisible === 'function') setInGameHudControlsVisible(true);
+    if (typeof updateMiracleNotebookHudBadge === 'function') updateMiracleNotebookHudBadge();
+
+    // 최초 1회차 플레이어라면 아기자기한 인터페이스 튜토리얼 먼저 실행 (종료 시 미션 말풍선 자동 출력!)
+    const startedTutorial = (typeof window.maybeStartAutoInterfaceTutorial === 'function')
+      ? window.maybeStartAutoInterfaceTutorial('miracle', { resumePlaying: true })
+      : false;
+
+    if (typeof showToast === 'function' && !startedTutorial) {
+      showToast(
+        miracleIsPostResurrection
+          ? '✨ 부활 이후의 갈릴리와 예루살렘 오픈월드입니다! 엠마오·도마·바닷가 아침식사를 체험하고 감람산으로 오르세요!'
+          : '🗺️ 성경 오픈월드에 오신 것을 환영합니다! 빛기둥이 켜진 순서(1→2→3→4)대로 메인 스테이지를 진행해 보세요!'
+      );
+    }
+
+    // HUD 수치 동기화 (튜토리얼 진행 중이면 말풍선·음성은 튜토리얼 종료 직후 자동 출력!)
+    if (typeof updateStageHUD === 'function') updateStageHUD();
+
+    if (!startedTutorial && !MiracleGuideUI.isBubbleOpen && MiracleGuideUI.activeStageInfo && MiracleGuideUI.activeStageInfo.text) {
+      MiracleGuideUI.lastAutoKey = MiracleGuideUI.activeStageInfo.key;
+      window.showMiracleGuideBubble({
+        title: `💬 ${MiracleGuideUI.activeStageInfo.title || '탐험 시작!'}`,
+        text: MiracleGuideUI.activeStageInfo.text,
+        progressText: MiracleGuideUI.activeStageInfo.badge || '',
+        canCancel: false,
+        autoCloseMs: 2800
+      });
+    }
+  };
+
   window.playEp4OpeningVideoThen(() => {
     if (typeof playMiracleOpenWorldOgg === 'function') playMiracleOpenWorldOgg();
     else if (typeof startStageBgm === 'function') startStageBgm(1);
 
     if (typeof window.startMiracleOpenWorldTopViewFlyover === 'function') {
-      window.startMiracleOpenWorldTopViewFlyover(() => {
-        MiracleGuideUI.suppressedDuringIntro = false;
-        
-        // 오픈월드 환영 메시지를 플라이오버가 완전히 끝난 이 시점에 출력!
-        if (typeof showToast === 'function') {
-          showToast(
-            miracleIsPostResurrection
-              ? '✨ 부활 이후의 갈릴리와 예루살렘 오픈월드입니다! 엠마오·도마·바닷가 아침식사를 체험하고 감람산으로 오르세요!'
-              : '🗺️ 성경 오픈월드에 오신 것을 환영합니다! 빛기둥이 켜진 순서(1→2→3→4)대로 메인 스테이지를 진행해 보세요!'
-          );
-        }
-
-        // 탑뷰 조망 연출이 끝나고 플레이어에게 조작권이 넘어온 순간 음성 안내 트리거!
-        if (typeof updateStageHUD === 'function') updateStageHUD(); 
-        
-        if (!MiracleGuideUI.isBubbleOpen && MiracleGuideUI.activeStageInfo && MiracleGuideUI.activeStageInfo.text) {
-          MiracleGuideUI.lastAutoKey = MiracleGuideUI.activeStageInfo.key;
-          window.showMiracleGuideBubble({
-            title: `💬 ${MiracleGuideUI.activeStageInfo.title || '탐험 시작!'}`,
-            text: MiracleGuideUI.activeStageInfo.text,
-            progressText: MiracleGuideUI.activeStageInfo.badge || '',
-            canCancel: false,
-            autoCloseMs: 2800
-          });
-        }
-      });
+      window.startMiracleOpenWorldTopViewFlyover(onEnterPlayableOpenWorld);
     } else {
-      MiracleGuideUI.suppressedDuringIntro = false;
-
-      if (typeof showToast === 'function') {
-        showToast(
-          miracleIsPostResurrection
-            ? '✨ 부활 이후의 갈릴리와 예루살렘 오픈월드입니다! 엠마오·도마·바닷가 아침식사를 체험하고 감람산으로 오르세요!'
-            : '🗺️ 성경 오픈월드에 오신 것을 환영합니다! 빛기둥이 켜진 순서(1→2→3→4)대로 메인 스테이지를 진행해 보세요!'
-        );
-      }
-      
-      // 플라이오버 연출이 생략되었을 경우에도 음성 안내 정상 트리거!
-      if (typeof updateStageHUD === 'function') updateStageHUD(); 
-      
-      if (!MiracleGuideUI.isBubbleOpen && MiracleGuideUI.activeStageInfo && MiracleGuideUI.activeStageInfo.text) {
-        MiracleGuideUI.lastAutoKey = MiracleGuideUI.activeStageInfo.key;
-        window.showMiracleGuideBubble({
-          title: `💬 ${MiracleGuideUI.activeStageInfo.title || '탐험 시작!'}`,
-          text: MiracleGuideUI.activeStageInfo.text,
-          progressText: MiracleGuideUI.activeStageInfo.badge || '',
-          canCancel: false,
-          autoCloseMs: 2800
-        });
-      }
+      onEnterPlayableOpenWorld();
     }
   });
 };
@@ -4611,23 +4601,23 @@ function ensureMiracleCustomUI() {
         </button>
       </div>
       
-      <!-- 오픈월드 조망(플라이오버) 스킵 버튼 -->
-      <div id="ep4-flyover-skip-wrap" class="hidden fixed top-20 right-4 sm:right-6 z-50 pointer-events-auto">
+      <!-- 오픈월드 하늘 조망 건너뛰기 버튼 -->
+      <div id="ep4-flyover-skip-wrap" class="hidden fixed top-4 right-4 sm:top-6 sm:right-6 z-50 pointer-events-auto">
         <button type="button" onclick="if(window.skipMiracleOpenWorldFlyover) window.skipMiracleOpenWorldFlyover();"
                 class="mc-btn px-4 py-2 rounded-full bg-slate-900/80 border border-amber-300 text-amber-200 font-jua text-xs sm:text-sm shadow-lg backdrop-blur-sm">
-          ⏭️ 조망 연출 SKIP
+          ⏭️ 건너뛰기
         </button>
       </div>
 
-      <!-- 에피소드 4 오프닝 영상 모달 (전체화면 꽉 채우기 + SKIP 버튼 오버레이) -->
+      <!-- 에피소드 4 오프닝 영상 모달 (전체화면 꽉 채우기 + 건너뛰기 버튼 오버레이) -->
       <div id="ep4-opening-video-modal" class="hidden pointer-events-auto fixed inset-0 z-50 bg-black flex-col items-center justify-center">
         
-        <!-- 상단 오버레이 UI (상태 텍스트 & SKIP 버튼) -->
+        <!-- 상단 오버레이 UI (상태 텍스트 & 건너뛰기 버튼) -->
         <div class="absolute top-0 inset-x-0 p-4 sm:p-6 flex items-center justify-between z-20 bg-gradient-to-b from-black/80 to-transparent">
           <span id="ep4-opening-video-status" class="font-jua text-xs sm:text-sm text-amber-200 drop-shadow-md">🎬 에피소드 4 오프닝 영상</span>
           <button id="ep4-opening-video-skip-btn" type="button"
                   class="hidden mc-btn px-5 py-2 rounded-full bg-amber-400 hover:bg-amber-300 text-slate-950 font-jua text-sm sm:text-base shadow-lg">
-            ⏭️ SKIP
+            ⏭️ 건너뛰기
           </button>
         </div>
 
@@ -4733,24 +4723,26 @@ function ensureMiracleCustomUI() {
         </div>
       </div>
 
-      <!-- [하단 대화창: 거절 버튼 + 완료 미션 다시하기 버튼 지원] -->
-      <div id="miracle-dialog-modal" class="hidden relative z-30 pointer-events-auto mt-auto mb-28 mc-panel bg-amber-50/95 border-4 border-amber-700 rounded-3xl p-4 max-w-md w-[92%] text-slate-900 shadow-2xl flex flex-col gap-2">
-        <div class="flex items-center justify-between gap-2">
-          <span id="miracle-dialog-speaker" class="px-3 py-0.5 rounded-full bg-amber-800 text-amber-100 font-jua text-xs sm:text-sm">주민</span>
-          <span id="miracle-dialog-cat-badge" class="px-2.5 py-0.5 rounded-full bg-amber-200 text-amber-950 font-jua text-[11px]">🟡 소문</span>
-        </div>
-        <p id="miracle-dialog-text" class="font-bold text-xs sm:text-sm leading-relaxed min-h-[40px] text-slate-800"></p>
-        <div id="miracle-dialog-quiz-box" class="hidden flex-col gap-1.5 mt-1"></div>
-        <div class="flex flex-wrap justify-end gap-2 mt-1">
-          <button id="miracle-dialog-replay-btn" type="button" onclick="replayMiracleDialogMission()" class="hidden mc-btn px-3.5 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-jua text-xs sm:text-sm">
-            🔄 미션 다시하기
-          </button>
-          <button id="miracle-dialog-cancel-btn" type="button" onclick="cancelMiracleDialog()" class="hidden mc-btn px-3.5 py-1.5 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-800 font-jua text-xs sm:text-sm">
-            거절 (나중에 하기) ✕
-          </button>
-          <button id="miracle-dialog-confirm-btn" type="button" onclick="confirmMiracleDialog()" class="mc-btn px-4 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-white font-jua text-xs sm:text-sm">
-            확인 ▶
-          </button>
+      <!-- [최상위 레이어 대화창 & 퀴즈 모달: 퀴즈 시 z-[60] 정중앙 백드롭으로 인터페이스 가림 원천 차단!] -->
+      <div id="miracle-dialog-overlay" class="hidden fixed inset-0 z-[55] pointer-events-none flex flex-col items-center justify-end px-3 pb-24 sm:pb-28">
+        <div id="miracle-dialog-modal" class="hidden modal-scroll pointer-events-auto mc-panel bg-amber-50/95 border-4 border-amber-700 rounded-3xl p-4 max-w-md w-[94%] text-slate-900 shadow-2xl flex flex-col gap-2">
+          <div class="flex items-center justify-between gap-2">
+            <span id="miracle-dialog-speaker" class="px-3 py-0.5 rounded-full bg-amber-800 text-amber-100 font-jua text-xs sm:text-sm">주민</span>
+            <span id="miracle-dialog-cat-badge" class="px-2.5 py-0.5 rounded-full bg-amber-200 text-amber-950 font-jua text-[11px]">🟡 소문</span>
+          </div>
+          <p id="miracle-dialog-text" class="font-bold text-xs sm:text-sm leading-relaxed min-h-[40px] text-slate-800"></p>
+          <div id="miracle-dialog-quiz-box" class="hidden flex-col gap-1.5 mt-1"></div>
+          <div class="flex flex-wrap justify-end gap-2 mt-1">
+            <button id="miracle-dialog-replay-btn" type="button" onclick="replayMiracleDialogMission()" class="hidden mc-btn px-3.5 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-jua text-xs sm:text-sm">
+              🔄 미션 다시하기
+            </button>
+            <button id="miracle-dialog-cancel-btn" type="button" onclick="cancelMiracleDialog()" class="hidden mc-btn px-3.5 py-1.5 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-800 font-jua text-xs sm:text-sm">
+              거절 (나중에 하기) ✕
+            </button>
+            <button id="miracle-dialog-confirm-btn" type="button" onclick="confirmMiracleDialog()" class="mc-btn px-4 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-white font-jua text-xs sm:text-sm">
+              확인 ▶
+            </button>
+          </div>
         </div>
       </div>
     `;
@@ -4772,6 +4764,19 @@ function positionMiracleLeftHudBelowTopBar() {
   positionMiracleGuideButton();
 }
 
+function isMiracleIntroHidingHud() {
+  const hudTop = document.getElementById('hud-top');
+  const hudHidden = !hudTop || hudTop.classList.contains('hidden');
+  return Boolean(
+    hudHidden ||
+    window.__isBuildingOpeningPreview ||
+    window.__ep4OpeningVideoActive ||
+    (window.miracleOpenWorldIntroFlyover && window.miracleOpenWorldIntroFlyover.active) ||
+    (typeof MiracleGuideUI !== 'undefined' && MiracleGuideUI && MiracleGuideUI.suppressedDuringIntro) ||
+    (miracleSubMode === 'main2_loaves' && typeof miracleActiveMiniState !== 'undefined' && miracleActiveMiniState && miracleActiveMiniState.introFlyover && miracleActiveMiniState.introFlyover.active)
+  );
+}
+
 function updateMiracleNotebookHudBadge() {
   ensureMiracleCustomUI();
   const leftHud = document.getElementById('miracle-hud-left');
@@ -4779,7 +4784,7 @@ function updateMiracleNotebookHudBadge() {
   const parBanner = document.getElementById('miracle-parable-banner');
   const retBtn = document.getElementById('miracle-return-openworld-btn');
 
-  if (currentEpisode !== 'miracle') {
+  if (currentEpisode !== 'miracle' || isMiracleIntroHidingHud()) {
     if (leftHud) leftHud.classList.add('hidden');
     updateMiracleGuideButtonVisibility();
     return;
@@ -4869,7 +4874,7 @@ window.updateMiracleMiniNavigatorUI = function (info) {
   const nav = document.getElementById('miracle-mini-nav');
   if (!nav) return;
   const wasHidden = nav.classList.contains('hidden');
-  if (!info || !info.visible) {
+  if (!info || !info.visible || isMiracleIntroHidingHud()) {
     nav.classList.add('hidden');
     if (!wasHidden && typeof window.positionMultiplayerRightHud === 'function') {
       window.positionMultiplayerRightHud();
@@ -4962,8 +4967,18 @@ window.closeMiracleNotebookModal = function () {
   if (modal) modal.classList.add('hidden');
 };
 
+function _hideMiracleDialogOverlay() {
+  const ov = document.getElementById('miracle-dialog-overlay');
+  const modal = document.getElementById('miracle-dialog-modal');
+  if (ov) ov.classList.add('hidden');
+  if (modal) modal.classList.add('hidden');
+}
+
 function openMiracleDialog(options) {
   ensureMiracleCustomUI();
+  if (typeof setHudMenuOpen === 'function') setHudMenuOpen(false);
+  if (typeof hideMissionGuideBubbleImmediately === 'function') hideMissionGuideBubbleImmediately();
+  const overlay = document.getElementById('miracle-dialog-overlay');
   const modal = document.getElementById('miracle-dialog-modal');
   const speakerEl = document.getElementById('miracle-dialog-speaker');
   const badgeEl = document.getElementById('miracle-dialog-cat-badge');
@@ -4973,6 +4988,13 @@ function openMiracleDialog(options) {
   const cancelBtn = document.getElementById('miracle-dialog-cancel-btn');
   const replayBtn = document.getElementById('miracle-dialog-replay-btn');
   if (!modal) return;
+
+  const hasQuiz = Boolean(options.quiz && Array.isArray(options.quiz.opts));
+  if (overlay) {
+    overlay.className = hasQuiz
+      ? 'fixed inset-0 z-[60] bg-slate-950/60 backdrop-blur-[2px] pointer-events-auto flex items-center justify-center p-2.5 sm:p-4'
+      : 'fixed inset-0 z-[55] pointer-events-none flex flex-col items-center justify-end px-3 pb-20 sm:pb-24';
+  }
 
   const catMeta = {
     rumor:      { label: '🟡 소문 (다른 사람에게 들은 이야기)', cls: 'bg-amber-200 text-amber-950' },
@@ -5019,7 +5041,7 @@ function openMiracleDialog(options) {
     }
   }
 
-  if (options.quiz && Array.isArray(options.quiz.opts)) {
+  if (hasQuiz) {
     quizBox.classList.remove('hidden');
     quizBox.classList.add('flex');
     quizBox.innerHTML = `<p class="font-jua text-xs text-amber-900 mt-1">💡 ${options.quiz.q}</p>`;
@@ -5054,6 +5076,7 @@ function openMiracleDialog(options) {
   }
 
   confirmBtn.textContent = options.btnText || '확인 ▶';
+  if (overlay) overlay.classList.remove('hidden');
   modal.classList.remove('hidden');
   playSfx('switch');
 }
@@ -5070,8 +5093,7 @@ function stampMiracleDialogClosedCooldown() {
 }
 
 window.confirmMiracleDialog = function () {
-  const modal = document.getElementById('miracle-dialog-modal');
-  if (modal) modal.classList.add('hidden');
+  _hideMiracleDialogOverlay();
   miracleDialogState.active = false;
   stampMiracleDialogClosedCooldown();
   const cb = miracleDialogState.onConfirm;
@@ -5082,8 +5104,7 @@ window.confirmMiracleDialog = function () {
 };
 
 window.cancelMiracleDialog = function () {
-  const modal = document.getElementById('miracle-dialog-modal');
-  if (modal) modal.classList.add('hidden');
+  _hideMiracleDialogOverlay();
   miracleDialogState.active = false;
   stampMiracleDialogClosedCooldown();
   const cancelCb = miracleDialogState.onCancel;
@@ -5099,8 +5120,7 @@ window.cancelMiracleDialog = function () {
 };
 
 window.replayMiracleDialogMission = function () {
-  const modal = document.getElementById('miracle-dialog-modal');
-  if (modal) modal.classList.add('hidden');
+  _hideMiracleDialogOverlay();
   miracleDialogState.active = false;
   stampMiracleDialogClosedCooldown();
   const replayCb = miracleDialogState.onReplay;
@@ -5127,7 +5147,6 @@ function hideAllMiracleCustomUI() {
   const vidSlot = document.getElementById('ep4-opening-video-slot');
   const miniNav = document.getElementById('miracle-mini-nav');
   const nbModal = document.getElementById('miracle-notebook-modal');
-  const dlgModal = document.getElementById('miracle-dialog-modal');
   const s1Ui = document.getElementById('miracle-s1-ui');
   const sowerWrap = document.getElementById('miracle-sower-btn-wrap');
   const bfUi = document.getElementById('miracle-breakfast-ui');
@@ -5140,7 +5159,7 @@ function hideAllMiracleCustomUI() {
   if (vidModal) { vidModal.classList.add('hidden'); vidModal.classList.remove('flex'); }
   if (miniNav) miniNav.classList.add('hidden');
   if (nbModal) nbModal.classList.add('hidden');
-  if (dlgModal) dlgModal.classList.add('hidden');
+  _hideMiracleDialogOverlay();
   if (s1Ui) s1Ui.classList.add('hidden');
   if (sowerWrap) sowerWrap.classList.add('hidden');
   if (bfUi) bfUi.classList.add('hidden');

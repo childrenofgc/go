@@ -556,6 +556,7 @@ function buildDavidStage1World() {
     updateStageHUD();
 
     startDavidStage1Opening(() => {
+      if (typeof setInGameHudControlsVisible === 'function') setInGameHudControlsVisible(true);
       updateStageHUD();
       playSheepBaaSound(1.05, 0.08);
       showToast('🐑 언덕 위 초원에서 바위 뒤에 숨어 있는 양 5마리를 찾아 목초지로 데려오세요!');
@@ -2203,6 +2204,7 @@ window.advanceDavidStage2Dialogue = function () {
 
     isPlaying = true;
     if (currentMode === 'timeattack') isTimeAttackActive = true;
+    if (typeof setInGameHudControlsVisible === 'function') setInGameHudControlsVisible(true);
     snapCameraToPlayer();
     updateStageHUD();
     startStageBgm(2);
@@ -2213,6 +2215,7 @@ window.advanceDavidStage2Dialogue = function () {
 function startDavidStage2PreBattleDialogue() {
   isPlaying = false;
   isTimeAttackActive = false;
+  if (typeof setInGameHudControlsVisible === 'function') setInGameHudControlsVisible(false);
   davidStage2Dialogue.active = true;
   davidStage2Dialogue.step = 1;
   davidStage2Dialogue.timer = 0;

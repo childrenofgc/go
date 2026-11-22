@@ -4,7 +4,7 @@
 // - 스테이지 3(십자가 사건): 넓어진 골고다 언덕 정상 고원과 세 십자가 등장 연출 적용
 // =========================================================================
 window.__GAME_BUILD_VERSIONS__ = window.__GAME_BUILD_VERSIONS__ || {};
-window.__GAME_BUILD_VERSIONS__.ep4_stages = '20261121_v15';
+window.__GAME_BUILD_VERSIONS__.ep4_stages = '20261122_v16';
 
 // 스테이지 3: 예수님과 플레이어가 무거운 십자가를 지고 걷는 통일 속도 (아무리 세게 터치해도 이 속도로 제한!)
 const MIRACLE_STAGE3_CROSS_WALK_SPEED = 1.65;
@@ -1396,6 +1396,7 @@ function buildMiracleMainStage2Loaves() {
     crowdList: [],
     introFlyover: { active: true, timer: 0, duration: 3.4 }
   };
+  if (typeof setInGameHudControlsVisible === 'function') setInGameHudControlsVisible(false);
 
   currentMapRectBounds = { minX: -32, maxX: 32, minZ: -38, maxZ: 34 };
 
@@ -1699,8 +1700,10 @@ function updateMiracleMainStage2Frame(dt, now) {
     if (typeof applyCoreCameraByMode === 'function') applyCoreCameraByMode();
     if (st.introFlyover.timer >= (st.introFlyover.duration || 3.4)) {
       st.introFlyover.active = false;
+      if (typeof setInGameHudControlsVisible === 'function') setInGameHudControlsVisible(true);
       if (typeof snapCameraToPlayer === 'function') snapCameraToPlayer();
-      if (typeof window.syncMiracleStageGuideFromHUD === 'function' && window.MiracleGuideUI && window.MiracleGuideUI.activeStageInfo) {
+      if (typeof updateStageHUD === 'function') updateStageHUD();
+      if (typeof window.syncMiracleStageGuideFromHUD === 'function' && window.MiracleGuideUI && window.MiracleGuideUI.activeStageInfo && !window.MiracleGuideUI.isBubbleOpen) {
         const s = window.MiracleGuideUI.activeStageInfo;
         window.MiracleGuideUI.lastAutoKey = '';
         window.syncMiracleStageGuideFromHUD(s.title, s.text, s.badge);

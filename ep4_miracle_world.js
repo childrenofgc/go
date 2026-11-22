@@ -4,7 +4,7 @@
 // - 계단으로 건물 2층 등반 후 인접한 옆 건물 옥상·2층으로 점프 이동할 수 있는 근접 마을 배치
 // =========================================================================
 window.__GAME_BUILD_VERSIONS__ = window.__GAME_BUILD_VERSIONS__ || {};
-window.__GAME_BUILD_VERSIONS__.ep4_world = '20261121_v15';
+window.__GAME_BUILD_VERSIONS__.ep4_world = '20261122_v16';
 
 window.miracleOpenWorldIntroFlyover = {
   active: false,
@@ -15,6 +15,7 @@ window.miracleOpenWorldIntroFlyover = {
 
 window.startMiracleOpenWorldTopViewFlyover = function (onFinish) {
   const watchedCount = window.getEp4OpeningVideoWatchCount();
+  if (typeof setInGameHudControlsVisible === 'function') setInGameHudControlsVisible(false);
   
   window.miracleOpenWorldIntroFlyover = {
     active: true,
@@ -23,7 +24,7 @@ window.startMiracleOpenWorldTopViewFlyover = function (onFinish) {
     doneCallback: (typeof onFinish === 'function') ? onFinish : null
   };
   
-  // 2회차 이상(영상 시청 기록 있음)일 때만 연출 SKIP 버튼 노출!
+  // 2회차 이상(영상 시청 기록 있음)일 때만 건너뛰기 버튼 노출!
   if (watchedCount >= 1) {
     const skipWrap = document.getElementById('ep4-flyover-skip-wrap');
     if (skipWrap) skipWrap.classList.remove('hidden');
