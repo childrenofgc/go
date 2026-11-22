@@ -4,7 +4,7 @@
 // - 계단으로 건물 2층 등반 후 인접한 옆 건물 옥상·2층으로 점프 이동할 수 있는 근접 마을 배치
 // =========================================================================
 window.__GAME_BUILD_VERSIONS__ = window.__GAME_BUILD_VERSIONS__ || {};
-window.__GAME_BUILD_VERSIONS__.ep4_world = '20261122_v18';
+window.__GAME_BUILD_VERSIONS__.ep4_world = '20261122_v19';
 
 window.miracleOpenWorldIntroFlyover = {
   active: false,

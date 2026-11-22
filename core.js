@@ -5,7 +5,7 @@
 // =========================================================================
 
 window.__GAME_BUILD_VERSIONS__ = window.__GAME_BUILD_VERSIONS__ || {};
-window.__GAME_BUILD_VERSIONS__.core = '20261122_v18';
+window.__GAME_BUILD_VERSIONS__.core = '20261122_v19';
 
 // 퀴즈 선택지 순서 무작위 셔플 공용 헬퍼 (정답이 항상 1번에 고정되지 않도록 보장)
 function shuffleQuizOptions(opts, ansIdx = 0) {
@@ -1452,10 +1452,24 @@ function formatKoreanBibleTextForTTS(text) {
 window.formatKoreanBibleTextForTTS = formatKoreanBibleTextForTTS;
 
 let melodyTimer = null;
-function speakText(text) {
-  if (!text) return;
+function speakText(text, onEndOrOpts) {
+  const onEnd = (typeof onEndOrOpts === 'function')
+    ? onEndOrOpts
+    : (onEndOrOpts && typeof onEndOrOpts.onEnd === 'function' ? onEndOrOpts.onEnd : null);
+  const onStart = (onEndOrOpts && typeof onEndOrOpts.onStart === 'function') ? onEndOrOpts.onStart : null;
+  let finished = false;
+  const finish = () => {
+    if (finished) return;
+    finished = true;
+    if (window.__activeUtterance) window.__activeUtterance = null;
+    if (onEnd) {
+      try { onEnd(); } catch (e) {}
+    }
+  };
+  if (!text) { finish(); return; }
   const formattedText = formatKoreanBibleTextForTTS(text);
   const cleanText = formattedText.replace(/⚡/g, '').replace(/&/g, '과').trim();
+  if (!cleanText) { finish(); return; }
   if (melodyTimer) { clearInterval(melodyTimer); melodyTimer = null; }
   let ttsWorked = false;
   if ('speechSynthesis' in window) {
@@ -1464,6 +1478,11 @@ function speakText(text) {
       const u = new SpeechSynthesisUtterance(cleanText);
       u.lang = 'ko-KR'; u.rate = 0.95; u.pitch = 1.08;
       u.volume = 0.22;
+      if (onStart) u.onstart = () => { try { onStart(); } catch (e) {} };
+      u.onend = finish;
+      u.onerror = finish;
+      // 모바일/크롬에서 Utterance가 GC되어 onend가 누락되는 현상 방지
+      window.__activeUtterance = u;
       window.speechSynthesis.speak(u);
       ttsWorked = true;
     } catch (e) { ttsWorked = false; }
@@ -1471,8 +1490,14 @@ function speakText(text) {
   if (!ttsWorked) {
     let idx = 0;
     const scale = [440, 493.8, 523.2, 587.3, 659.2, 784];
+    const totalNotes = Math.min(cleanText.length, 16);
     melodyTimer = setInterval(() => {
-      if (idx >= Math.min(cleanText.length, 16)) { clearInterval(melodyTimer); return; }
+      if (idx >= totalNotes) {
+        clearInterval(melodyTimer);
+        melodyTimer = null;
+        finish();
+        return;
+      }
       const ctx = getAudioCtx();
       if (ctx) {
         const osc = ctx.createOscillator(), g = ctx.createGain();

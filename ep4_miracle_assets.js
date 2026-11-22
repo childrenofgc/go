@@ -6,7 +6,7 @@
 // =========================================================================
 
 window.__GAME_BUILD_VERSIONS__ = window.__GAME_BUILD_VERSIONS__ || {};
-window.__GAME_BUILD_VERSIONS__.ep4_assets = '20261122_v18';
+window.__GAME_BUILD_VERSIONS__.ep4_assets = '20261122_v19';
 
 const _miracleDoubleSideMatCache = {};
 function matLowPolyDouble(hexColor) {
@@ -2285,19 +2285,8 @@ window.createLowPolyPersonMesh = function (preset = 'disciple', idx = 0) {
     }
 
     if (isHelmet) {
-      const helmDome = createLowPolyMesh(
-        new THREE.SphereGeometry(0.285, 10, 6, 0, Math.PI * 2, 0, Math.PI * 0.56).toNonIndexed(),
-        '#64748b', 0, 0.145, -0.018
-      );
-      helmDome.scale.set(1.04, 0.92, 1.06);
-      const helmRim = createLowPolyMesh(new THREE.CylinderGeometry(0.295, 0.305, 0.046, 10), '#475569', 0, 0.175, -0.018);
-      helmRim.scale.set(1.04, 1.0, 1.06);
-      const neckGuard = createLowPolyMesh(
-        new THREE.CylinderGeometry(0.265, 0.305, 0.16, 8, 1, false, Math.PI * 0.65, Math.PI * 0.70).toNonIndexed(),
-        '#475569', 0, 0.085, -0.035
-      );
-      const crest = createLowPolyMesh(new THREE.BoxGeometry(0.10, 0.22, 0.48), '#dc2626', 0, 0.425, -0.03);
-      head.add(helmDome, helmRim, neckGuard, crest);
+      const softHelm = createSoftRomanHelmetGroup('#7c8b9c', '#d4a234', '#dc2626', true);
+      head.add(softHelm);
     } else if (isHooded) {
       const hoodSeed = (preset === 'hero') ? 0 : idx;
       const openHood = createOpenFrontHoodGroup(
@@ -2742,68 +2731,699 @@ window.createLowPolyDonkey = function (x, z, rotY = 0, isStatic = false) {
   return donkey;
 };
 
-// [에피소드 4 스테이지 4 순찰용] 소프트 로우폴리 로마 군인(투구 붉은 깃털·갑옷·붉은 망토·방패·창)
-window.createRomanSoldierMesh = function (variantIdx = 0) {
-  const g = new THREE.Group();
-  const cSkin   = '#f2c8a0';
-  const cTunic  = '#b91c1c';
-  const cCape   = '#991b1b';
-  const cArmor  = '#94a3b8';
-  const cArmorH = '#cbd5e1';
-  const cHelm   = '#64748b';
-  const cPlume  = '#ef4444';
-  const cGold   = '#eab308';
-  const cLeather= '#5c2d0c';
+// =========================================================================
+// [소프트 로우 폴리곤 로마 군인 전용 지오메트리 빌더]
+// - 구/직선 프리미티브를 완전히 배제하고, 에피소드 4 인물들과 조화되는 입체 다면체 조형 적용
+//   (갈레아 투구 + 아치형 붉은 말총 볏 + 볼가리개 + 다단 로리카 세그멘타타 갑옷 +
+//    적층 견갑 + 주름 튜닉/가죽 프테리게스 + 곡면 스쿠툼 방패 + 드레이프 망토 + 필룸 창)
+// =========================================================================
+function _ensureOutwardWinding(verts, cx, cy, cz) {
+  for (let i = 0; i < verts.length; i += 9) {
+    const ax = verts[i],     ay = verts[i + 1], az = verts[i + 2];
+    const bx = verts[i + 3], by = verts[i + 4], bz = verts[i + 5];
+    const cx0 = verts[i + 6], cy0 = verts[i + 7], cz0 = verts[i + 8];
+    const ux = bx - ax, uy = by - ay, uz = bz - az;
+    const vx = cx0 - ax, vy = cy0 - ay, vz = cz0 - az;
+    const nx = uy * vz - uz * vy;
+    const ny = uz * vx - ux * vz;
+    const nz = ux * vy - uy * vx;
+    const mx = (ax + bx + cx0) / 3 - cx;
+    const my = (ay + by + cy0) / 3 - cy;
+    const mz = (az + bz + cz0) / 3 - cz;
+    if (nx * mx + ny * my + nz * mz < 0) {
+      verts[i + 3] = cx0; verts[i + 4] = cy0; verts[i + 5] = cz0;
+      verts[i + 6] = bx;  verts[i + 7] = by;  verts[i + 8] = bz;
+    }
+  }
+}
 
-  // 다리 (좌/우 관절 피벗)
-  const lLeg = new THREE.Group(); lLeg.position.set(-0.14, 0.72, 0);
-  const rLeg = new THREE.Group(); rLeg.position.set( 0.14, 0.72, 0);
-  [lLeg, rLeg].forEach(lg => {
-    lg.add(
-      createLowPolyMesh(new THREE.CylinderGeometry(0.085, 0.075, 0.52, 6), cSkin, 0, -0.26, 0, true),
-      createLowPolyMesh(new THREE.CylinderGeometry(0.095, 0.09, 0.22, 6), cArmor, 0, -0.44, 0, false),
-      createLowPolyMesh(new THREE.BoxGeometry(0.15, 0.12, 0.24), cLeather, 0, -0.66, 0.03, false)
-    );
+let _romanGaleaBowlGeo = null;
+function getRomanGaleaBowlGeo() {
+  if (_romanGaleaBowlGeo) return _romanGaleaBowlGeo;
+  const segs = 10;
+  // 5개 단면 링으로 두상에 부드럽게 밀착되고 뒷목 가리개(Neck Guard)가 자연스럽게 펼쳐지는 갈레아 투구 조형
+  const rings = [
+    { y: 0.305, rx: 0.085, rz: 0.095, cz: -0.015, flareBack: 0.00, browDip: 0.00 },
+    { y: 0.258, rx: 0.210, rz: 0.222, cz: -0.018, flareBack: 0.00, browDip: 0.00 },
+    { y: 0.172, rx: 0.268, rz: 0.278, cz: -0.020, flareBack: 0.01, browDip: 0.01 },
+    { y: 0.092, rx: 0.278, rz: 0.285, cz: -0.022, flareBack: 0.04, browDip: 0.018 },
+    { y: 0.036, rx: 0.286, rz: 0.292, cz: -0.026, flareBack: 0.095, browDip: 0.00 }
+  ];
+  const pts = rings.map((rg, rIdx) => {
+    const row = [];
+    for (let s = 0; s < segs; s++) {
+      const phi = (s / segs) * Math.PI * 2;
+      const sinP = Math.sin(phi);
+      const cosP = Math.cos(phi);
+      let x = sinP * rg.rx;
+      let z = cosP * rg.rz + rg.cz;
+      let y = rg.y;
+      // 이마 쪽(cosP > 0.35) 완만한 아치 컷아웃 + 뒷목 쪽(cosP < -0.25) 로마 투구 특유의 넓게 퍼진 목가리개
+      if (rIdx >= 3) {
+        if (cosP > 0.35) {
+          y += (rIdx === 4 ? 0.072 : 0.024) * ((cosP - 0.35) / 0.65);
+          z += rg.browDip * cosP;
+        } else if (cosP < -0.20) {
+          const backT = (-cosP - 0.20) / 0.80;
+          z -= rg.flareBack * backT;
+          x *= 1.0 + (rIdx === 4 ? 0.10 * backT : 0.04 * backT);
+          y -= (rIdx === 4 ? 0.058 : 0.014) * backT;
+        }
+      }
+      row.push([x, y, z]);
+    }
+    return row;
   });
 
-  // 몸통 (붉은 튜닉 + 로마 철갑 로리카 + 허리 가죽띠 + 붉은 망토)
-  const tunicSkirt = createLowPolyMesh(new THREE.CylinderGeometry(0.24, 0.30, 0.38, 7), cTunic, 0, 0.78, 0, true);
-  const armorTorso = createLowPolyMesh(new THREE.CylinderGeometry(0.26, 0.24, 0.56, 7), cArmor, 0, 1.18, 0, true);
-  const chestBand  = createLowPolyMesh(new THREE.CylinderGeometry(0.275, 0.265, 0.14, 7), cArmorH, 0, 1.32, 0, false);
-  const belt       = createLowPolyMesh(new THREE.CylinderGeometry(0.265, 0.265, 0.10, 7), cLeather, 0, 0.94, 0, false);
-  const buckle     = createLowPolyMesh(new THREE.BoxGeometry(0.11, 0.10, 0.06), cGold, 0, 0.94, 0.25, false);
-  const pauldronL  = createLowPolyMesh(new THREE.DodecahedronGeometry(0.15, 0), cArmorH, -0.30, 1.42, 0, false);
-  const pauldronR  = createLowPolyMesh(new THREE.DodecahedronGeometry(0.15, 0), cArmorH,  0.30, 1.42, 0, false);
-  const cape       = createLowPolyMesh(new THREE.BoxGeometry(0.46, 0.88, 0.08), cCape, 0, 1.02, -0.26, true);
-  cape.rotation.x = 0.10;
+  const verts = [];
+  const apex = [0, 0.328, -0.015];
+  for (let s = 0; s < segs; s++) {
+    const sn = (s + 1) % segs;
+    pushTriangle(verts, apex, pts[0][s], pts[0][sn]);
+  }
+  for (let r = 0; r < rings.length - 1; r++) {
+    for (let s = 0; s < segs; s++) {
+      const sn = (s + 1) % segs;
+      pushQuad(verts, pts[r][s], pts[r + 1][s], pts[r + 1][sn], pts[r][sn]);
+    }
+  }
+  _ensureOutwardWinding(verts, 0, 0.12, -0.02);
+  _romanGaleaBowlGeo = markCachedGeo(buildBufferGeoFromTriangles(verts));
+  return _romanGaleaBowlGeo;
+}
 
-  // 머리 & 로마 갈레아 투구 + 붉은 깃털 장식(Plume)
-  const head = createLowPolyMesh(new THREE.IcosahedronGeometry(0.21, 1), cSkin, 0, 1.66, 0, true);
-  const helmDome = createLowPolyMesh(new THREE.IcosahedronGeometry(0.24, 0), cHelm, 0, 1.72, -0.02, true);
-  helmDome.scale.set(1.02, 0.86, 1.08);
-  const helmBrow = createLowPolyMesh(new THREE.BoxGeometry(0.44, 0.08, 0.26), cGold, 0, 1.73, 0.12, false);
-  const plume    = createLowPolyMesh(new THREE.BoxGeometry(0.10, 0.26, 0.48), cPlume, 0, 1.98, -0.02, false);
-  const eyeL = createLowPolyMesh(new THREE.BoxGeometry(0.05, 0.05, 0.04), '#1e293b', -0.075, 1.66, 0.19, false);
-  const eyeR = createLowPolyMesh(new THREE.BoxGeometry(0.05, 0.05, 0.04), '#1e293b',  0.075, 1.66, 0.19, false);
+let _romanBrowArcGeo = null;
+function getRomanBrowArcGeo() {
+  if (_romanBrowArcGeo) return _romanBrowArcGeo;
+  const steps = 6;
+  const verts = [];
+  const ringTop = [], ringBot = [];
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const ang = -Math.PI * 0.42 + t * Math.PI * 0.84;
+    const archPeak = Math.cos(ang) * 0.018;
+    const rOut = 0.298;
+    const rIn = 0.268;
+    ringTop.push([Math.sin(ang) * rIn,  0.146 + archPeak, Math.cos(ang) * rIn  - 0.016]);
+    ringBot.push([Math.sin(ang) * rOut, 0.114 + archPeak * 0.5, Math.cos(ang) * rOut - 0.008]);
+  }
+  for (let i = 0; i < steps; i++) {
+    pushQuad(verts, ringTop[i], ringBot[i], ringBot[i + 1], ringTop[i + 1]);
+  }
+  _romanBrowArcGeo = markCachedGeo(buildBufferGeoFromTriangles(verts));
+  return _romanBrowArcGeo;
+}
 
-  // 왼팔 + 사각 로마 방패(Scutum)
-  const lArm = new THREE.Group(); lArm.position.set(-0.32, 1.40, 0);
-  const lSleeve = createLowPolyMesh(new THREE.CylinderGeometry(0.075, 0.065, 0.46, 5), cTunic, 0, -0.23, 0, true);
-  const shield = createLowPolyMesh(new THREE.BoxGeometry(0.10, 0.82, 0.56), '#991b1b', -0.10, -0.34, 0.16, true);
-  const shieldTrim = createLowPolyMesh(new THREE.BoxGeometry(0.11, 0.86, 0.08), cGold, -0.10, -0.34, 0.42, false);
-  const shieldBoss = createLowPolyMesh(new THREE.DodecahedronGeometry(0.11, 0), cGold, -0.16, -0.34, 0.16, false);
-  lArm.add(lSleeve, shield, shieldTrim, shieldBoss);
+const _romanCheekGuardGeoCache = {};
+function getRomanCheekGuardGeo(isLeft) {
+  const key = isLeft ? 'L' : 'R';
+  if (_romanCheekGuardGeoCache[key]) return _romanCheekGuardGeoCache[key];
+  const side = isLeft ? -1 : 1;
+  // 관자놀이에서 턱선으로 부드럽게 휘어지며 감싸는 다면체 볼가리개
+  const p0 = [side * 0.256,  0.075, -0.045];
+  const p1 = [side * 0.262,  0.088,  0.078];
+  const p2 = [side * 0.242, -0.032,  0.125];
+  const p3 = [side * 0.186, -0.132,  0.115];
+  const p4 = [side * 0.192, -0.115,  0.010];
+  const p5 = [side * 0.236, -0.025, -0.052];
+  const ridge = [side * 0.258, -0.018, 0.046];
+  const verts = [];
+  pushTriangle(verts, ridge, p0, p1);
+  pushTriangle(verts, ridge, p1, p2);
+  pushTriangle(verts, ridge, p2, p3);
+  pushTriangle(verts, ridge, p3, p4);
+  pushTriangle(verts, ridge, p4, p5);
+  pushTriangle(verts, ridge, p5, p0);
+  _ensureOutwardWinding(verts, 0, -0.02, 0.02);
+  _romanCheekGuardGeoCache[key] = markCachedGeo(buildBufferGeoFromTriangles(verts));
+  return _romanCheekGuardGeoCache[key];
+}
 
-  // 오른팔 + 로마 창(Pilum)
-  const rArm = new THREE.Group(); rArm.position.set( 0.32, 1.40, 0);
-  const rSleeve = createLowPolyMesh(new THREE.CylinderGeometry(0.075, 0.065, 0.46, 5), cTunic, 0, -0.23, 0, true);
-  const spearShaft = createLowPolyMesh(new THREE.CylinderGeometry(0.032, 0.036, 2.35, 5), '#6b4226', 0.04, 0.12, 0.18, true);
-  const spearTip   = createLowPolyMesh(new THREE.ConeGeometry(0.07, 0.34, 4), '#e2e8f0', 0.04, 1.38, 0.18, false);
-  rArm.add(rSleeve, spearShaft, spearTip);
+let _romanCrestPlumeGeo = null;
+function getRomanCrestPlumeGeo() {
+  if (_romanCrestPlumeGeo) return _romanCrestPlumeGeo;
+  // 이마 위에서 정수리를 넘어 뒷목까지 우아하게 휘어지는 부채꼴 소프트 로우폴리 말총 볏(Plume)
+  const steps = 8;
+  const innerL = [], innerR = [], midL = [], midR = [], outerTop = [];
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const ang = -0.82 + t * 2.18; // 앞쪽 위 -> 정수리 -> 뒷목 아래
+    const rBase = 0.272;
+    const fanHeight = 0.165 + Math.sin(t * Math.PI) * 0.075;
+    const halfWBase = 0.022 + Math.sin(t * Math.PI) * 0.014;
+    const halfWMid  = 0.048 + Math.sin(t * Math.PI) * 0.020;
+    const cz = -0.022;
+    const cy = 0.088;
+    const bz = cz - Math.sin(ang) * rBase;
+    const by = cy + Math.cos(ang) * rBase;
+    const mz = cz - Math.sin(ang) * (rBase + fanHeight * 0.56);
+    const my = cy + Math.cos(ang) * (rBase + fanHeight * 0.56);
+    const tz = cz - Math.sin(ang) * (rBase + fanHeight);
+    const ty = cy + Math.cos(ang) * (rBase + fanHeight);
+    innerL.push([-halfWBase, by, bz]);
+    innerR.push([ halfWBase, by, bz]);
+    midL.push([-halfWMid, my, mz]);
+    midR.push([ halfWMid, my, mz]);
+    outerTop.push([0, ty, tz]);
+  }
+  const verts = [];
+  for (let i = 0; i < steps; i++) {
+    pushQuad(verts, innerL[i], midL[i], midL[i + 1], innerL[i + 1]);
+    pushQuad(verts, midL[i], outerTop[i], outerTop[i + 1], midL[i + 1]);
+    pushQuad(verts, innerR[i + 1], midR[i + 1], midR[i], innerR[i]);
+    pushQuad(verts, midR[i + 1], outerTop[i + 1], outerTop[i], midR[i]);
+    pushQuad(verts, innerL[i + 1], innerR[i + 1], innerR[i], innerL[i]);
+  }
+  // 앞·뒤 캡 닫기
+  pushTriangle(verts, innerL[0], innerR[0], midR[0]);
+  pushTriangle(verts, innerL[0], midR[0], midL[0]);
+  pushTriangle(verts, midL[0], midR[0], outerTop[0]);
+  pushTriangle(verts, innerR[steps], innerL[steps], midL[steps]);
+  pushTriangle(verts, innerR[steps], midL[steps], midR[steps]);
+  pushTriangle(verts, midR[steps], midL[steps], outerTop[steps]);
+
+  _ensureOutwardWinding(verts, 0, 0.36, -0.04);
+  _romanCrestPlumeGeo = markCachedGeo(buildBufferGeoFromTriangles(verts));
+  return _romanCrestPlumeGeo;
+}
+
+// 공용 소프트 로우폴리 로마 갈레아 투구 그룹 (createRomanSoldierMesh 및 오픈월드 백부장 공용!)
+function createSoftRomanHelmetGroup(helmHex = '#7c8b9c', trimHex = '#d4a234', plumeHex = '#dc2626', isTransverse = false) {
+  const hGrp = new THREE.Group();
+  hGrp.name = 'romanGaleaHelmet';
+
+  const bowl = createDoubleSideLowPolyMesh(getRomanGaleaBowlGeo(), helmHex, 0, 0.02, 0, true);
+  const brow = createDoubleSideLowPolyMesh(getRomanBrowArcGeo(), trimHex, 0, 0.02, 0, false);
+  const cheekL = createDoubleSideLowPolyMesh(getRomanCheekGuardGeo(true), helmHex, 0, 0.01, 0, false);
+  const cheekR = createDoubleSideLowPolyMesh(getRomanCheekGuardGeo(false), helmHex, 0, 0.01, 0, false);
+
+  // 정수리 볏 받침대(Crest Holder) & 아치형 말총 볏(Plume)
+  const holder = createLowPolyMesh(new THREE.CylinderGeometry(0.036, 0.054, 0.068, 6), trimHex, 0, 0.355, -0.02, false);
+  const plume = createLowPolyMesh(getRomanCrestPlumeGeo(), plumeHex, 0, 0.02, 0, true);
+  if (isTransverse) {
+    plume.rotation.y = Math.PI * 0.5;
+    plume.scale.set(0.92, 0.96, 0.88);
+  }
+  hGrp.add(bowl, brow, cheekL, cheekR, holder, plume);
+  return hGrp;
+}
+
+let _romanLoricaTorsoGeo = null;
+function getRomanLoricaTorsoGeo() {
+  if (_romanLoricaTorsoGeo) return _romanLoricaTorsoGeo;
+  // 가슴에서 허리로 자연스럽게 조여지는 타원형 다단 로리카 세그멘타타 흉갑
+  const segs = 10;
+  const rings = [
+    { y: 1.54, rx: 0.215, rz: 0.148 },
+    { y: 1.44, rx: 0.295, rz: 0.205 },
+    { y: 1.32, rx: 0.282, rz: 0.208 },
+    { y: 1.22, rx: 0.270, rz: 0.194 },
+    { y: 1.12, rx: 0.258, rz: 0.184 },
+    { y: 1.00, rx: 0.244, rz: 0.174 }
+  ];
+  const rows = rings.map((rg, rIdx) => {
+    const row = [];
+    for (let s = 0; s < segs; s++) {
+      const phi = (s / segs) * Math.PI * 2;
+      const sinP = Math.sin(phi);
+      const cosP = Math.cos(phi);
+      // 가슴 전면(cosP > 0)에 입체 흉판 볼륨 + 단차 리지 부여
+      const chestPuff = (rIdx === 1 || rIdx === 2) && cosP > 0 ? cosP * 0.022 : 0;
+      const ridgeStep = (rIdx % 2 === 1) ? 0.008 : 0.0;
+      row.push([sinP * (rg.rx + ridgeStep), rg.y, cosP * (rg.rz + chestPuff + ridgeStep)]);
+    }
+    return row;
+  });
+  const verts = [];
+  for (let r = 0; r < rings.length - 1; r++) {
+    for (let s = 0; s < segs; s++) {
+      const sn = (s + 1) % segs;
+      pushQuad(verts, rows[r][s], rows[r + 1][s], rows[r + 1][sn], rows[r][sn]);
+    }
+  }
+  const topC = [0, 1.54, 0], botC = [0, 1.00, 0];
+  for (let s = 0; s < segs; s++) {
+    const sn = (s + 1) % segs;
+    pushTriangle(verts, topC, rows[0][s], rows[0][sn]);
+    pushTriangle(verts, botC, rows[rings.length - 1][sn], rows[rings.length - 1][s]);
+  }
+  _ensureOutwardWinding(verts, 0, 1.27, 0);
+  _romanLoricaTorsoGeo = markCachedGeo(buildBufferGeoFromTriangles(verts));
+  return _romanLoricaTorsoGeo;
+}
+
+const _romanPauldronGeoCache = {};
+function getRomanPauldronGeo(isLeft) {
+  const key = isLeft ? 'L' : 'R';
+  if (_romanPauldronGeoCache[key]) return _romanPauldronGeoCache[key];
+  const side = isLeft ? -1 : 1;
+  // 어깨선을 따라 부드럽게 내려오는 3단 곡면 로리카 견갑(Pauldron)
+  const arcSteps = 5;
+  const rows = [
+    { out: 0.145, y: 1.545, zScale: 0.145 },
+    { out: 0.275, y: 1.520, zScale: 0.195 },
+    { out: 0.365, y: 1.435, zScale: 0.205 },
+    { out: 0.395, y: 1.330, zScale: 0.175 }
+  ];
+  const grid = rows.map(rg => {
+    const r = [];
+    for (let i = 0; i <= arcSteps; i++) {
+      const u = (i / arcSteps) * 2 - 1; // -1(뒤) .. +1(앞)
+      const ang = u * Math.PI * 0.48;
+      const x = side * (rg.out * (0.86 + 0.14 * Math.cos(ang)));
+      const y = rg.y - (1 - Math.cos(ang)) * 0.028;
+      const z = Math.sin(ang) * rg.zScale;
+      r.push([x, y, z]);
+    }
+    return r;
+  });
+  const verts = [];
+  for (let r = 0; r < grid.length - 1; r++) {
+    for (let i = 0; i < arcSteps; i++) {
+      pushQuad(verts, grid[r][i], grid[r + 1][i], grid[r + 1][i + 1], grid[r][i + 1]);
+    }
+  }
+  _ensureOutwardWinding(verts, side * 0.15, 1.38, 0);
+  _romanPauldronGeoCache[key] = markCachedGeo(buildBufferGeoFromTriangles(verts));
+  return _romanPauldronGeoCache[key];
+}
+
+let _romanTunicSkirtGeo = null;
+function getRomanTunicSkirtGeo() {
+  if (_romanTunicSkirtGeo) return _romanTunicSkirtGeo;
+  // 자연스러운 천 주름(Fluted folds)이 들어간 소프트 로우폴리 로마 튜닉 스커트
+  const segs = 12;
+  const rings = [
+    { y: 1.00, rx: 0.245, rz: 0.178, wave: 0.004 },
+    { y: 0.84, rx: 0.285, rz: 0.215, wave: 0.014 },
+    { y: 0.68, rx: 0.325, rz: 0.248, wave: 0.022 }
+  ];
+  const rows = rings.map(rg => {
+    const row = [];
+    for (let s = 0; s < segs; s++) {
+      const phi = (s / segs) * Math.PI * 2;
+      const fold = ((s % 2 === 0) ? 1 : -1) * rg.wave;
+      row.push([Math.sin(phi) * (rg.rx + fold), rg.y, Math.cos(phi) * (rg.rz + fold * 0.8)]);
+    }
+    return row;
+  });
+  const verts = [];
+  for (let r = 0; r < rings.length - 1; r++) {
+    for (let s = 0; s < segs; s++) {
+      const sn = (s + 1) % segs;
+      pushQuad(verts, rows[r][s], rows[r + 1][s], rows[r + 1][sn], rows[r][sn]);
+    }
+  }
+  _ensureOutwardWinding(verts, 0, 0.84, 0);
+  _romanTunicSkirtGeo = markCachedGeo(buildBufferGeoFromTriangles(verts));
+  return _romanTunicSkirtGeo;
+}
+
+let _romanFlowingCapeGeo = null;
+function getRomanFlowingCapeGeo() {
+  if (_romanFlowingCapeGeo) return _romanFlowingCapeGeo;
+  // 양어깨에서 등 뒤로 부드럽게 주름지며 흘러내리는 S곡선 소프트 로우폴리 망토(Sagum)
+  const cols = 6;
+  const rowSpecs = [
+    { y: 1.49, halfW: 0.27, zBase: -0.175, foldAmp: 0.010, curveZ: 0.025 },
+    { y: 1.24, halfW: 0.31, zBase: -0.235, foldAmp: 0.022, curveZ: 0.032 },
+    { y: 0.96, halfW: 0.36, zBase: -0.275, foldAmp: 0.032, curveZ: 0.040 },
+    { y: 0.68, halfW: 0.41, zBase: -0.325, foldAmp: 0.040, curveZ: 0.045 },
+    { y: 0.46, halfW: 0.45, zBase: -0.385, foldAmp: 0.045, curveZ: 0.050 }
+  ];
+  const grid = rowSpecs.map((rs, rIdx) => {
+    const row = [];
+    for (let c = 0; c <= cols; c++) {
+      const u = (c / cols) * 2 - 1; // -1 .. +1
+      const x = u * rs.halfW;
+      const foldZ = Math.cos(c * Math.PI) * rs.foldAmp * (1 - Math.abs(u) * 0.25);
+      const wrapZ = (u * u) * rs.curveZ;
+      const hemWaveY = (rIdx === rowSpecs.length - 1) ? Math.sin(c * 1.65) * 0.032 : 0;
+      row.push([x, rs.y + hemWaveY, rs.zBase + foldZ + wrapZ]);
+    }
+    return row;
+  });
+  const verts = [];
+  for (let r = 0; r < grid.length - 1; r++) {
+    for (let c = 0; c < cols; c++) {
+      pushQuad(verts, grid[r][c], grid[r + 1][c], grid[r + 1][c + 1], grid[r][c + 1]);
+    }
+  }
+  _romanFlowingCapeGeo = markCachedGeo(buildBufferGeoFromTriangles(verts));
+  return _romanFlowingCapeGeo;
+}
+
+let _romanScutumShieldGeo = null;
+function getRomanScutumShieldGeo() {
+  if (_romanScutumShieldGeo) return _romanScutumShieldGeo;
+  // 반원통형으로 자연스럽게 휘어진 로마 제국 곡면 방패(Scutum) - 평면 박스 완전 제거!
+  const cols = 6;
+  const rows = 4;
+  const rad = 0.42;
+  const halfH = 0.46;
+  const maxAng = 0.72; // 약 82도 아치 곡면
+  const thickness = 0.048;
+
+  const frontGrid = [], backGrid = [];
+  for (let r = 0; r <= rows; r++) {
+    const v = (r / rows) * 2 - 1; // -1(하) .. +1(상)
+    const y = v * halfH;
+    // 상·하단 모서리를 살짝 둥글게 깎은 소프트 로우폴리 윤곽
+    const edgeSoft = 1.0 - (v * v) * 0.07;
+    const fRow = [], bRow = [];
+    for (let c = 0; c <= cols; c++) {
+      const u = (c / cols) * 2 - 1;
+      const ang = u * maxAng * edgeSoft;
+      // 방패가 왼팔 바깥쪽(-X 방향)을 볼록하게 감싸도록 X-Z 곡면 생성
+      const fx = -Math.cos(ang) * rad + rad * 0.74;
+      const fz =  Math.sin(ang) * rad;
+      const bx = -Math.cos(ang) * (rad - thickness) + rad * 0.74;
+      const bz =  Math.sin(ang) * (rad - thickness);
+      fRow.push([fx, y, fz]);
+      bRow.push([bx, y, bz]);
+    }
+    frontGrid.push(fRow);
+    backGrid.push(bRow);
+  }
+
+  const frontVerts = [];
+  const backVerts = [];
+  const rimVerts = [];
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      pushQuad(frontVerts, frontGrid[r][c], frontGrid[r][c + 1], frontGrid[r + 1][c + 1], frontGrid[r + 1][c]);
+      pushQuad(backVerts, backGrid[r][c], backGrid[r + 1][c], backGrid[r + 1][c + 1], backGrid[r][c + 1]);
+    }
+  }
+  // 상·하·좌·우 테두리 마감
+  for (let c = 0; c < cols; c++) {
+    pushQuad(rimVerts, frontGrid[rows][c], frontGrid[rows][c + 1], backGrid[rows][c + 1], backGrid[rows][c]);
+    pushQuad(rimVerts, frontGrid[0][c + 1], frontGrid[0][c], backGrid[0][c], backGrid[0][c + 1]);
+  }
+  for (let r = 0; r < rows; r++) {
+    pushQuad(rimVerts, frontGrid[r][0], frontGrid[r + 1][0], backGrid[r + 1][0], backGrid[r][0]);
+    pushQuad(rimVerts, frontGrid[r + 1][cols], frontGrid[r][cols], backGrid[r][cols], backGrid[r + 1][cols]);
+  }
+  _ensureOutwardWinding(frontVerts, 0.31, 0, 0);
+  // 안쪽 면은 원통 중심(+0.31)을 향하도록 외향 반대 방향 정렬
+  for (let i = 0; i < backVerts.length; i += 9) {
+    const ax = backVerts[i], ay = backVerts[i + 1], az = backVerts[i + 2];
+    const bx = backVerts[i + 3], by = backVerts[i + 4], bz = backVerts[i + 5];
+    const cx0 = backVerts[i + 6], cy0 = backVerts[i + 7], cz0 = backVerts[i + 8];
+    const ux = bx - ax, uy = by - ay, uz = bz - az;
+    const vx = cx0 - ax, vy = cy0 - ay, vz = cz0 - az;
+    const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+    const mx = 0.31 - (ax + bx + cx0) / 3, my = -(ay + by + cy0) / 3, mz = -(az + bz + cz0) / 3;
+    if (nx * mx + ny * my + nz * mz < 0) {
+      backVerts[i + 3] = cx0; backVerts[i + 4] = cy0; backVerts[i + 5] = cz0;
+      backVerts[i + 6] = bx;  backVerts[i + 7] = by;  backVerts[i + 8] = bz;
+    }
+  }
+  const verts = frontVerts.concat(backVerts, rimVerts);
+  _romanScutumShieldGeo = markCachedGeo(buildBufferGeoFromTriangles(verts));
+  return _romanScutumShieldGeo;
+}
+
+let _romanScutumRimGeo = null;
+function getRomanScutumRimGeo() {
+  if (_romanScutumRimGeo) return _romanScutumRimGeo;
+  // 곡면 스쿠툼 방패 상·하단 곡선을 정확히 따라가는 아치형 황동 테두리(직선 막대 제거!)
+  const cols = 6;
+  const rad = 0.428;
+  const maxAng = 0.72 * 0.93;
+  const th = 0.058;
+  const rimH = 0.034;
+  const verts = [];
+  const addCurvedBand = (yCenter) => {
+    const fTop = [], fBot = [], bTop = [], bBot = [];
+    for (let c = 0; c <= cols; c++) {
+      const u = (c / cols) * 2 - 1;
+      const ang = u * maxAng;
+      const fx = -Math.cos(ang) * rad + 0.42 * 0.74;
+      const fz =  Math.sin(ang) * rad;
+      const bx = -Math.cos(ang) * (rad - th) + 0.42 * 0.74;
+      const bz =  Math.sin(ang) * (rad - th);
+      fTop.push([fx, yCenter + rimH * 0.5, fz]);
+      fBot.push([fx, yCenter - rimH * 0.5, fz]);
+      bTop.push([bx, yCenter + rimH * 0.5, bz]);
+      bBot.push([bx, yCenter - rimH * 0.5, bz]);
+    }
+    for (let c = 0; c < cols; c++) {
+      pushQuad(verts, fBot[c], fBot[c + 1], fTop[c + 1], fTop[c]);
+      pushQuad(verts, fTop[c], fTop[c + 1], bTop[c + 1], bTop[c]);
+      pushQuad(verts, fBot[c + 1], fBot[c], bBot[c], bBot[c + 1]);
+    }
+  };
+  addCurvedBand( 0.462);
+  addCurvedBand(-0.462);
+  _romanScutumRimGeo = markCachedGeo(buildBufferGeoFromTriangles(verts));
+  return _romanScutumRimGeo;
+}
+
+let _romanLegLimbGeo = null;
+function getRomanLegLimbGeo() {
+  if (_romanLegLimbGeo) return _romanLegLimbGeo;
+  // 허벅지-무릎-종아리 곡선이 살아있는 소프트 로우폴리 다리
+  const segs = 7;
+  const rings = [
+    { y:  0.00, r: 0.105 },
+    { y: -0.22, r: 0.088 },
+    { y: -0.40, r: 0.094 },
+    { y: -0.62, r: 0.070 }
+  ];
+  const rows = rings.map(rg => {
+    const row = [];
+    for (let s = 0; s < segs; s++) {
+      const a = (s / segs) * Math.PI * 2;
+      row.push([Math.sin(a) * rg.r, rg.y, Math.cos(a) * rg.r * 1.04]);
+    }
+    return row;
+  });
+  const verts = [];
+  for (let r = 0; r < rings.length - 1; r++) {
+    for (let s = 0; s < segs; s++) {
+      const sn = (s + 1) % segs;
+      pushQuad(verts, rows[r][s], rows[r + 1][s], rows[r + 1][sn], rows[r][sn]);
+    }
+  }
+  _ensureOutwardWinding(verts, 0, -0.32, 0);
+  _romanLegLimbGeo = markCachedGeo(buildBufferGeoFromTriangles(verts));
+  return _romanLegLimbGeo;
+}
+
+let _romanShinGreaveGeo = null;
+function getRomanShinGreaveGeo() {
+  if (_romanShinGreaveGeo) return _romanShinGreaveGeo;
+  // 정강이 앞면과 무릎뼈를 부드럽게 감싸는 곡면 정강이 갑옷(Ocrea)
+  const cols = 4;
+  const rows = [
+    { y: -0.26, r: 0.106, peakZ: 0.020 },
+    { y: -0.38, r: 0.104, peakZ: 0.012 },
+    { y: -0.58, r: 0.084, peakZ: 0.008 }
+  ];
+  const grid = rows.map(rg => {
+    const r = [];
+    for (let c = 0; c <= cols; c++) {
+      const u = (c / cols) * 2 - 1;
+      const ang = u * Math.PI * 0.56;
+      r.push([Math.sin(ang) * rg.r, rg.y, Math.cos(ang) * rg.r + Math.cos(ang) * rg.peakZ]);
+    }
+    return r;
+  });
+  const verts = [];
+  for (let r = 0; r < grid.length - 1; r++) {
+    for (let c = 0; c < cols; c++) {
+      pushQuad(verts, grid[r][c], grid[r + 1][c], grid[r + 1][c + 1], grid[r][c + 1]);
+    }
+  }
+  _romanShinGreaveGeo = markCachedGeo(buildBufferGeoFromTriangles(verts));
+  return _romanShinGreaveGeo;
+}
+
+let _romanCaligaSandalGeo = null;
+function getRomanCaligaSandalGeo() {
+  if (_romanCaligaSandalGeo) return _romanCaligaSandalGeo;
+  // 앞코가 둥글게 다듬어진 소프트 로우폴리 로마 군화(Caligae)
+  const geo = new THREE.CylinderGeometry(0.085, 0.098, 0.28, 7, 2);
+  geo.rotateX(Math.PI * 0.5);
+  const pos = geo.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    let x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+    y *= 0.62;
+    if (y < 0) y *= 0.72; // 바닥창 평탄화
+    if (z > 0.04) {
+      x *= 0.88;
+      if (y > 0) y *= 0.76; // 둥근 발등 테이퍼
+    }
+    pos.setXYZ(i, x, y, z);
+  }
+  const finalGeo = markCachedGeo(geo.toNonIndexed());
+  finalGeo.computeVertexNormals();
+  _romanCaligaSandalGeo = finalGeo;
+  return finalGeo;
+}
+
+const ROMAN_SOLDIER_VARIANTS = [
+  {
+    skin: '#efcaa6', hair: '#2e1d12', brow: '#2e1d12',
+    tunic: '#b91c1c', tunicDark: '#991b1b', cape: '#8c1d18',
+    armor: '#9aa8b8', armorHi: '#cbd5e1', helm: '#7c8b9c',
+    trim: '#d4a234', plume: '#dc2626', leather: '#5c3118', leatherHi: '#7c4320',
+    shield: '#9f1c1c', wood: '#6e4526', iron: '#e2e8f0', transverse: false
+  },
+  {
+    skin: '#e8bf9a', hair: '#3b2416', brow: '#3b2416',
+    tunic: '#a31c24', tunicDark: '#7f1d1d', cape: '#7c1a1d',
+    armor: '#8e9aa8', armorHi: '#bcc7d4', helm: '#728091',
+    trim: '#c99327', plume: '#e11d48', leather: '#4d2914', leatherHi: '#6b3b1e',
+    shield: '#8f1920', wood: '#633c20', iron: '#dbe4ee', transverse: false
+  },
+  {
+    skin: '#f1cda8', hair: '#241811', brow: '#241811',
+    tunic: '#c82323', tunicDark: '#991b1b', cape: '#991b1b',
+    armor: '#a7b5c6', armorHi: '#dce5f0', helm: '#8595a8',
+    trim: '#eab308', plume: '#ef4444', leather: '#592e14', leatherHi: '#783f1c',
+    shield: '#aa1e1e', wood: '#704628', iron: '#f1f5f9', transverse: true
+  }
+];
+
+// [에피소드 4 스테이지 3 호송 · 스테이지 4 순찰 공용] 소프트 로우폴리 로마 군인
+window.createRomanSoldierMesh = function (variantIdx = 0) {
+  const pal = ROMAN_SOLDIER_VARIANTS[Math.abs(variantIdx || 0) % ROMAN_SOLDIER_VARIANTS.length];
+  const g = new THREE.Group();
+
+  // 1) 다리 (소프트 로우폴리 종아리 + 곡면 정강이 갑옷 Ocrea + 둥근 앞코 로마 군화 Caligae)
+  const buildSoldierLeg = (isLeft) => {
+    const lg = new THREE.Group();
+    lg.position.set(isLeft ? -0.145 : 0.145, 0.74, 0);
+    const calf = createLowPolyMesh(getRomanLegLimbGeo(), pal.skin, 0, 0, 0, true);
+    const greave = createDoubleSideLowPolyMesh(getRomanShinGreaveGeo(), pal.armor, 0, 0, 0.008, false);
+    const greaveTrim = createLowPolyMesh(new THREE.CylinderGeometry(0.106, 0.104, 0.032, 7), pal.trim, 0, -0.26, 0.012, false);
+    const sandal = createLowPolyMesh(getRomanCaligaSandalGeo(), pal.leather, 0, -0.695, 0.045, true);
+    const strap = createLowPolyMesh(new THREE.CylinderGeometry(0.082, 0.086, 0.09, 7), pal.leatherHi, 0, -0.61, 0.012, false);
+    lg.add(calf, greave, greaveTrim, sandal, strap);
+    return lg;
+  };
+  const lLeg = buildSoldierLeg(true);
+  const rLeg = buildSoldierLeg(false);
+
+  // 2) 몸통 (주름 튜닉 스커트 + 다단 곡면 로리카 세그멘타타 흉갑 + 가죽 프테리게스 + 적층 견갑 + 드레이프 망토)
+  const tunicSkirt = createDoubleSideLowPolyMesh(getRomanTunicSkirtGeo(), pal.tunic, 0, 0, 0, true);
+  const loricaTorso = createLowPolyMesh(getRomanLoricaTorsoGeo(), pal.armor, 0, 0, 0, true);
+
+  // 가슴 적층 강판(Segmented Bands) 강조 라인 & 전면 황동 체결 버클
+  const chestPlateHi = createLowPolyMesh(new THREE.CylinderGeometry(0.292, 0.282, 0.11, 10), pal.armorHi, 0, 1.38, 0.006, false);
+  chestPlateHi.scale.set(1.0, 1.0, 0.72);
+  const midPlateBand = createLowPolyMesh(new THREE.CylinderGeometry(0.275, 0.266, 0.075, 10), pal.armorHi, 0, 1.22, 0.005, false);
+  midPlateBand.scale.set(1.0, 1.0, 0.72);
+  const collarTrim = createLowPolyMesh(new THREE.CylinderGeometry(0.165, 0.225, 0.075, 8), pal.tunicDark, 0, 1.545, 0, false);
+  collarTrim.scale.set(1.04, 1.0, 0.76);
+  const neck = createLowPolyMesh(new THREE.CylinderGeometry(0.090, 0.110, 0.20, 8), pal.skin, 0, 1.635, 0, false);
+
+  // 적층 곡면 견갑(Pauldrons) + 어깨 망토 황동 브로치(Fibula)
+  const pauldronL = createDoubleSideLowPolyMesh(getRomanPauldronGeo(true), pal.armorHi, 0, 0, 0, true);
+  const pauldronR = createDoubleSideLowPolyMesh(getRomanPauldronGeo(false), pal.armorHi, 0, 0, 0, true);
+  const claspL = createLowPolyMesh(new THREE.OctahedronGeometry(0.044, 0), pal.trim, -0.21, 1.49, 0.135, false);
+  claspL.scale.set(1.0, 1.0, 0.52);
+  const claspR = createLowPolyMesh(new THREE.OctahedronGeometry(0.044, 0), pal.trim,  0.21, 1.49, 0.135, false);
+  claspR.scale.set(1.0, 1.0, 0.52);
+
+  // 허리 가죽 띠(Cingulum) + 황동 버클 + 8갈래 소프트 로우폴리 프테리게스(Pteruges) 가죽 갑편
+  const belt = createLowPolyMesh(new THREE.CylinderGeometry(0.258, 0.264, 0.095, 10), pal.leather, 0, 0.99, 0, false);
+  belt.scale.set(1.02, 1.0, 0.74);
+  const buckle = createLowPolyMesh(new THREE.OctahedronGeometry(0.064, 0), pal.trim, 0, 0.99, 0.198, false);
+  buckle.scale.set(1.15, 0.88, 0.45);
+
+  const pterugesGrp = new THREE.Group();
+  const stripGeo = new THREE.CylinderGeometry(0.032, 0.024, 0.25, 5);
+  stripGeo.scale(1.1, 1.0, 0.42);
+  const stripNonIdx = markCachedGeo(stripGeo.toNonIndexed());
+  stripNonIdx.computeVertexNormals();
+  for (let i = 0; i < 8; i++) {
+    const phi = -Math.PI * 0.82 + (i / 7) * Math.PI * 1.64;
+    const sx = Math.sin(phi) * 0.265;
+    const sz = Math.cos(phi) * 0.198;
+    const strip = createLowPolyMesh(stripNonIdx, (i % 2 === 0) ? pal.leather : pal.leatherHi, sx, 0.84, sz, false);
+    strip.rotation.y = phi;
+    strip.rotation.x = -0.14;
+    const stud = createLowPolyMesh(new THREE.OctahedronGeometry(0.018, 0), pal.trim, sx * 1.04, 0.77, sz * 1.06, false);
+    pterugesGrp.add(strip, stud);
+  }
+
+  // 드레이프 로마 망토(Sagum)
+  const cape = createDoubleSideLowPolyMesh(getRomanFlowingCapeGeo(), pal.cape, 0, 0, 0, true);
+
+  // 3) 소프트 로우폴리 두상 & 이목구비 + 갈레아 투구 + 아치형 붉은 말총 볏
+  const head = new THREE.Group();
+  head.position.set(0, 1.90, 0);
+  const faceMesh = createLowPolyMesh(getSoftLowPolyHeadGeo(true, false), pal.skin, 0, 0, 0, true);
+  faceMesh.name = 'headBase';
+  const facialFeatures = createSoftFacialFeaturesGroup(pal.skin, pal.hair, false, true, pal.brow);
+  const earL = createLowPolyMesh(getSculptedEarGeo(true),  pal.skin, -0.228, -0.008, -0.012, false);
+  const earR = createLowPolyMesh(getSculptedEarGeo(false), pal.skin,  0.228, -0.008, -0.012, false);
+  const helmetGrp = createSoftRomanHelmetGroup(pal.helm, pal.trim, pal.plume, pal.transverse);
+  head.add(faceMesh, facialFeatures, earL, earR, helmetGrp);
+
+  // 공용 소프트 로우폴리 팔/손 빌더 (튜닉 소매 + 근육형 팔뚝 + 부드러운 손바닥/손가락)
+  const buildSoldierArmCore = (isLeft) => {
+    const side = isLeft ? -1 : 1;
+    const armGrp = new THREE.Group();
+    armGrp.position.set(side * 0.34, 1.44, 0);
+    const sleeve = createLowPolyMesh(new THREE.CylinderGeometry(0.102, 0.094, 0.24, 7), pal.tunic, 0, -0.11, 0, true);
+    const leatherCuff = createLowPolyMesh(new THREE.CylinderGeometry(0.098, 0.092, 0.045, 7), pal.leather, 0, -0.22, 0, false);
+    const forearm = createLowPolyMesh(new THREE.CylinderGeometry(0.078, 0.062, 0.30, 7), pal.skin, 0, -0.37, 0.02, true);
+    forearm.rotation.x = -0.10;
+    const vambrace = createLowPolyMesh(new THREE.CylinderGeometry(0.076, 0.068, 0.15, 7), pal.leatherHi, 0, -0.42, 0.025, false);
+    vambrace.rotation.x = -0.10;
+    const handPalm = createLowPolyMesh(new THREE.DodecahedronGeometry(0.062, 0), pal.skin, 0, -0.54, 0.04, false);
+    handPalm.scale.set(0.88, 1.08, 0.72);
+    armGrp.add(sleeve, leatherCuff, forearm, vambrace, handPalm);
+    return armGrp;
+  };
+
+  // 4) 왼팔 + 곡면 로마 방패(Scutum) + 곡면 황동 테두리 & 입체 Umbo 보스
+  const lArm = buildSoldierArmCore(true);
+  const shieldGrp = new THREE.Group();
+  shieldGrp.position.set(-0.08, -0.34, 0.14);
+  const shieldBody = createDoubleSideLowPolyMesh(getRomanScutumShieldGeo(), pal.shield, 0, 0, 0, true);
+  const shieldRims = createDoubleSideLowPolyMesh(getRomanScutumRimGeo(), pal.trim, 0, 0, 0, false);
+  // 방패 중앙 볼록 황동 Umbo 보스 & 대각 황금 번개 문양
+  const umboBase = createLowPolyMesh(new THREE.CylinderGeometry(0.115, 0.135, 0.045, 8), pal.trim, -0.135, 0, 0, false);
+  umboBase.rotation.z = Math.PI * 0.5;
+  const umboDome = createLowPolyMesh(new THREE.OctahedronGeometry(0.092, 1), pal.trim, -0.165, 0, 0, false);
+  umboDome.scale.set(0.55, 1.0, 1.0);
+  const wingUpL = createLowPolyMesh(new THREE.ConeGeometry(0.045, 0.34, 4), pal.trim, -0.11,  0.22,  0.11, false);
+  wingUpL.rotation.set(0.45, 0, 0.25);
+  const wingUpR = createLowPolyMesh(new THREE.ConeGeometry(0.045, 0.34, 4), pal.trim, -0.11,  0.22, -0.11, false);
+  wingUpR.rotation.set(-0.45, 0, 0.25);
+  const wingDnL = createLowPolyMesh(new THREE.ConeGeometry(0.045, 0.34, 4), pal.trim, -0.11, -0.22,  0.11, false);
+  wingDnL.rotation.set(Math.PI - 0.45, 0, 0.25);
+  const wingDnR = createLowPolyMesh(new THREE.ConeGeometry(0.045, 0.34, 4), pal.trim, -0.11, -0.22, -0.11, false);
+  wingDnR.rotation.set(Math.PI + 0.45, 0, 0.25);
+  shieldGrp.add(shieldBody, shieldRims, umboBase, umboDome, wingUpL, wingUpR, wingDnL, wingDnR);
+  lArm.add(shieldGrp);
+
+  // 5) 오른팔 + 소프트 로우폴리 로마 필룸(Pilum) 창
+  const rArm = buildSoldierArmCore(false);
+  const spearGrp = new THREE.Group();
+  spearGrp.position.set(0.03, -0.52, 0.08);
+  const shaft = createLowPolyMesh(new THREE.CylinderGeometry(0.028, 0.035, 1.95, 6), pal.wood, 0, 0.46, 0, true);
+  const gripWrap = createLowPolyMesh(new THREE.CylinderGeometry(0.038, 0.038, 0.24, 6), pal.leather, 0, 0.02, 0, false);
+  const pommel = createLowPolyMesh(new THREE.ConeGeometry(0.036, 0.14, 5), pal.trim, 0, -0.56, 0, false);
+  pommel.rotation.x = Math.PI;
+  const ironSocket = createLowPolyMesh(new THREE.CylinderGeometry(0.034, 0.046, 0.16, 6), pal.trim, 0, 1.48, 0, false);
+  const ironShank = createLowPolyMesh(new THREE.CylinderGeometry(0.018, 0.024, 0.42, 5), pal.iron, 0, 1.75, 0, false);
+  const spearHead = createLowPolyMesh(new THREE.OctahedronGeometry(0.068, 0), pal.iron, 0, 2.04, 0, true);
+  spearHead.scale.set(0.75, 2.25, 0.48);
+  spearGrp.add(shaft, gripWrap, pommel, ironSocket, ironShank, spearHead);
+  rArm.add(spearGrp);
   rArm.rotation.x = -0.35;
 
-  g.add(lLeg, rLeg, tunicSkirt, armorTorso, chestBand, belt, buckle, pauldronL, pauldronR, cape, head, helmDome, helmBrow, plume, eyeL, eyeR, lArm, rArm);
-  g.userData = { lLeg, rLeg, lArm, rArm, isRomanSoldier: true, variantIdx };
+  g.add(
+    lLeg, rLeg, tunicSkirt, loricaTorso, chestPlateHi, midPlateBand, collarTrim, neck,
+    pauldronL, pauldronR, claspL, claspR, belt, buckle, pterugesGrp, cape, head, lArm, rArm
+  );
+  g.userData = { lLeg, rLeg, lArm, rArm, head, isRomanSoldier: true, variantIdx, style: 'soft_lowpoly_v19' };
   return g;
 };
 

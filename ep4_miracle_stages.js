@@ -4,10 +4,11 @@
 // - 스테이지 3(십자가 사건): 넓어진 골고다 언덕 정상 고원과 세 십자가 등장 연출 적용
 // =========================================================================
 window.__GAME_BUILD_VERSIONS__ = window.__GAME_BUILD_VERSIONS__ || {};
-window.__GAME_BUILD_VERSIONS__.ep4_stages = '20261122_v18';
+window.__GAME_BUILD_VERSIONS__.ep4_stages = '20261122_v19';
 
-// 스테이지 3: 예수님과 플레이어가 무거운 십자가를 지고 걷는 통일 속도 (아무리 세게 터치해도 이 속도로 제한!)
-const MIRACLE_STAGE3_CROSS_WALK_SPEED = 1.65;
+// 스테이지 3: 십자가를 지고 힘겹게 오르시는 예수님 보행 속도(더 천천히) 및 플레이어 대신 짊어졌을 때의 보행 속도
+const MIRACLE_STAGE3_JESUS_WALK_SPEED = 1.05;
+const MIRACLE_STAGE3_CROSS_WALK_SPEED = 1.35;
 
 let miracleStageObjects = [];
 let miracleStageCutscene = { active: false, timer: 0, stageNum: 0 };
@@ -2452,17 +2453,22 @@ function attachCrossToPlayerBack() {
   carriedBlockGroup.add(crossGrp);
 }
 
-// 스테이지 3에서 십자가 무게에 넘어져 방향키(조이스틱)로 다시 일어날 때까지 이동 잠금 연동
+// 스테이지 3에서 십자가를 들어 올리는 모션 중 또는 무게에 넘어져 다시 일어날 때까지 이동 잠금 연동
 const _ep4StagesOrigMoveLock = window.isPlayerMovementLocked;
 window.isPlayerMovementLocked = function () {
   const prev = (typeof _ep4StagesOrigMoveLock === 'function') ? _ep4StagesOrigMoveLock() : false;
-  const stumbling = (
+  const stage3Lock = (
     miracleSubMode === 'main3_cross' &&
     miracleActiveMiniState &&
-    miracleActiveMiniState.phase === 'carry' &&
-    (miracleActiveMiniState.stumbleState !== 'none' || miracleActiveMiniState.stumbleTimer > 0)
+    (
+      miracleActiveMiniState.phase === 'pickup_cross' ||
+      (
+        miracleActiveMiniState.phase === 'carry' &&
+        (miracleActiveMiniState.stumbleState !== 'none' || miracleActiveMiniState.stumbleTimer > 0)
+      )
+    )
   );
-  return prev || stumbling;
+  return prev || stage3Lock;
 };
 
 function openMiracleStage3CrossFailModal() {
@@ -2494,6 +2500,77 @@ function openMiracleStage3CrossFailModal() {
 function acceptCarryJesusCross() {
   const st = miracleActiveMiniState;
   if (!st || st.phase !== 'find_jesus') return;
+  // 예수님과 로마 군인들이 플레이어 위치로 되돌아가지 않고 그 자리에서 잠시 멈춰 대기!
+  st.phase = 'approach_jesus';
+  st.handoffPos = st.jesusMesh ? st.jesusMesh.position.clone() : new THREE.Vector3(0, 0, -5.8);
+  if (Array.isArray(st.escortSoldiers)) {
+    st.escortSoldiers.forEach(sol => {
+      if (sol && sol.mesh) {
+        sol.pausedX = sol.mesh.position.x;
+        sol.pausedZ = sol.mesh.position.z;
+      }
+    });
+  }
+  if (st.jesusRing) {
+    st.jesusRing.visible = true;
+    if (st.jesusRing.material && st.jesusRing.material.color) {
+      st.jesusRing.material.color.setHex(0xfacc15);
+    }
+  }
+  if (st.jesusLabel) {
+    st.jesusLabel.innerHTML = '✝️ 잠시 멈춰 기다리시는 예수님 (곁으로 다가가 십자가 들기)';
+  }
+  playSfx('switch');
+  updateStageHUD();
+  showToast('✝️ 예수님과 군인들이 잠시 멈춰 기다리고 있어요! 예수님 위치로 가까이 다가가 십자가를 들어 올려요!');
+}
+
+function beginCrossPickupAnimation(st) {
+  if (!st || st.phase !== 'approach_jesus') return;
+  const jPos = st.jesusMesh ? st.jesusMesh.position.clone() : (st.handoffPos ? st.handoffPos.clone() : playerPos.clone());
+  st.phase = 'pickup_cross';
+  st.pickupTimer = 0;
+  st.pickupDuration = 1.15;
+  st.pickupStartPlayerPos = playerPos.clone();
+  st.pickupStartFacing = playerFacing;
+  st.pickupTargetPlayerPos = new THREE.Vector3(jPos.x, getMiracleGroundHeight(jPos.x, jPos.z, 3), jPos.z);
+  st.pickupStartJesusPos = jPos.clone();
+  const nextJX = Math.max(-21, Math.min(21, jPos.x + 1.5));
+  const nextJZ = jPos.z - 0.35;
+  st.pickupTargetJesusPos = new THREE.Vector3(nextJX, getMiracleGroundHeight(nextJX, nextJZ, 3), nextJZ);
+
+  if (st.crossProp) st.crossProp.visible = false;
+  if (st.handoffCrossProp && worldGroup) {
+    worldGroup.remove(st.handoffCrossProp);
+    st.handoffCrossProp = null;
+  }
+  const handoffCross = createCarryableWoodenCross(0.98);
+  handoffCross.position.copy(jPos);
+  handoffCross.rotation.y = Math.PI;
+  worldGroup.add(handoffCross);
+  st.handoffCrossProp = handoffCross;
+
+  if (st.jesusLabel) st.jesusLabel.innerHTML = '✝️ 십자가를 넘겨주시는 예수님';
+  playSfx('build');
+  updateStageHUD();
+  showToast('✝️ 예수님의 무거운 십자가를 내 어깨로 들어 올리고 있어요!');
+}
+
+function completeCrossPickupToCarry(st) {
+  if (!st || st.phase !== 'pickup_cross') return;
+  if (st.handoffCrossProp && worldGroup) {
+    worldGroup.remove(st.handoffCrossProp);
+    st.handoffCrossProp = null;
+  }
+  if (st.pickupTargetPlayerPos) {
+    playerPos.copy(st.pickupTargetPlayerPos);
+    lastGroundedY = playerPos.y;
+  }
+  playerFacing = Math.PI;
+  if (st.jesusMesh && st.pickupTargetJesusPos) {
+    st.jesusMesh.position.copy(st.pickupTargetJesusPos);
+    st.jesusMesh.rotation.y = Math.PI;
+  }
   st.phase = 'carry';
   // 이미 지나친 넘어짐 체크포인트는 건너뛰고 앞으로 남은 오르막에서만 자연스럽게 넘어지도록 조정
   if (Array.isArray(st.stumbleCheckpoints)) {
@@ -2511,9 +2588,9 @@ function acceptCarryJesusCross() {
   if (st.goalRing) st.goalRing.visible = true;
   attachCrossToPlayerBack();
   startStageBgm(3);
-  playSfx('build');
+  playSfx('rescue');
   updateStageHUD();
-  showToast('✝️ [2단계] 내가 무거운 십자가를 대신 짊어졌어요! 예수님 걸음처럼 천천히, 넘어져도 다시 일어나 끝까지 올라가요!');
+  showToast('✝️ [2단계] 내가 무거운 십자가를 대신 짊어졌어요! 예수님과 함께 골고다 정상까지 올라가요!');
 }
 
 function updateMiracleMainStage3Frame(dt, now) {
@@ -2561,7 +2638,7 @@ function updateMiracleMainStage3Frame(dt, now) {
     const moved = Math.hypot(sol.mesh.position.x - prevX, sol.mesh.position.z - prevZ);
     const u = sol.mesh.userData;
     if (u) {
-      const swing = (isMoving && moved > 0.002) ? Math.sin(now * 0.0085 + sol.phase) * 0.44 : 0;
+      const swing = (isMoving && moved > 0.002) ? Math.sin(now * 0.0072 + sol.phase) * 0.42 : 0;
       if (u.lLeg && u.rLeg) { u.lLeg.rotation.x = swing; u.rLeg.rotation.x = -swing; }
       if (u.lArm) u.lArm.rotation.x = -swing * 0.35;
       if (u.rArm) u.rArm.rotation.x = -0.35 + swing * 0.32;
@@ -2596,25 +2673,25 @@ function updateMiracleMainStage3Frame(dt, now) {
     });
 
     if (st.cluesFound >= st.reqClues && st.jesusMesh) {
-      // 내가 들기를 하지 않으면 예수님과 로마 군인들이 골고다 정상까지 계속 올라가며, 도착 시 스테이지 3 실패!
+      // 내가 들기를 하지 않으면 예수님과 로마 군인들이 천천히 골고다 정상까지 올라가며, 도착 시 스테이지 3 실패!
       const jPos = st.jesusMesh.position;
       const dialogOpen = (typeof miracleDialogState !== 'undefined' && miracleDialogState.active);
       if (!dialogOpen) {
-        jPos.z -= dt * MIRACLE_STAGE3_CROSS_WALK_SPEED;
+        jPos.z -= dt * MIRACLE_STAGE3_JESUS_WALK_SPEED;
         jPos.y = getMiracleGroundHeight(jPos.x, jPos.z, 3);
       }
-      const stepPhase = now * 0.0048;
+      const stepPhase = now * 0.0034;
       if (st.jesusBodyPivot) {
-        st.jesusBodyPivot.rotation.x = 0.16 + Math.abs(Math.sin(stepPhase)) * 0.05;
-        st.jesusBodyPivot.position.y = Math.abs(Math.sin(stepPhase)) * 0.06;
+        st.jesusBodyPivot.rotation.x = 0.16 + Math.abs(Math.sin(stepPhase)) * 0.045;
+        st.jesusBodyPivot.position.y = Math.abs(Math.sin(stepPhase)) * 0.05;
       }
       if (st.jesusPersonMesh && st.jesusPersonMesh.userData) {
         const ju = st.jesusPersonMesh.userData;
-        const swing = dialogOpen ? 0 : Math.sin(stepPhase) * 0.42;
+        const swing = dialogOpen ? 0 : Math.sin(stepPhase) * 0.38;
         if (ju.lLeg && ju.rLeg) { ju.lLeg.rotation.x = swing; ju.rLeg.rotation.x = -swing; }
         if (ju.lArm && ju.rArm) {
-          ju.lArm.rotation.x = 2.42 + Math.sin(stepPhase * 2) * 0.05;
-          ju.rArm.rotation.x = 2.42 - Math.sin(stepPhase * 2) * 0.05;
+          ju.lArm.rotation.x = 2.42 + Math.sin(stepPhase * 2) * 0.04;
+          ju.rArm.rotation.x = 2.42 - Math.sin(stepPhase * 2) * 0.04;
           ju.lArm.rotation.z =  0.22;
           ju.rArm.rotation.z = -0.22;
         }
@@ -2658,6 +2735,182 @@ function updateMiracleMainStage3Frame(dt, now) {
           acceptCarryJesusCross();
         }
       }
+    }
+  } else if (st.phase === 'approach_jesus') {
+    // [내가 들기 선택 후] 예수님과 로마 군인들은 현재 자리에서 잠시 멈춰 대기하고, 플레이어가 예수님 위치로 다가가면 십자가 드는 모션 시작!
+    if (st.jesusMesh) {
+      const jPos = st.jesusMesh.position;
+      if (st.handoffPos) {
+        jPos.x = st.handoffPos.x;
+        jPos.z = st.handoffPos.z;
+        jPos.y = getMiracleGroundHeight(jPos.x, jPos.z, 3);
+      }
+      if (st.jesusBodyPivot) {
+        st.jesusBodyPivot.rotation.x = 0.14 + Math.sin(now * 0.004) * 0.025;
+        st.jesusBodyPivot.position.y = 0;
+      }
+      if (st.jesusPersonMesh && st.jesusPersonMesh.userData) {
+        const ju = st.jesusPersonMesh.userData;
+        if (ju.lLeg && ju.rLeg) { ju.lLeg.rotation.x = 0; ju.rLeg.rotation.x = 0; }
+        if (ju.lArm && ju.rArm) {
+          ju.lArm.rotation.x = 2.42; ju.rArm.rotation.x = 2.42;
+          ju.lArm.rotation.z = 0.22; ju.rArm.rotation.z = -0.22;
+        }
+      }
+      if (st.jesusRing) {
+        const pulse = 1.0 + Math.sin(now * 0.0065) * 0.09;
+        st.jesusRing.scale.set(pulse, pulse, 1);
+      }
+      if (Array.isArray(st.escortSoldiers)) {
+        st.escortSoldiers.forEach(sol => {
+          const px = (typeof sol.pausedX === 'number') ? sol.pausedX : (jPos.x + sol.offX);
+          const pz = (typeof sol.pausedZ === 'number') ? sol.pausedZ : (jPos.z + sol.offZ);
+          animateEscortSoldier(sol, px, pz, Math.PI, false, true);
+        });
+      }
+      nextGuidePos = jPos;
+      updateWorldLabelPos(st.jesusLabel, jPos, true);
+
+      const distToJesus = Math.hypot(playerPos.x - jPos.x, playerPos.z - jPos.z);
+      if (distToJesus < 1.85) {
+        beginCrossPickupAnimation(st);
+      }
+    }
+  } else if (st.phase === 'pickup_cross') {
+    // [십자가 들어 올리는 모션] 예수님 자리로 다가온 플레이어가 몸을 숙여 십자가를 넘겨받아 어깨에 메고, 예수님은 옆으로 비켜섬
+    st.pickupTimer = (st.pickupTimer || 0) + dt;
+    const dur = st.pickupDuration || 1.15;
+    const p = Math.min(1, st.pickupTimer / dur);
+    const sm = (t) => t * t * (3 - 2 * t);
+
+    const pStart = st.pickupStartPlayerPos || playerPos;
+    const pTarget = st.pickupTargetPlayerPos || playerPos;
+    const jStart = st.pickupStartJesusPos || (st.jesusMesh ? st.jesusMesh.position : playerPos);
+    const jTarget = st.pickupTargetJesusPos || jStart;
+
+    if (p < 0.42) {
+      const t1 = sm(p / 0.42);
+      playerPos.x = THREE.MathUtils.lerp(pStart.x, pTarget.x, t1);
+      playerPos.z = THREE.MathUtils.lerp(pStart.z, pTarget.z, t1);
+      playerPos.y = getMiracleGroundHeight(playerPos.x, playerPos.z, 3);
+      lastGroundedY = playerPos.y;
+      playerFacing = lerpAngle(st.pickupStartFacing || playerFacing, Math.PI, t1);
+
+      if (playerGroup) {
+        playerGroup.position.copy(playerPos);
+        playerGroup.rotation.y = playerFacing;
+        playerGroup.rotation.x = 0.46 * t1;
+        playerGroup.scale.set(1, 1.0 - 0.14 * t1, 1);
+      }
+      if (playerLimbs) {
+        if (playerLimbs.lLeg && playerLimbs.rLeg) {
+          playerLimbs.lLeg.rotation.x = 0.30 * t1;
+          playerLimbs.rLeg.rotation.x = -0.22 * t1;
+        }
+        if (playerLimbs.lArm && playerLimbs.rArm) {
+          playerLimbs.lArm.rotation.x = 1.35 * t1;
+          playerLimbs.rArm.rotation.x = 1.35 * t1;
+          playerLimbs.lArm.rotation.z =  0.10 * t1;
+          playerLimbs.rArm.rotation.z = -0.10 * t1;
+        }
+      }
+      if (st.jesusMesh) {
+        st.jesusMesh.position.x = THREE.MathUtils.lerp(jStart.x, jTarget.x, t1 * 0.45);
+        st.jesusMesh.position.z = THREE.MathUtils.lerp(jStart.z, jTarget.z, t1 * 0.45);
+        st.jesusMesh.position.y = getMiracleGroundHeight(st.jesusMesh.position.x, st.jesusMesh.position.z, 3);
+        st.jesusMesh.rotation.y = Math.PI;
+        if (st.jesusBodyPivot) {
+          st.jesusBodyPivot.rotation.x = 0.16 * (1 - t1);
+          st.jesusBodyPivot.position.y = 0;
+        }
+        if (st.jesusPersonMesh && st.jesusPersonMesh.userData) {
+          const ju = st.jesusPersonMesh.userData;
+          if (ju.lLeg && ju.rLeg) { ju.lLeg.rotation.x = 0; ju.rLeg.rotation.x = 0; }
+          if (ju.lArm && ju.rArm) {
+            ju.lArm.rotation.x = THREE.MathUtils.lerp(2.42, 0.85, t1);
+            ju.rArm.rotation.x = THREE.MathUtils.lerp(2.42, 0.85, t1);
+            ju.lArm.rotation.z =  0.22 * (1 - t1);
+            ju.rArm.rotation.z = -0.22 * (1 - t1);
+          }
+        }
+      }
+      if (st.handoffCrossProp) {
+        st.handoffCrossProp.position.set(
+          THREE.MathUtils.lerp(jStart.x, pTarget.x, t1),
+          THREE.MathUtils.lerp(jStart.y, pTarget.y - 0.18, t1),
+          THREE.MathUtils.lerp(jStart.z, pTarget.z + 0.12, t1)
+        );
+        st.handoffCrossProp.rotation.set(-0.28 * t1, Math.PI, 0);
+      }
+    } else {
+      const t2 = sm((p - 0.42) / 0.58);
+      playerPos.copy(pTarget);
+      lastGroundedY = playerPos.y;
+      playerFacing = Math.PI;
+
+      if (playerGroup) {
+        playerGroup.position.copy(playerPos);
+        playerGroup.rotation.y = playerFacing;
+        playerGroup.rotation.x = THREE.MathUtils.lerp(0.46, 0.14, t2);
+        playerGroup.scale.set(1, THREE.MathUtils.lerp(0.86, 1.0, t2), 1);
+      }
+      if (playerLimbs) {
+        if (playerLimbs.lLeg && playerLimbs.rLeg) {
+          playerLimbs.lLeg.rotation.x = 0.30 * (1 - t2);
+          playerLimbs.rLeg.rotation.x = -0.22 * (1 - t2);
+        }
+        if (playerLimbs.lArm && playerLimbs.rArm) {
+          playerLimbs.lArm.rotation.x = THREE.MathUtils.lerp(1.35, 2.40, t2);
+          playerLimbs.rArm.rotation.x = THREE.MathUtils.lerp(1.35, 2.40, t2);
+          playerLimbs.lArm.rotation.z = THREE.MathUtils.lerp(0.10, 0.22, t2);
+          playerLimbs.rArm.rotation.z = THREE.MathUtils.lerp(-0.10, -0.22, t2);
+        }
+      }
+      if (st.jesusMesh) {
+        const jT = 0.45 + t2 * 0.55;
+        st.jesusMesh.position.x = THREE.MathUtils.lerp(jStart.x, jTarget.x, jT);
+        st.jesusMesh.position.z = THREE.MathUtils.lerp(jStart.z, jTarget.z, jT);
+        st.jesusMesh.position.y = getMiracleGroundHeight(st.jesusMesh.position.x, st.jesusMesh.position.z, 3);
+        st.jesusMesh.rotation.y = Math.PI;
+        if (st.jesusBodyPivot) {
+          st.jesusBodyPivot.rotation.x = 0;
+          st.jesusBodyPivot.position.y = 0;
+        }
+        if (st.jesusPersonMesh && st.jesusPersonMesh.userData) {
+          const ju = st.jesusPersonMesh.userData;
+          if (ju.lLeg && ju.rLeg) { ju.lLeg.rotation.x = 0; ju.rLeg.rotation.x = 0; }
+          if (ju.lArm && ju.rArm) {
+            ju.lArm.rotation.x = 0.85 * (1 - t2);
+            ju.rArm.rotation.x = 0.85 * (1 - t2);
+            ju.lArm.rotation.z = 0;
+            ju.rArm.rotation.z = 0;
+          }
+        }
+      }
+      if (st.handoffCrossProp) {
+        const liftArc = Math.sin(t2 * Math.PI) * 0.34;
+        st.handoffCrossProp.position.set(
+          pTarget.x,
+          THREE.MathUtils.lerp(pTarget.y - 0.18, pTarget.y, t2) + liftArc,
+          THREE.MathUtils.lerp(pTarget.z + 0.12, pTarget.z, t2)
+        );
+        st.handoffCrossProp.rotation.set(-0.28 * (1 - t2), Math.PI, 0);
+      }
+    }
+
+    // 호송 로마 군인들은 제자리에서 대기하며 출발 준비 (절대 뒤로 이동하지 않음!)
+    if (Array.isArray(st.escortSoldiers)) {
+      st.escortSoldiers.forEach(sol => {
+        const px = (typeof sol.pausedX === 'number') ? sol.pausedX : sol.mesh.position.x;
+        const pz = (typeof sol.pausedZ === 'number') ? sol.pausedZ : sol.mesh.position.z;
+        animateEscortSoldier(sol, px, pz, Math.PI, false, false);
+      });
+    }
+    if (st.jesusMesh) updateWorldLabelPos(st.jesusLabel, st.jesusMesh.position, true);
+    nextGuidePos = st.goalPos;
+
+    if (p >= 1.0) {
+      completeCrossPickupToCarry(st);
     }
   } else if (st.phase === 'carry') {
     nextGuidePos = st.goalPos;
@@ -3964,15 +4217,25 @@ function updateMiracleEndingFrame(dt, now) {
 
     const angelPromiseLine = '하늘로 올라가신 예수께서는, 여러분이 지금 하늘로 올라가신 것을 본 것과 똑같은 방식으로 다시 내려오실 것입니다';
     const bf = document.getElementById('black-fade');
-    if (bf) {
-      document.getElementById('black-fade-icon').textContent = '👼☁️';
-      document.getElementById('black-fade-title').textContent = `"${angelPromiseLine}"`;
-      document.getElementById('black-fade-sub').textContent = '사도행전 1장 11절';
-      bf.style.opacity = '1';
-      speakText(angelPromiseLine);
-    }
+    let transitioned = false;
+    let minExposureDone = false;
+    let ttsFinished = false;
+    const MIN_EXPOSURE_MS = 9500;
+    const POST_TTS_BUFFER_MS = 1100;
+    const MAX_WAIT_MS = 18500;
 
-    setTimeout(() => {
+    const clearEndingTimers = () => {
+      if (st._endMinTimer) { clearTimeout(st._endMinTimer); st._endMinTimer = null; }
+      if (st._endPostTtsTimer) { clearTimeout(st._endPostTtsTimer); st._endPostTtsTimer = null; }
+      if (st._endMaxTimer) { clearTimeout(st._endMaxTimer); st._endMaxTimer = null; }
+      if (st._endPollTimer) { clearInterval(st._endPollTimer); st._endPollTimer = null; }
+    };
+    clearEndingTimers();
+
+    const finishAscensionBlackout = () => {
+      if (transitioned) return;
+      transitioned = true;
+      clearEndingTimers();
       if (bf) bf.style.opacity = '0';
       st.active = false;
       if (st.jesusCloudGroup) st.jesusCloudGroup.visible = false;
@@ -3997,7 +4260,61 @@ function updateMiracleEndingFrame(dt, now) {
       } else {
         afterEndingVideo();
       }
-    }, 6200);
+    };
+
+    const tryCompleteBlackout = () => {
+      if (transitioned) return;
+      if (minExposureDone && ttsFinished) {
+        finishAscensionBlackout();
+      }
+    };
+
+    const markTtsDoneWithBuffer = () => {
+      if (ttsFinished || transitioned) return;
+      if (st._endPostTtsTimer) clearTimeout(st._endPostTtsTimer);
+      st._endPostTtsTimer = setTimeout(() => {
+        ttsFinished = true;
+        tryCompleteBlackout();
+      }, POST_TTS_BUFFER_MS);
+    };
+
+    if (bf) {
+      document.getElementById('black-fade-icon').textContent = '👼☁️';
+      document.getElementById('black-fade-title').textContent = `"${angelPromiseLine}"`;
+      document.getElementById('black-fade-sub').textContent = '사도행전 1장 11절';
+      bf.style.opacity = '1';
+      speakText(angelPromiseLine, {
+        onEnd: () => { markTtsDoneWithBuffer(); }
+      });
+    } else {
+      ttsFinished = true;
+    }
+
+    // 최소 노출 시간(9.5초) 보장: 음성이 없거나 빠른 기기에서도 말씀을 충분히 읽을 수 있도록 유지
+    st._endMinTimer = setTimeout(() => {
+      minExposureDone = true;
+      // 모바일 브라우저에서 speechSynthesis.onend가 누락된 경우 안전 감지
+      const stillSpeaking = ('speechSynthesis' in window) && window.speechSynthesis && Boolean(window.speechSynthesis.speaking);
+      if (!stillSpeaking && !ttsFinished && !st._endPostTtsTimer) {
+        markTtsDoneWithBuffer();
+      } else {
+        tryCompleteBlackout();
+      }
+    }, MIN_EXPOSURE_MS);
+
+    // onend 콜백이 누락되는 일부 모바일 브라우저 대비 450ms 주기 안전 폴링
+    st._endPollTimer = setInterval(() => {
+      if (transitioned || !minExposureDone) return;
+      const stillSpeaking = ('speechSynthesis' in window) && window.speechSynthesis && Boolean(window.speechSynthesis.speaking);
+      if (!stillSpeaking && !ttsFinished && !st._endPostTtsTimer) {
+        markTtsDoneWithBuffer();
+      }
+    }, 450);
+
+    // 어떤 환경에서도 멈추지 않도록 최대 18.5초 상한 안전장치
+    st._endMaxTimer = setTimeout(() => {
+      finishAscensionBlackout();
+    }, MAX_WAIT_MS);
   }
 }
 
@@ -4079,7 +4396,13 @@ REGISTER_EPISODE('miracle', {
     window.miracleWorldTreePositions = [];
     window.miracleZacchaeusGroveTrees = [];
     miracleStageCutscene.active = false;
-    if (typeof miracleAscensionState !== 'undefined' && miracleAscensionState) miracleAscensionState.active = false;
+    if (typeof miracleAscensionState !== 'undefined' && miracleAscensionState) {
+      miracleAscensionState.active = false;
+      if (miracleAscensionState._endMinTimer) { clearTimeout(miracleAscensionState._endMinTimer); miracleAscensionState._endMinTimer = null; }
+      if (miracleAscensionState._endPostTtsTimer) { clearTimeout(miracleAscensionState._endPostTtsTimer); miracleAscensionState._endPostTtsTimer = null; }
+      if (miracleAscensionState._endMaxTimer) { clearTimeout(miracleAscensionState._endMaxTimer); miracleAscensionState._endMaxTimer = null; }
+      if (miracleAscensionState._endPollTimer) { clearInterval(miracleAscensionState._endPollTimer); miracleAscensionState._endPollTimer = null; }
+    }
     _isEnteringMiracleStage = false;
     if (typeof playerGroup !== 'undefined' && playerGroup) {
       playerGroup.rotation.x = 0;
@@ -4092,7 +4415,7 @@ REGISTER_EPISODE('miracle', {
     }
   },
   getPlayerMoveSpeed: function (st, baseSpeed) {
-    // 스테이지 3: 십자가를 대신 짊어진 상태에서는 아무리 세게 터치해도 원래 예수님 걷는 속도(1.65 m/s)와 정확히 동일하게 제한!
+    // 스테이지 3: 십자가를 대신 짊어진 상태에서는 무거운 십자가 보행 속도(MIRACLE_STAGE3_CROSS_WALK_SPEED)로 제한!
     if (miracleSubMode === 'main3_cross' && miracleActiveMiniState && miracleActiveMiniState.phase === 'carry') {
       return MIRACLE_STAGE3_CROSS_WALK_SPEED;
     }
@@ -4162,10 +4485,19 @@ REGISTER_EPISODE('miracle', {
       const ms = miracleActiveMiniState;
       badge.textContent = '십자가의 길 · 스테이지 3';
       countIcon.textContent = '✝️';
-      countText.textContent = ms.phase === 'find_jesus' ? `단서 ${ms.cluesFound}/${ms.reqClues}` : '십자가 동행 등반';
-      missionText.textContent = ms.phase === 'find_jesus'
-        ? '단서를 듣고 예수님이 정상에 도착하시기 전에 다가가 [내가 들기]를 선택하세요!'
-        : '예수님 걸음에 맞춰 무거운 십자가를 등에 지고 골고다 언덕 정상까지 올라가세요!';
+      if (ms.phase === 'find_jesus') {
+        countText.textContent = `단서 ${ms.cluesFound}/${ms.reqClues}`;
+        missionText.textContent = '단서를 듣고 예수님이 정상에 도착하시기 전에 다가가 [내가 들기]를 선택하세요!';
+      } else if (ms.phase === 'approach_jesus') {
+        countText.textContent = '예수님께 다가가기';
+        missionText.textContent = '예수님과 군인들이 잠시 멈춰 기다리고 있어요! 예수님 곁으로 가까이 다가가 십자가를 넘겨받으세요!';
+      } else if (ms.phase === 'pickup_cross') {
+        countText.textContent = '십자가 들어 올리는 중';
+        missionText.textContent = '예수님의 무거운 십자가를 어깨에 들어 올리고 있어요!';
+      } else {
+        countText.textContent = '십자가 동행 등반';
+        missionText.textContent = '예수님과 함께 무거운 십자가를 등에 지고 골고다 언덕 정상까지 올라가세요!';
+      }
     } else if (miracleSubMode === 'main4_tomb') {
       const ms = miracleActiveMiniState;
       badge.textContent = '빈 무덤 · 스테이지 4';
