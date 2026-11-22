@@ -4,7 +4,7 @@
 // - 계단으로 건물 2층 등반 후 인접한 옆 건물 옥상·2층으로 점프 이동할 수 있는 근접 마을 배치
 // =========================================================================
 window.__GAME_BUILD_VERSIONS__ = window.__GAME_BUILD_VERSIONS__ || {};
-window.__GAME_BUILD_VERSIONS__.ep4_world = '20261122_v16';
+window.__GAME_BUILD_VERSIONS__.ep4_world = '20261122_v17';
 
 window.miracleOpenWorldIntroFlyover = {
   active: false,
@@ -211,7 +211,7 @@ function createSpokedWoodenWheel(radius = 0.54, woodHex = '#5c2d0c', rimHex = '#
 }
 
 function createLowPolyWoodenCart(x, z, rotY = 0) {
-  const by = getMiracleOpenWorldGroundHeight(x, z);
+  const by = (typeof getBaseGroundHeight === 'function') ? getBaseGroundHeight(x, z) : getMiracleOpenWorldGroundHeight(x, z);
   const seed = Math.abs(Math.round(x * 7 + z * 11)) + 3;
   const grp = new THREE.Group();
   const makeBox = (w, h, d, s) => (typeof createOrganicBoxGeo === 'function')
@@ -280,9 +280,9 @@ function createLowPolyWoodenCart(x, z, rotY = 0) {
   return grp;
 }
 
-// 건물 앞·골목 어귀를 풍성하게 꾸며주는 비정형 소프트 로우폴리 시장 소품 묶음 (항아리·곡식자루·나무상자·바구니)
+// 건물 앞·골목 어귀를 풍성하게 꾸며주는 비정형 소프트 로우폴리 시장 소품 묶음 (항아리·곡식자루·나무상자·다양한 과일 바구니)
 function createOrganicStreetPropCluster(x, z, rotY = 0, seed = 1) {
-  const by = getMiracleOpenWorldGroundHeight(x, z);
+  const by = (typeof getBaseGroundHeight === 'function') ? getBaseGroundHeight(x, z) : getMiracleOpenWorldGroundHeight(x, z);
   const grp = new THREE.Group();
   const makeBox = (w, h, d, s) => (typeof createOrganicBoxGeo === 'function')
     ? createOrganicBoxGeo(w, h, d, s, 0.07, 0.95, 1)
@@ -291,8 +291,19 @@ function createOrganicStreetPropCluster(x, z, rotY = 0, seed = 1) {
   const crate = createLowPolyMesh(makeBox(1.05, 0.62, 0.82, seed), '#9a5b25', -0.45, 0.31, 0, true);
   const crateLid = createLowPolyMesh(makeBox(1.12, 0.10, 0.88, seed + 1), '#78350f', -0.45, 0.64, 0, false);
   const basket = createLowPolyMesh(new THREE.CylinderGeometry(0.32, 0.24, 0.34, 7), '#b45309', -0.45, 0.86, 0.04, false);
-  const fruit = createLowPolyMesh(new THREE.DodecahedronGeometry(0.24, 0), seed % 2 === 0 ? '#eab308' : '#84cc16', -0.45, 1.04, 0.04, false);
-  fruit.scale.set(1.1, 0.68, 1.1);
+  const fruitCols = ['#dc2626', '#eab308', '#84cc16', '#f97316'];
+  for (let k = 0; k < 4; k++) {
+    const ang = (k / 4) * Math.PI * 2 + seed;
+    const fruit = createLowPolyMesh(
+      new THREE.DodecahedronGeometry(0.14, 0),
+      fruitCols[(seed + k) % fruitCols.length],
+      -0.45 + Math.cos(ang) * 0.12,
+      1.04 + (k === 0 ? 0.06 : 0),
+      0.04 + Math.sin(ang) * 0.12,
+      false
+    );
+    grp.add(fruit);
+  }
 
   const jar1 = createOrganicAmphoraProp(1.05, '#b86232', '#8f471e');
   jar1.position.set(0.45, 0, -0.18);
@@ -304,11 +315,55 @@ function createOrganicStreetPropCluster(x, z, rotY = 0, seed = 1) {
   sack.scale.set(1.1, 0.78, 0.95);
   sack.rotation.y = seed * 0.7;
 
-  grp.add(crate, crateLid, basket, fruit, jar1, jar2, sack);
+  const basket2 = createLowPolyMesh(new THREE.CylinderGeometry(0.28, 0.21, 0.28, 7), '#c48334', -0.96, 0.14, 0.36, false);
+  const spicePile = createLowPolyMesh(new THREE.ConeGeometry(0.24, 0.24, 6), seed % 2 === 0 ? '#eab308' : '#c2410c', -0.96, 0.36, 0.36, false);
+
+  grp.add(crate, crateLid, basket, jar1, jar2, sack, basket2, spicePile);
   grp.position.set(x, by, z);
   grp.rotation.y = rotY;
   worldGroup.add(grp);
-  colliders.push({ minX: x - 1.05, maxX: x + 1.05, minZ: z - 0.85, maxZ: z + 0.85 });
+  colliders.push({ minX: x - 1.15, maxX: x + 1.15, minZ: z - 0.90, maxZ: z + 0.90 });
+  return grp;
+}
+
+// 길가 독립 시장 가판대(스트라이프/린넨 천막 + 4종 다채로운 진열 상품 + 목재 기둥)
+function createStandaloneMarketStall(x, z, rotY = 0, themeIdx = 0, striped = true, seed = 101) {
+  const by = (typeof getBaseGroundHeight === 'function') ? getBaseGroundHeight(x, z) : getMiracleOpenWorldGroundHeight(x, z);
+  const grp = new THREE.Group();
+  const woodCol = '#6b4226';
+  const linenList = (typeof MIRACLE_LINEN_SHADES !== 'undefined') ? MIRACLE_LINEN_SHADES : [{ main: '#e8dbc2', trim: '#d7c6a6' }];
+  const linenSpec = linenList[Math.abs(seed) % linenList.length];
+
+  // 뒤쪽 2개 목재 기둥 + 경사진 스트라이프/아마포 천막
+  const backPostL = createLowPolyMesh(new THREE.CylinderGeometry(0.085, 0.105, 2.95, 6), woodCol, -1.55, 1.48, -0.78, true);
+  const backPostR = createLowPolyMesh(new THREE.CylinderGeometry(0.085, 0.105, 2.95, 6), woodCol,  1.55, 1.48, -0.78, true);
+  const backCross = createLowPolyMesh(new THREE.CylinderGeometry(0.055, 0.060, 3.30, 5), woodCol, 0, 2.84, -0.78, false);
+  backCross.rotation.z = Math.PI / 2;
+  grp.add(backPostL, backPostR, backCross);
+
+  if (typeof createOrganicLinenAwningGroup === 'function') {
+    const canopy = createOrganicLinenAwningGroup(3.55, 2.05, linenSpec, woodCol, seed, 0.22, true, 2.48, { striped });
+    canopy.position.set(0, 2.74, 0.15);
+    grp.add(canopy);
+  }
+  if (typeof window.createRichMarketDisplayGroup === 'function') {
+    const wares = window.createRichMarketDisplayGroup(themeIdx, seed + 17, linenSpec);
+    wares.position.set(0, 0, 0.05);
+    grp.add(wares);
+  }
+
+  if (typeof mergeStaticLowPolyGroupToVertexColor === 'function') {
+    mergeStaticLowPolyGroupToVertexColor(grp, { registerWall: true, castShadow: true });
+  }
+  grp.position.set(x, by, z);
+  grp.rotation.y = rotY;
+  worldGroup.add(grp);
+
+  const absCos = Math.abs(Math.cos(rotY));
+  const absSin = Math.abs(Math.sin(rotY));
+  const hw = 1.85 * absCos + 1.05 * absSin;
+  const hd = 1.85 * absSin + 1.05 * absCos;
+  colliders.push({ minX: x - hw, maxX: x + hw, minZ: z - hd, maxZ: z + hd });
   return grp;
 }
 
@@ -358,7 +413,8 @@ function buildLowPolyPerimeterMountainRange() {
 }
 
 // -------------------------------------------------------------------------
-// 3-A. 언덕 중턱 계단식 비정형 자연석 돌담(Retaining Fieldstone Walls) 생성기 (전체 1 드로우콜 병합)
+// 3-A. 언덕 중턱 계단식 비정형 자연석 돌담(Retaining Fieldstone Walls) 생성기
+//      (전체 1 드로우콜 병합 + 걸어서 통과 불가 / 점프로 뛰어넘기 가능 물리 등록!)
 // -------------------------------------------------------------------------
 function buildHillsideStoneTerraceWalls() {
   const stoneWallGrp = new THREE.Group();
@@ -369,6 +425,9 @@ function buildHillsideStoneTerraceWalls() {
   };
 
   const addDryStoneWallCurve = (pts, courses = 3, seedBase = 1) => {
+    if (typeof window.registerJumpableStoneWallColliders === 'function') {
+      window.registerJumpableStoneWallColliders(pts, courses, getMiracleOpenWorldGroundHeight);
+    }
     for (let p = 0; p < pts.length - 1; p++) {
       const [x0, z0] = pts[p];
       const [x1, z1] = pts[p + 1];
@@ -388,14 +447,14 @@ function buildHillsideStoneTerraceWalls() {
           const gy = getMiracleOpenWorldGroundHeight(sx, sz);
           const isCapstone = (row === courses - 1);
           const bw = (isCapstone ? 0.88 : 0.82) + hash1(s) * 0.24;
-          const bh = (isCapstone ? 0.36 : 0.40) + hash1(s + 1) * 0.14;
+          const bh = (isCapstone ? 0.38 : 0.42) + hash1(s + 1) * 0.14;
           const bd = 0.86 + hash1(s + 2) * 0.38;
           const col = stoneCols[Math.floor(hash1(s + 3) * stoneCols.length) % stoneCols.length];
           const geo = (typeof createIrregularFieldstoneGeo === 'function')
             ? createIrregularFieldstoneGeo(bw, bh, bd, s)
             : createOrganicBoxGeo(bw, bh, bd, s, 0.08, 0.94, 1);
           // 경사면에서도 떠 보이지 않도록 0번 줄을 지면 아래 묻고 자연석들이 빈틈없이 맞물려 쌓이도록 배치
-          const by = gy - 0.10 + row * 0.31 + (hash1(s + 4) - 0.5) * 0.04;
+          const by = gy - 0.06 + row * 0.35 + (hash1(s + 4) - 0.5) * 0.04;
           const stone = createLowPolyMesh(geo, col, sx, by, sz, true);
           stone.rotation.y = yaw + (hash1(s + 5) - 0.5) * 0.18;
           stone.rotation.z = (hash1(s + 6) - 0.5) * 0.08;
@@ -849,6 +908,11 @@ function buildMiracleRoadsideVillagesAndForests() {
   createOrganicStreetPropCluster( 10.6, -24.5, -0.3, 44);
   createOrganicStreetPropCluster(-10.4,  20.0,  0.5, 55);
   createOrganicStreetPropCluster( 23.0,  49.0, -0.4, 66);
+  // 레퍼런스 이미지 스타일의 활기찬 길가 시장 가판대(일부 농도차 스트라이프 천막 + 과일·향신료·토기·직물 진열)
+  createStandaloneMarketStall(-9.6, -63.0,  Math.PI * 0.5,  0, true,  301); // 청과·과일 상점 (스트라이프)
+  createStandaloneMarketStall( 9.8, -40.5, -Math.PI * 0.5,  1, false, 317); // 곡식·향신료 상점 (아마포)
+  createStandaloneMarketStall(-9.6,   2.5,  Math.PI * 0.5,  2, true,  333); // 토기·올리브유 상점 (스트라이프)
+  createStandaloneMarketStall(10.0,  19.0, -Math.PI * 0.5,  3, true,  349); // 빵·직물 상점 (스트라이프)
   // 짐을 실은 당나귀들은 정지 프롭이 아니라 마을 길가를 살아 움직이며 순찰하도록 wanderingConfigs로 이동 배치!
 
   if (typeof addLowPolyCanopyTree === 'function') {
@@ -1330,44 +1394,135 @@ function buildMiracleRegionalLandmarks() {
   }
 
   // [B. 중부 사마리아 · 여리고 · 광야 권역]
-  // 1) 수가성 야곱의 우물 (x = -32, z = -12) — 비정형 석조 테두리·나무 지붕·물레·두레박·토기 항아리 디테일
+  // 1) 수가성 야곱의 우물 (x = -32, z = -12) — 비정형 자연석 테두리·비정형 소프트 로우폴리 목재 기둥/지붕·물레·두레박·토기 항아리
   const wellY = getMiracleOpenWorldGroundHeight(-32, -12);
   const wellGrp = new THREE.Group();
-  const wellBody = createLowPolyMesh(new THREE.CylinderGeometry(2.05, 2.30, 0.94, 9), '#94a3b8', 0, 0.47, 0);
-  const wellRim = createLowPolyMesh(new THREE.TorusGeometry(1.78, 0.24, 5, 9), '#78716c', 0, 0.94, 0, false);
-  wellRim.rotation.x = Math.PI / 2;
-  // 우물 상단 비정형 석조 갓돌(8개 엇갈린 다면체 돌블록)
-  for (let s = 0; s < 8; s++) {
-    const a = (s / 8) * Math.PI * 2;
-    const stone = createLowPolyMesh(
-      new THREE.DodecahedronGeometry(0.46 + (s % 2) * 0.05, 0),
-      s % 2 === 0 ? '#cbd5e1' : '#a8a29e',
-      Math.cos(a) * 1.92, 1.08, Math.sin(a) * 1.92, false
-    );
-    stone.scale.set(1.25, 0.55, 1.10);
-    stone.rotation.y = a;
-    wellGrp.add(stone);
+  const wellHash = (n) => {
+    const s = Math.sin(n * 127.1 + 311.7) * 43758.5453;
+    return s - Math.floor(s);
+  };
+  const wellStoneCols = ['#cbd5e1', '#b7c0cc', '#a8a29e', '#d6cfc2', '#94a3b8', '#bfb7ab'];
+  const mkWellStone = (w, h, d, sd) => (typeof createIrregularFieldstoneGeo === 'function')
+    ? createIrregularFieldstoneGeo(w, h, d, sd)
+    : new THREE.DodecahedronGeometry(Math.max(w, d) * 0.45, 0);
+
+  // 내부 어두운 석조 우물 내벽(약간 비정형 9각) + 수면
+  const wellInner = createLowPolyMesh(new THREE.CylinderGeometry(1.66, 1.82, 0.92, 9), '#64748b', 0, 0.42, 0, false);
+  wellInner.scale.set(1.04, 1.0, 0.96);
+  const wellWater = createLowPolyMesh(new THREE.CylinderGeometry(1.56, 1.56, 0.08, 9), '#0284c7', 0, 0.88, 0, false);
+  wellWater.scale.set(1.03, 1.0, 0.95);
+  const wellRipple = createLowPolyMesh(new THREE.RingGeometry(0.45, 0.78, 7), '#38bdf8', 0.12, 0.94, -0.08, false);
+  wellRipple.rotation.x = -Math.PI / 2;
+  wellGrp.add(wellInner, wellWater, wellRipple);
+
+  // 우물 외벽 & 상단 테두리: 2단으로 엇갈리게 쌓은 비정형 다면체 자연석 링(약간 비정형 타원형 궤적)
+  for (let row = 0; row < 2; row++) {
+    const cnt = row === 0 ? 11 : 10;
+    const baseY = row === 0 ? 0.30 : 0.84;
+    const radBase = row === 0 ? 2.02 : 1.94;
+    for (let s = 0; s < cnt; s++) {
+      const sd = 910 + row * 47 + s * 13;
+      const a = ((s + (row === 1 ? 0.48 : 0)) / cnt) * Math.PI * 2 + (wellHash(sd) - 0.5) * 0.10;
+      const organicEllip = 1.0 + Math.cos(a * 2 + 0.4) * 0.055 + Math.sin(a * 3 - 0.3) * 0.04;
+      const r = radBase * organicEllip + (wellHash(sd + 1) - 0.5) * 0.14;
+      const sw = (row === 0 ? 0.88 : 0.84) + wellHash(sd + 2) * 0.28;
+      const sh = (row === 0 ? 0.58 : 0.46) + wellHash(sd + 3) * 0.16;
+      const sdDepth = (row === 0 ? 0.72 : 0.66) + wellHash(sd + 4) * 0.18;
+      const col = wellStoneCols[Math.floor(wellHash(sd + 5) * wellStoneCols.length) % wellStoneCols.length];
+      const stone = createLowPolyMesh(mkWellStone(sw, sh, sdDepth, sd), col, Math.cos(a) * r, baseY + (wellHash(sd + 6) - 0.5) * 0.06, Math.sin(a) * r, true);
+      stone.rotation.set(
+        (wellHash(sd + 7) - 0.5) * 0.12,
+        -a + Math.PI * 0.5 + (wellHash(sd + 8) - 0.5) * 0.22,
+        (wellHash(sd + 9) - 0.5) * 0.10
+      );
+      wellGrp.add(stone);
+    }
   }
-  const wellWater = createLowPolyMesh(new THREE.CylinderGeometry(1.58, 1.58, 0.08, 9), '#0284c7', 0, 0.98, 0, false);
-  const postL = createLowPolyMesh(new THREE.CylinderGeometry(0.12, 0.15, 2.65, 6), '#5c2d0c', -1.65, 1.85, 0);
-  const postR = createLowPolyMesh(new THREE.CylinderGeometry(0.12, 0.15, 2.65, 6), '#5c2d0c',  1.65, 1.85, 0);
-  const roller = createLowPolyMesh(new THREE.CylinderGeometry(0.11, 0.11, 3.45, 6), '#854d0e', 0, 2.62, 0, false);
-  roller.rotation.z = Math.PI / 2;
-  const rope = createLowPolyMesh(new THREE.CylinderGeometry(0.03, 0.03, 1.15, 4), '#d6b685', 0, 2.05, 0, false);
-  const bucket = createLowPolyMesh(new THREE.CylinderGeometry(0.24, 0.19, 0.34, 7), '#92400e', 0, 1.48, 0, false);
-  // 경사진 소프트 로우폴리 나무 지붕
-  const roofL = createLowPolyMesh(new THREE.BoxGeometry(3.95, 0.14, 1.45), '#9a4f25', 0, 3.32, -0.58);
-  roofL.rotation.x = -0.46;
-  const roofR = createLowPolyMesh(new THREE.BoxGeometry(3.95, 0.14, 1.45), '#8c441e', 0, 3.32,  0.58);
-  roofR.rotation.x =  0.46;
-  const ridge = createLowPolyMesh(new THREE.CylinderGeometry(0.10, 0.10, 4.05, 5), '#5c2d0c', 0, 3.64, 0, false);
-  ridge.rotation.z = Math.PI / 2;
+  // 우물 바닥 주위 비정형 디딤돌 & 이끼 돌 5개
+  [[-2.25, 0.95], [2.15, -1.05], [-0.45, 2.38], [1.42, 1.92], [-1.72, -1.65]].forEach(([cx, cz], ci) => {
+    const cob = createLowPolyMesh(mkWellStone(0.82, 0.24, 0.66, 970 + ci * 11), ci % 2 === 0 ? '#a8a29e' : '#b7c0cc', cx, 0.08, cz, false);
+    cob.rotation.y = ci * 0.9;
+    wellGrp.add(cob);
+  });
+
+  // 비정형 소프트 로우폴리 나무 기둥(뿌리 플레어 + 자연스러운 휘어짐) & 사선 버팀목(까치발) & 물레
+  const mkWellTimber = (p1, p2, rB, rT, col, sd, flare = false) => {
+    if (typeof window.createOrganicWoodSegmentMesh === 'function') {
+      return window.createOrganicWoodSegmentMesh(p1, p2, rB, rT, col, sd, 0.12, flare);
+    }
+    const dir = new THREE.Vector3().subVectors(p2, p1);
+    const len = dir.length();
+    const g = new THREE.CylinderGeometry(rT, rB, len, 6);
+    g.translate(0, len * 0.5, 0);
+    const m = createLowPolyMesh(g, col, p1.x, p1.y, p1.z, true);
+    m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.clone().normalize());
+    return m;
+  };
+
+  const postL = mkWellTimber(new THREE.Vector3(-1.74, 0.55, 0.04), new THREE.Vector3(-1.66, 3.36, -0.03), 0.19, 0.13, '#5c3114', 921, true);
+  const postR = mkWellTimber(new THREE.Vector3( 1.74, 0.55, -0.04), new THREE.Vector3( 1.66, 3.36, 0.03), 0.19, 0.13, '#653818', 927, true);
+  const braceL = mkWellTimber(new THREE.Vector3(-1.68, 2.52, 0), new THREE.Vector3(-1.02, 3.18, 0), 0.10, 0.08, '#6e3f1d', 931, false);
+  const braceR = mkWellTimber(new THREE.Vector3( 1.68, 2.52, 0), new THREE.Vector3( 1.02, 3.18, 0), 0.10, 0.08, '#6e3f1d', 937, false);
+  const tieBeam = mkWellTimber(new THREE.Vector3(-1.95, 3.18, 0), new THREE.Vector3(1.95, 3.18, 0), 0.12, 0.11, '#582e12', 941, false);
+  const roller = mkWellTimber(new THREE.Vector3(-1.72, 2.48, 0), new THREE.Vector3(1.72, 2.48, 0), 0.13, 0.12, '#854d0e', 947, false);
+  const crankHandle = mkWellTimber(new THREE.Vector3(1.88, 2.48, 0), new THREE.Vector3(2.14, 2.74, 0.16), 0.055, 0.045, '#451a03', 953, false);
+  const rope = mkWellTimber(new THREE.Vector3(0, 2.45, 0), new THREE.Vector3(0.04, 1.56, 0.02), 0.038, 0.032, '#d6b685', 959, false);
+  const bucket = createLowPolyMesh(new THREE.CylinderGeometry(0.28, 0.21, 0.38, 7), '#92400e', 0.04, 1.42, 0.02, true);
+  const bucketRim = createLowPolyMesh(new THREE.TorusGeometry(0.26, 0.028, 4, 7), '#5c2d0c', 0.04, 1.58, 0.02, false);
+  bucketRim.rotation.x = Math.PI / 2;
+
+  // 비정형 소프트 로우폴리 우물 박공 지붕 (서까래 + 각기 미세하게 엇갈린 비정형 목재 널빤지/지붕판 + 울퉁불퉁 용마루 통나무)
+  const roofGrp = new THREE.Group();
+  const ridgeLog = mkWellTimber(new THREE.Vector3(-2.22, 3.92, 0), new THREE.Vector3(2.22, 3.92, 0), 0.13, 0.12, '#4e270e', 963, false);
+  roofGrp.add(ridgeLog);
+
+  const plankCols = ['#9a4f25', '#8a431d', '#a85a2d', '#7c3a17', '#924a22'];
+  const mkOrgBox = (w, h, d, sd) => (typeof createOrganicBoxGeo === 'function')
+    ? createOrganicBoxGeo(w, h, d, sd, 0.09, 0.94, 1)
+    : new THREE.BoxGeometry(w, h, d);
+  [-1, 1].forEach((sideZ, si) => {
+    // 3개 비정형 서까래
+    [-1.62, 0, 1.62].forEach((rx, ri) => {
+      const rafter = mkWellTimber(
+        new THREE.Vector3(rx, 3.90, 0),
+        new THREE.Vector3(rx, 3.04, sideZ * 1.48),
+        0.085, 0.072, '#5c2d0c', 971 + si * 20 + ri * 7, false
+      );
+      roofGrp.add(rafter);
+    });
+    // 각 지붕면을 6장의 비정형 소프트 로우폴리 목재 지붕판으로 분할 배치(자연스러운 요철 & 처마 라인)
+    const plankCount = 6;
+    const totalSpan = 4.25;
+    const pw = totalSpan / plankCount;
+    for (let k = 0; k < plankCount; k++) {
+      const sd = 980 + si * 50 + k * 9;
+      const px = -totalSpan * 0.5 + (k + 0.5) * pw;
+      const lenVar = 1.64 + (wellHash(sd) - 0.5) * 0.18;
+      const thkVar = 0.13 + wellHash(sd + 1) * 0.05;
+      const col = plankCols[(k + si * 2) % plankCols.length];
+      const plank = createLowPolyMesh(mkOrgBox(pw + 0.06, thkVar, lenVar, sd), col, px, 3.52 + (wellHash(sd + 2) - 0.5) * 0.04, sideZ * 0.72, true);
+      plank.rotation.x = sideZ * (0.50 + (wellHash(sd + 3) - 0.5) * 0.05);
+      plank.rotation.z = (wellHash(sd + 4) - 0.5) * 0.04;
+      roofGrp.add(plank);
+    }
+  });
+  // 양쪽 박공 삼각 나무판(비정형 삼각 장식)
+  [-1.66, 1.66].forEach((gx, gi) => {
+    const gable = createLowPolyMesh(new THREE.ConeGeometry(0.95, 0.72, 4), '#783c1c', gx, 3.54, 0, false);
+    gable.rotation.y = Math.PI * 0.25;
+    gable.scale.set(0.18, 1.0, 1.35);
+    roofGrp.add(gable);
+  });
+
   const wellJar = createOrganicAmphoraProp(0.95, '#b86232', '#8f471e');
-  wellJar.position.set(1.95, 0, 1.45);
-  wellGrp.add(wellBody, wellRim, wellWater, postL, postR, roller, rope, bucket, roofL, roofR, ridge, wellJar);
+  wellJar.position.set(1.98, 0, 1.48);
+  const wellJar2 = createOrganicAmphoraProp(0.72, '#c97844', '#8f471e');
+  wellJar2.position.set(-1.95, 0, 1.56);
+  wellJar2.rotation.z = 0.14;
+  wellGrp.add(postL, postR, braceL, braceR, tieBeam, roller, crankHandle, rope, bucket, bucketRim, roofGrp, wellJar, wellJar2);
   wellGrp.position.set(-32, wellY, -12);
   worldGroup.add(wellGrp);
-  colliders.push({ minX: -34.4, maxX: -29.6, minZ: -14.4, maxZ: -9.6 });
+  colliders.push({ minX: -34.5, maxX: -29.5, minZ: -14.5, maxZ: -9.5 });
 
   // 2) 여리고 거리와 삭개오의 돌무화과나무 숲(6그루 군락 — 여러 나무 중 랜덤한 나무 위에 삭개오가 숨어 있음!)
   window.miracleZacchaeusGroveTrees = [];
@@ -1410,7 +1565,7 @@ function buildMiracleRegionalLandmarks() {
       { minX: -12.5, maxX: 12.5, minZ: 42.0, maxZ: 48.2, cx: 0, cz: 46 },  // 외곽 성문
       { minX: -11.5, maxX: 11.5, minZ: 60.5, maxZ: 82.0, cx: 0, cz: 72 },  // 성전 본관
       { minX: -34.6, maxX: -29.4, minZ: -14.6, maxZ: -9.4, cx: -32, cz: -12 }, // 야곱의 우물
-      { minX: -29.0, maxX: -15.0, minZ: 86.5, maxZ: 98.0, cx: -22, cz: 92 }    // 동산 무덤
+      { minX: -30.5, maxX: -13.2, minZ: 87.0, maxZ: 98.0, cx: -22, cz: 92 }    // 동산 무덤 (좌·우 가장자리 바위 포함)
     );
   }
 
@@ -1465,7 +1620,12 @@ function buildMiracleRegionalLandmarks() {
   }
   miracleOpenWorldTombGroup.visible = isStage3Cleared;
   worldGroup.add(miracleOpenWorldTombGroup);
-  colliders.push({ minX: -27.5, maxX: -16.5, minZ: 88.5, maxZ: 96.5 });
+  // 무덤 본체·뒷절벽·좌우 가장자리 바위(leftFlank/rightFlank)·문틀 기둥·굴려진 돌문 전체를 빈틈없이 차단하여 가장자리 바위 통과 원천 봉쇄!
+  colliders.push(
+    { minX: -29.8, maxX: -13.8, minZ: 89.2, maxZ: 97.6 }, // 무덤 본체 및 뒷절벽 바위 전체
+    { minX: -19.8, maxX: -13.4, minZ: 87.5, maxZ: 93.8 }, // 동쪽 가장자리 바위(leftFlank/jambL)
+    { minX: -30.2, maxX: -23.1, minZ: 87.3, maxZ: 93.8 }  // 서쪽 가장자리 바위(rightFlank/jambR) 및 굴려진 돌문
+  );
 
   // 무덤 위장용 우거진 풀·관목·야생 수풀 (스테이지 3 클리어 전까지 무덤 자리에 배치)
   miracleTombCoverGroup = new THREE.Group();
@@ -6176,14 +6336,22 @@ function buildMiracleOpenWorld(restoreSavedPos = false) {
   updateMiracleNotebookHudBadge();
   updateStageHUD();
 
+  isTimeAttackActive = false;
+  const owTimerBox = document.getElementById('hud-timer-box');
+  if (owTimerBox) { owTimerBox.classList.add('hidden'); owTimerBox.classList.remove('flex'); }
+
   // 인트로 연출(영상+플라이오버)이 예정된 처음 시작 시점에는 토스트 출력을 생략 (연출이 모두 끝난 후 출력!)
   const isIntroPending = (window.MiracleGuideUI && window.MiracleGuideUI.suppressedDuringIntro);
   if (!isIntroPending) {
-    showToast(
-      miracleIsPostResurrection
-        ? '✨ 부활 이후의 갈릴리와 예루살렘 오픈월드입니다! 엠마오·도마·바닷가 아침식사를 체험하고 감람산으로 오르세요!'
-        : '🗺️ 성경 오픈월드에 오신 것을 환영합니다! 빛기둥이 켜진 순서(1→2→3→4)대로 메인 스테이지를 진행해 보세요!'
-    );
+    if (typeof currentMode !== 'undefined' && currentMode === 'timeattack') {
+      showToast('🌿 이곳은 자유롭게 탐험하는 오픈월드입니다! 제한 시간 없이 예수님의 발자취를 마음껏 둘러보세요.');
+    } else {
+      showToast(
+        miracleIsPostResurrection
+          ? '✨ 부활 이후의 갈릴리와 예루살렘 오픈월드입니다! 엠마오·도마·바닷가 아침식사를 체험하고 감람산으로 오르세요!'
+          : '🗺️ 성경 오픈월드에 오신 것을 환영합니다! 빛기둥이 켜진 순서(1→2→3→4)대로 메인 스테이지를 진행해 보세요!'
+      );
+    }
   }
 
   if (typeof playMiracleOpenWorldOgg === 'function') {
@@ -6634,9 +6802,12 @@ function updateMiracleOpenWorldFrame(dt, now) {
     guideArrowGroup.rotation.y = Math.atan2(guideTarget.x - playerPos.x, guideTarget.z - playerPos.z) - baseFacing;
   }
 
-  // [소년반(senior) 및 멀티플레이 전용 초슬림 미니 나침반/거리 내비게이터]
+  // [소년반(senior)·타임어택(에피소드4 소년반 동일 구성) 및 멀티플레이 전용 초슬림 미니 나침반/거리 내비게이터]
   if (typeof window.updateMiracleMiniNavigatorUI === 'function') {
-    const showMiniNav = ((currentMode === 'senior' || isMpMode) && miracleSubMode === 'openworld' && Boolean(guideTarget));
+    const isSeniorEquiv = (typeof isEffectiveSeniorMode === 'function')
+      ? isEffectiveSeniorMode('miracle', currentMode)
+      : (currentMode === 'senior' || currentMode === 'timeattack');
+    const showMiniNav = ((isSeniorEquiv || isMpMode) && miracleSubMode === 'openworld' && Boolean(guideTarget));
     if (showMiniNav) {
       const dx = guideTarget.x - playerPos.x;
       const dz = guideTarget.z - playerPos.z;

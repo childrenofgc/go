@@ -176,7 +176,6 @@
           <option value="kinder">🐣 유치반</option>
           <option value="junior">🌱 유년반</option>
           <option value="senior">🍎 소년반</option>
-          <option value="timeattack">⚡ 타임어택</option>
         </select>
         <select id="filter-status" onchange="renderRecordsTable()" class="px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white">
           <option value="all">모든 상태</option>
@@ -359,8 +358,16 @@
     const MODES = [
       { key: 'kinder', label: '🐣 유치반' },
       { key: 'junior', label: '🌱 유년반' },
-      { key: 'senior', label: '🍎 소년반' },
-      { key: 'timeattack', label: '⚡ 타임어택' }
+      { key: 'senior', label: '🍎 소년반' }
+    ];
+
+    const EP4_MIRACLE_STAGES = [
+      { stage: 1, sub: 'openworld',     label: '🌿 오픈월드' },
+      { stage: 1, sub: 'main1_galilee', label: '⛵ 스테이지 1' },
+      { stage: 2, sub: 'main2_loaves',  label: '🍞 스테이지 2' },
+      { stage: 3, sub: 'main3_cross',   label: '✝️ 스테이지 3' },
+      { stage: 4, sub: 'main4_tomb',    label: '🌅 스테이지 4' },
+      { stage: 4, sub: 'ascension',     label: '🏆 엔딩', isEnding: true }
     ];
 
     function checkAdminPassword() {
@@ -387,7 +394,16 @@
 
     function renderStageLauncher() {
       const grid = document.getElementById('launcher-grid');
-      grid.innerHTML = EPISODES.map(ep => `
+      grid.innerHTML = EPISODES.map(ep => {
+        const stageItems = (ep.key === 'miracle')
+          ? EP4_MIRACLE_STAGES
+          : [
+              { stage: 1, sub: '', label: '스테이지 1' },
+              { stage: 2, sub: '', label: '스테이지 2' },
+              { stage: 3, sub: '', label: '스테이지 3' },
+              { stage: 4, sub: '', label: '🏆엔딩', isEnding: true }
+            ];
+        return `
         <div class="bg-slate-900/90 border-2 ${ep.color} rounded-xl p-4 space-y-3">
           <h3 class="font-jua text-base text-white">${ep.title}</h3>
           <div class="space-y-2">
@@ -395,10 +411,10 @@
               <div class="flex flex-wrap items-center justify-between gap-2 bg-slate-800/80 p-2 rounded-lg">
                 <span class="font-jua text-xs text-amber-200 w-20">${m.label}</span>
                 <div class="flex flex-wrap gap-1 flex-1 justify-end">
-                  ${[1, 2, 3, 4].map(st => `
-                    <button type="button" onclick="jumpToStage('${ep.key}', '${m.key}', ${st})"
-                      class="mc-btn px-2 py-1 rounded-lg ${st === 4 ? 'bg-emerald-500 hover:bg-emerald-400 text-slate-950' : ep.btnBg} font-jua text-xs">
-                      ${st === 4 ? '🏆엔딩' : '스테이지 ' + st}
+                  ${stageItems.map(item => `
+                    <button type="button" onclick="jumpToStage('${ep.key}', '${m.key}', ${item.stage}, '${item.sub || ''}')"
+                      class="mc-btn px-2 py-1 rounded-lg ${item.isEnding ? 'bg-emerald-500 hover:bg-emerald-400 text-slate-950' : (item.sub === 'openworld' ? 'bg-sky-400 hover:bg-sky-300 text-slate-950' : ep.btnBg)} font-jua text-xs">
+                      ${item.label}
                     </button>
                   `).join('')}
                 </div>
@@ -406,28 +422,36 @@
             `).join('')}
           </div>
         </div>
-      `).join('');
+      `;
+      }).join('');
     }
 
-    function jumpToStage(ep, mode, stage) {
+    function jumpToStage(ep, mode, stage, sub = '') {
       const name = document.getElementById('test-player-name').value.trim() || '관리자';
-      const payload = { ep: String(ep), mode: String(mode), stage: Number(stage), name, ts: Date.now() };
+      const subClean = String(sub || '').trim();
+      const payload = { ep: String(ep), mode: String(mode), stage: Number(stage), sub: subClean, name, ts: Date.now() };
       try {
         sessionStorage.setItem('bible_admin_direct_jump', JSON.stringify(payload));
       } catch (e) {}
-      const params = new URLSearchParams({
+      const paramsObj = {
         ep: payload.ep,
         mode: payload.mode,
         stage: String(payload.stage),
         name: payload.name,
         _t: String(payload.ts)
-      });
-      const hashParams = new URLSearchParams({
+      };
+      const hashObj = {
         ep: payload.ep,
         mode: payload.mode,
         stage: String(payload.stage),
         name: payload.name
-      });
+      };
+      if (subClean) {
+        paramsObj.sub = subClean;
+        hashObj.sub = subClean;
+      }
+      const params = new URLSearchParams(paramsObj);
+      const hashParams = new URLSearchParams(hashObj);
       window.location.href = `index.html?${params.toString()}#${hashParams.toString()}`;
     }
 

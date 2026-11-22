@@ -6,7 +6,7 @@
 // =========================================================================
 
 window.__GAME_BUILD_VERSIONS__ = window.__GAME_BUILD_VERSIONS__ || {};
-window.__GAME_BUILD_VERSIONS__.ep4_assets = '20261122_v16';
+window.__GAME_BUILD_VERSIONS__.ep4_assets = '20261122_v17';
 
 const _miracleDoubleSideMatCache = {};
 function matLowPolyDouble(hexColor) {
@@ -2717,28 +2717,65 @@ function createLowPolyFishMesh(colorHex = '#f97316', scale = 1.0, variant = null
 }
 window.createLowPolyFishMesh = createLowPolyFishMesh;
 
-function createBranchSegmentMesh(p1, p2, rBottom, rTop, colorHex) {
+function createBranchSegmentMesh(p1, p2, rBottom, rTop, colorHex, seed = 1, flareRoot = false) {
+  if (typeof window.createOrganicWoodSegmentMesh === 'function') {
+    return window.createOrganicWoodSegmentMesh(p1, p2, rBottom, rTop, colorHex, seed, flareRoot ? 0.12 : 0.17, flareRoot);
+  }
   const dir = new THREE.Vector3().subVectors(p2, p1);
   const len = dir.length();
-  const geo = new THREE.CylinderGeometry(rTop, rBottom, len, 5);
+  const geo = new THREE.CylinderGeometry(rTop, rBottom, len, 6, 3);
   geo.translate(0, len * 0.5, 0);
+  const pos = geo.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const vx = pos.getX(i), vy = pos.getY(i), vz = pos.getZ(i);
+    const t = len > 0.01 ? vy / len : 0;
+    const n = Math.sin(t * 7.5 + vx * 5.2 + seed) * 0.10;
+    const bend = Math.sin(t * Math.PI) * len * 0.06;
+    pos.setXYZ(i, vx * (1 + n) + bend, vy, vz * (1 - n * 0.7));
+  }
   const finalGeo = geo.toNonIndexed();
   finalGeo.computeVertexNormals();
+  geo.dispose();
 
   const mesh = createLowPolyMesh(finalGeo, colorHex, p1.x, p1.y, p1.z, true);
   mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.clone().normalize());
   return mesh;
 }
 
+function getEp4AssetGroundY(x, z) {
+  if (typeof getBaseGroundHeight === 'function') return getBaseGroundHeight(x, z);
+  if (typeof getMiracleOpenWorldGroundHeight === 'function') return getMiracleOpenWorldGroundHeight(x, z);
+  return 0;
+}
+
 function addLowPolyCanopyTree(x, z, scale = 1.0, addCol = true) {
   if (typeof recordMiracleWorldTree === 'function') recordMiracleWorldTree(x, z, 'canopy', scale);
-  const by = typeof getMiracleOpenWorldGroundHeight === 'function' ? getMiracleOpenWorldGroundHeight(x, z) : 0;
+  const by = getEp4AssetGroundY(x, z);
   const grp = new THREE.Group();
-  const barkCol = '#6b442a', leafDark = '#527324', leafMid = '#6d9432', leafLite = '#8ab340';
+  const seed = Math.abs(Math.round(x * 17 + z * 31)) + 9;
+  const barkCol = '#6b442a', barkLite = '#7a5032', leafDark = '#527324', leafMid = '#6d9432', leafLite = '#8ab340';
+  const leanX = (((seed % 5) - 2) * 0.11) * scale;
+  const leanZ = ((((seed >> 2) % 5) - 2) * 0.09) * scale;
 
-  const baseP = new THREE.Vector3(0, 0, 0);
-  const forkP = new THREE.Vector3(0, 1.8 * scale, 0);
-  const mainTrunk = createBranchSegmentMesh(baseP, forkP, 0.52 * scale, 0.36 * scale, barkCol);
+  const forkP = new THREE.Vector3(leanX, 1.85 * scale, leanZ);
+  let mainTrunk;
+  if (typeof window.createOrganicWoodTrunkGeo === 'function') {
+    const trunkGeo = window.createOrganicWoodTrunkGeo(
+      [
+        [0, -0.10 * scale, 0],
+        [leanX * 0.45 + 0.12 * scale, 0.65 * scale, leanZ * 0.35 - 0.08 * scale],
+        [leanX * 0.85 - 0.08 * scale, 1.30 * scale, leanZ * 0.80 + 0.08 * scale],
+        [forkP.x, forkP.y, forkP.z]
+      ],
+      [0.62 * scale, 0.48 * scale, 0.41 * scale, 0.34 * scale],
+      7,
+      seed,
+      true
+    );
+    mainTrunk = createLowPolyMesh(trunkGeo, barkCol, 0, 0, 0, true);
+  } else {
+    mainTrunk = createBranchSegmentMesh(new THREE.Vector3(0, -0.06 * scale, 0), forkP, 0.56 * scale, 0.35 * scale, barkCol, seed, true);
+  }
   grp.add(mainTrunk);
   wallMeshes.push(mainTrunk);
 
@@ -2751,14 +2788,15 @@ function addLowPolyCanopyTree(x, z, scale = 1.0, addCol = true) {
   ];
 
   branches.forEach((b, idx) => {
-    const mP = new THREE.Vector3(b.mid[0] * scale, b.mid[1] * scale, b.mid[2] * scale);
-    const tP = new THREE.Vector3(b.tip[0] * scale, b.tip[1] * scale, b.tip[2] * scale);
-    const b1 = createBranchSegmentMesh(forkP, mP, 0.26 * scale, 0.18 * scale, barkCol);
-    const b2 = createBranchSegmentMesh(mP, tP, 0.18 * scale, 0.10 * scale, barkCol);
+    const mP = new THREE.Vector3(b.mid[0] * scale + leanX * 0.4, b.mid[1] * scale, b.mid[2] * scale + leanZ * 0.4);
+    const tP = new THREE.Vector3(b.tip[0] * scale + leanX * 0.3, b.tip[1] * scale, b.tip[2] * scale + leanZ * 0.3);
+    const bCol = idx % 2 === 0 ? barkCol : barkLite;
+    const b1 = createBranchSegmentMesh(forkP, mP, 0.27 * scale, 0.18 * scale, bCol, seed + idx * 13 + 3, false);
+    const b2 = createBranchSegmentMesh(mP, tP, 0.18 * scale, 0.095 * scale, bCol, seed + idx * 19 + 7, false);
 
     const padGeo = createFlattenedFoliagePadGeo(b.padR * scale, b.padH * scale, 1);
     const padMesh = createLowPolyMesh(padGeo, b.col, tP.x, tP.y + 0.15 * scale, tP.z, true);
-    padMesh.rotation.y = idx * 1.1;
+    padMesh.rotation.y = idx * 1.1 + (seed % 7) * 0.25;
 
     grp.add(b1, b2, padMesh);
     wallMeshes.push(b1, b2, padMesh);
@@ -2778,29 +2816,48 @@ window.addLowPolyOliveTree = function (x, z, scale = 1.0, addCol = true) {
   }
   if (typeof recordMiracleWorldTree === 'function') recordMiracleWorldTree(x, z, 'olive', scale);
 
-  const by = typeof getMiracleOpenWorldGroundHeight === 'function' ? getMiracleOpenWorldGroundHeight(x, z) : 0;
+  const by = getEp4AssetGroundY(x, z);
   const grp = new THREE.Group();
+  const seed = Math.abs(Math.round(x * 13 + z * 29)) + 15;
   const barkCol = '#7c4d2b';
+  const barkDark = '#683f22';
+  const twistSign = (seed % 2 === 0 ? 1 : -1);
 
-  const p0 = new THREE.Vector3(0, 0, 0);
-  const p1 = new THREE.Vector3(0.18 * scale, 1.45 * scale, -0.08 * scale);
-  const p2 = new THREE.Vector3(-0.08 * scale, 2.85 * scale, 0.10 * scale);
-  const pBranchL = new THREE.Vector3(-1.05 * scale, 2.35 * scale, 0.25 * scale);
-  const pBranchR = new THREE.Vector3( 1.05 * scale, 2.55 * scale, -0.20 * scale);
+  const p1 = new THREE.Vector3(twistSign * 0.24 * scale, 1.48 * scale, -twistSign * 0.10 * scale);
+  const p2 = new THREE.Vector3(-twistSign * 0.10 * scale, 2.88 * scale, twistSign * 0.12 * scale);
+  const pBranchL = new THREE.Vector3(-1.12 * scale, 2.40 * scale, 0.28 * scale);
+  const pBranchR = new THREE.Vector3( 1.10 * scale, 2.58 * scale, -0.24 * scale);
 
-  const t1 = createBranchSegmentMesh(p0, p1, 0.30 * scale, 0.22 * scale, barkCol);
-  const t2 = createBranchSegmentMesh(p1, p2, 0.22 * scale, 0.13 * scale, barkCol);
-  const bL = createBranchSegmentMesh(p1, pBranchL, 0.15 * scale, 0.08 * scale, barkCol);
-  const bR = createBranchSegmentMesh(p1, pBranchR, 0.15 * scale, 0.08 * scale, barkCol);
+  let mainTrunk;
+  if (typeof window.createOrganicWoodTrunkGeo === 'function') {
+    const trunkGeo = window.createOrganicWoodTrunkGeo(
+      [
+        [0, -0.08 * scale, 0],
+        [twistSign * 0.18 * scale, 0.78 * scale, -twistSign * 0.08 * scale],
+        [p1.x, p1.y, p1.z],
+        [p2.x * 0.4 + p1.x * 0.6, 2.18 * scale, p2.z * 0.5],
+        [p2.x, p2.y, p2.z]
+      ],
+      [0.42 * scale, 0.30 * scale, 0.24 * scale, 0.18 * scale, 0.12 * scale],
+      6,
+      seed,
+      true
+    );
+    mainTrunk = createLowPolyMesh(trunkGeo, barkCol, 0, 0, 0, true);
+  } else {
+    mainTrunk = createBranchSegmentMesh(new THREE.Vector3(0, -0.06 * scale, 0), p2, 0.36 * scale, 0.14 * scale, barkCol, seed, true);
+  }
+  const bL = createBranchSegmentMesh(p1, pBranchL, 0.16 * scale, 0.08 * scale, barkDark, seed + 11, false);
+  const bR = createBranchSegmentMesh(p1, pBranchR, 0.16 * scale, 0.08 * scale, barkCol, seed + 23, false);
 
   const padTop = createLowPolyMesh(createFlattenedFoliagePadGeo(1.55 * scale, 0.85 * scale, 1), '#759636', p2.x, p2.y + 0.15 * scale, p2.z, true);
   const padL   = createLowPolyMesh(createFlattenedFoliagePadGeo(1.15 * scale, 0.68 * scale, 0), '#5c7a29', pBranchL.x, pBranchL.y + 0.1 * scale, pBranchL.z, true);
   const padR   = createLowPolyMesh(createFlattenedFoliagePadGeo(1.20 * scale, 0.72 * scale, 0), '#8ab340', pBranchR.x, pBranchR.y + 0.1 * scale, pBranchR.z, true);
 
-  grp.add(t1, t2, bL, bR, padTop, padL, padR);
+  grp.add(mainTrunk, bL, bR, padTop, padL, padR);
   grp.position.set(x, by, z);
   worldGroup.add(grp);
-  wallMeshes.push(t1, t2, padTop, padL, padR);
+  wallMeshes.push(mainTrunk, padTop, padL, padR);
 
   if (addCol) {
     colliders.push({ minX: x - 0.55 * scale, maxX: x + 0.55 * scale, minZ: z - 0.55 * scale, maxZ: z + 0.55 * scale });
@@ -2810,19 +2867,37 @@ window.addLowPolyOliveTree = function (x, z, scale = 1.0, addCol = true) {
 
 window.addLowPolyCypressPineTree = function (x, z, scale = 1.0, addCol = true) {
   if (typeof recordMiracleWorldTree === 'function') recordMiracleWorldTree(x, z, 'cypress', scale);
-  const by = typeof getMiracleOpenWorldGroundHeight === 'function' ? getMiracleOpenWorldGroundHeight(x, z) : 0;
+  const by = getEp4AssetGroundY(x, z);
   const grp = new THREE.Group();
+  const seed = Math.abs(Math.round(x * 19 + z * 11)) + 27;
+  const leanX = (((seed % 3) - 1) * 0.09) * scale;
+  const leanZ = ((((seed >> 1) % 3) - 1) * 0.08) * scale;
 
-  const p0 = new THREE.Vector3(0, 0, 0);
-  const p1 = new THREE.Vector3(0, 1.8 * scale, 0);
-  const trunk = createBranchSegmentMesh(p0, p1, 0.24 * scale, 0.14 * scale, '#5c3a21');
+  let trunk;
+  if (typeof window.createOrganicWoodTrunkGeo === 'function') {
+    const trunkGeo = window.createOrganicWoodTrunkGeo(
+      [
+        [0, -0.08 * scale, 0],
+        [leanX * 0.6 + 0.06 * scale, 0.65 * scale, leanZ * 0.4 - 0.05 * scale],
+        [leanX - 0.04 * scale, 1.32 * scale, leanZ + 0.05 * scale],
+        [leanX * 0.7, 1.92 * scale, leanZ * 0.7]
+      ],
+      [0.32 * scale, 0.23 * scale, 0.18 * scale, 0.12 * scale],
+      6,
+      seed,
+      true
+    );
+    trunk = createLowPolyMesh(trunkGeo, '#5c3a21', 0, 0, 0, true);
+  } else {
+    trunk = createBranchSegmentMesh(new THREE.Vector3(0, -0.06 * scale, 0), new THREE.Vector3(leanX, 1.85 * scale, leanZ), 0.28 * scale, 0.13 * scale, '#5c3a21', seed, true);
+  }
 
   const gemGeo = new THREE.IcosahedronGeometry(1.15 * scale, 0);
-  const crown1 = createLowPolyMesh(gemGeo, '#2d4c1e', 0, 2.85 * scale, 0, true);
+  const crown1 = createLowPolyMesh(gemGeo, '#2d4c1e', leanX * 0.7, 2.85 * scale, leanZ * 0.7, true);
   crown1.scale.set(0.78, 1.55, 0.78);
   crown1.rotation.y = (x + z) * 0.5;
 
-  const crown2 = createLowPolyMesh(new THREE.IcosahedronGeometry(0.85 * scale, 0), '#3f6212', 0, 4.15 * scale, 0, true);
+  const crown2 = createLowPolyMesh(new THREE.IcosahedronGeometry(0.85 * scale, 0), '#3f6212', leanX * 0.7, 4.15 * scale, leanZ * 0.7, true);
   crown2.scale.set(0.72, 1.35, 0.72);
   crown2.rotation.y = (x - z) * 0.7;
 
@@ -2838,7 +2913,7 @@ window.addLowPolyCypressPineTree = function (x, z, scale = 1.0, addCol = true) {
 };
 
 function addLowPolyWildflowerCluster(x, z, scale = 1.0) {
-  const by = typeof getMiracleOpenWorldGroundHeight === 'function' ? getMiracleOpenWorldGroundHeight(x, z) : 0;
+  const by = getEp4AssetGroundY(x, z);
   if (by < -0.1) return null;
   const grp = new THREE.Group();
   const flowerCols = ['#ef4444', '#facc15', '#ffffff', '#14b8a6', '#fb7185'];
@@ -3015,7 +3090,7 @@ function getSculptedCactusGeos(variantIdx = 0) {
 }
 
 window.addLowPolyCactusAndScrub = function (x, z, scale = 1.0) {
-  const by = typeof getMiracleOpenWorldGroundHeight === 'function' ? getMiracleOpenWorldGroundHeight(x, z) : 0;
+  const by = getEp4AssetGroundY(x, z);
   const grp = new THREE.Group();
   const variantIdx = Math.abs(Math.round(x * 3 + z * 5)) % 3;
   const cactusCols = ['#5c8d36', '#62943a', '#538231'];

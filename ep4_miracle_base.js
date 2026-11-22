@@ -4,7 +4,7 @@
 // - 확장된 오픈월드 지형 고도 계산기(넓어진 골고다 언덕 포함) 및 소프트 로우 폴리곤 자연물 팩토리
 // =========================================================================
 window.__GAME_BUILD_VERSIONS__ = window.__GAME_BUILD_VERSIONS__ || {};
-window.__GAME_BUILD_VERSIONS__.ep4_base = '20261122_v16';
+window.__GAME_BUILD_VERSIONS__.ep4_base = '20261122_v17';
 
 // =========================================================================
 // 🎬 [에피소드 4 오프닝 영상 주소 설정]
@@ -517,9 +517,6 @@ function scheduleMiracleBgmBeat(ctx, step, st, mode, playing, timeRem, toFreq) {
   const idx = step % MIRACLE_STAGE_MELODY.length;
   const rhythmMult = MIRACLE_BASE_RHYTHM[idx % MIRACLE_BASE_RHYTHM.length] || 1.0;
   let stepMs = Math.round(340 * rhythmMult);
-  if (mode === 'timeattack' && playing) {
-    stepMs = (timeRem < 5.0) ? Math.round(stepMs * 0.68) : Math.round(stepMs * 0.85);
-  }
   if (!ctx) return stepMs;
 
   const now = ctx.currentTime;
@@ -779,24 +776,162 @@ function recordMiracleWorldTree(x, z, type, scale) {
   window.miracleWorldTreePositions.push({ x, z, type, scale });
 }
 
+// 비정형 소프트 로우 폴리곤 나무 기둥·줄기·가지 생성기 (뿌리 버팀 플레어 + 자연스러운 꺾임/옹이 요철 + 플랫 셰이딩)
+function createOrganicWoodTrunkGeo(spinePts, radii, sides = 6, seed = 1, flareRoot = true) {
+  const hashN = (n) => {
+    const s = Math.sin(n * 127.1 + seed * 311.7) * 43758.5453;
+    return s - Math.floor(s);
+  };
+  const rings = [];
+  const upRef = new THREE.Vector3(0, 1, 0);
+  const altRef = new THREE.Vector3(1, 0, 0);
+
+  for (let r = 0; r < spinePts.length; r++) {
+    const p = spinePts[r];
+    let tang;
+    if (r === 0) {
+      tang = new THREE.Vector3(spinePts[1][0] - p[0], spinePts[1][1] - p[1], spinePts[1][2] - p[2]);
+    } else if (r === spinePts.length - 1) {
+      tang = new THREE.Vector3(p[0] - spinePts[r - 1][0], p[1] - spinePts[r - 1][1], p[2] - spinePts[r - 1][2]);
+    } else {
+      tang = new THREE.Vector3(spinePts[r + 1][0] - spinePts[r - 1][0], spinePts[r + 1][1] - spinePts[r - 1][1], spinePts[r + 1][2] - spinePts[r - 1][2]);
+    }
+    if (tang.lengthSq() < 1e-6) tang.set(0, 1, 0);
+    else tang.normalize();
+
+    const ref = Math.abs(tang.y) > 0.92 ? altRef : upRef;
+    const uVec = new THREE.Vector3().crossVectors(tang, ref).normalize();
+    const vVec = new THREE.Vector3().crossVectors(tang, uVec).normalize();
+
+    const baseRad = radii[r];
+    const twist = r * 0.24 + (hashN(r * 13 + 3) - 0.5) * 0.26;
+    const ring = [];
+    for (let s = 0; s < sides; s++) {
+      const ang = (s / sides) * Math.PI * 2 + twist;
+      const rootButtress = (flareRoot && r === 0)
+        ? (1.0 + Math.max(0, Math.cos(ang * 3 + seed)) * 0.34 + hashN(s * 17 + 5) * 0.14)
+        : (1.0 + (hashN(r * 31 + s * 11) - 0.5) * 0.22);
+      const rad = baseRad * rootButtress;
+      const ca = Math.cos(ang) * rad;
+      const sa = Math.sin(ang) * rad;
+      const jitterY = (r > 0 && r < spinePts.length - 1) ? (hashN(r * 19 + s * 7) - 0.5) * baseRad * 0.28 : 0;
+      ring.push([
+        p[0] + uVec.x * ca + vVec.x * sa,
+        p[1] + uVec.y * ca + vVec.y * sa + jitterY,
+        p[2] + uVec.z * ca + vVec.z * sa
+      ]);
+    }
+    rings.push(ring);
+  }
+
+  const verts = [];
+  const pushTri = (a, b, c) => { verts.push(a[0], a[1], a[2], b[0], b[1], b[2], c[0], c[1], c[2]); };
+  for (let r = 0; r < rings.length - 1; r++) {
+    const r0 = rings[r];
+    const r1 = rings[r + 1];
+    for (let s = 0; s < sides; s++) {
+      const sn = (s + 1) % sides;
+      // 외향 법선 유지 (반시계 권선)
+      pushTri(r0[s], r1[s], r0[sn]);
+      pushTri(r0[sn], r1[s], r1[sn]);
+    }
+  }
+  // 상단/하단 캡 마감
+  const topC = spinePts[spinePts.length - 1];
+  const topRing = rings[rings.length - 1];
+  for (let s = 0; s < sides; s++) {
+    const sn = (s + 1) % sides;
+    pushTri(topRing[s], topC, topRing[sn]);
+  }
+  const botC = spinePts[0];
+  const botRing = rings[0];
+  for (let s = 0; s < sides; s++) {
+    const sn = (s + 1) % sides;
+    pushTri(botRing[sn], botC, botRing[s]);
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+  geo.computeVertexNormals();
+  return geo;
+}
+window.createOrganicWoodTrunkGeo = createOrganicWoodTrunkGeo;
+
+// 두 점 사이를 비정형 유기적 로우폴리 목재/가지로 잇는 공용 헬퍼
+function createOrganicWoodSegmentMesh(p1, p2, rBottom, rTop, colorHex, seed = 1, bendAmt = 0.14, flareRoot = false) {
+  const dir = new THREE.Vector3().subVectors(p2, p1);
+  const len = dir.length();
+  const h1 = (Math.sin(seed * 91.7) * 43758.5453) % 1;
+  const h2 = (Math.sin(seed * 173.3) * 43758.5453) % 1;
+  const bx = (h1 - 0.5) * len * bendAmt;
+  const bz = (h2 - 0.5) * len * bendAmt;
+  const mid1 = [
+    p1.x + dir.x * 0.36 + bx,
+    p1.y + dir.y * 0.36,
+    p1.z + dir.z * 0.36 + bz
+  ];
+  const mid2 = [
+    p1.x + dir.x * 0.72 - bx * 0.65,
+    p1.y + dir.y * 0.72,
+    p1.z + dir.z * 0.72 + bz * 0.45
+  ];
+  const spine = [
+    [p1.x, p1.y, p1.z],
+    mid1,
+    mid2,
+    [p2.x, p2.y, p2.z]
+  ];
+  const radii = [
+    rBottom,
+    rBottom * 0.78 + rTop * 0.22,
+    rBottom * 0.38 + rTop * 0.62,
+    rTop
+  ];
+  const geo = createOrganicWoodTrunkGeo(spine, radii, 6, seed, flareRoot);
+  return createLowPolyMesh(geo, colorHex, 0, 0, 0, true);
+}
+window.createOrganicWoodSegmentMesh = createOrganicWoodSegmentMesh;
+
 function addLowPolyOliveTree(x, z, scale = 1.0, addCol = true) {
   recordMiracleWorldTree(x, z, 'olive', scale);
   const by = getBaseGroundHeight(x, z);
   const grp = new THREE.Group();
-  const trunkH = 2.4 * scale;
+  const seed = Math.abs(Math.round(x * 13 + z * 29)) + 7;
+  const trunkH = 2.55 * scale;
+  const leanX = (((seed % 5) - 2) * 0.08) * scale;
+  const leanZ = ((((seed >> 2) % 5) - 2) * 0.08) * scale;
 
-  const trunk = createLowPolyMesh(new THREE.CylinderGeometry(0.20 * scale, 0.38 * scale, trunkH, 6), '#6b4226', 0, trunkH * 0.5, 0, true);
-  const branchL = createLowPolyMesh(new THREE.CylinderGeometry(0.10 * scale, 0.16 * scale, 1.1 * scale, 5), '#6b4226', -0.42 * scale, trunkH * 0.78, 0.12 * scale, true);
-  branchL.rotation.z = 0.65;
-  const branchR = createLowPolyMesh(new THREE.CylinderGeometry(0.10 * scale, 0.16 * scale, 1.0 * scale, 5), '#6b4226',  0.42 * scale, trunkH * 0.74, -0.12 * scale, true);
-  branchR.rotation.z = -0.62;
+  const trunkGeo = createOrganicWoodTrunkGeo(
+    [
+      [0, -0.06 * scale, 0],
+      [leanX * 0.5 + 0.14 * scale, trunkH * 0.36, leanZ * 0.4 - 0.08 * scale],
+      [leanX - 0.06 * scale, trunkH * 0.72, leanZ + 0.08 * scale],
+      [leanX * 0.8, trunkH, leanZ * 0.7]
+    ],
+    [0.42 * scale, 0.31 * scale, 0.24 * scale, 0.16 * scale],
+    6,
+    seed,
+    true
+  );
+  const trunk = createLowPolyMesh(trunkGeo, '#6b4226', 0, 0, 0, true);
+  const forkPt = new THREE.Vector3(leanX - 0.04 * scale, trunkH * 0.68, leanZ + 0.06 * scale);
+  const branchL = createOrganicWoodSegmentMesh(
+    forkPt,
+    new THREE.Vector3(-0.92 * scale, trunkH + 0.28 * scale, 0.36 * scale),
+    0.17 * scale, 0.09 * scale, '#6b4226', seed + 11, 0.18, false
+  );
+  const branchR = createOrganicWoodSegmentMesh(
+    forkPt,
+    new THREE.Vector3(0.92 * scale, trunkH + 0.34 * scale, -0.30 * scale),
+    0.16 * scale, 0.08 * scale, '#784a2a', seed + 23, 0.18, false
+  );
 
-  const c1 = createLowPolyMesh(new THREE.IcosahedronGeometry(1.48 * scale, 0), '#557a2b', 0, trunkH + 0.72 * scale, 0, true);
+  const c1 = createLowPolyMesh(new THREE.IcosahedronGeometry(1.48 * scale, 0), '#557a2b', leanX * 0.8, trunkH + 0.72 * scale, leanZ * 0.7, true);
   c1.scale.set(1.22, 0.82, 1.18);
   c1.rotation.y = (x + z) * 0.4;
-  const c2 = createLowPolyMesh(new THREE.IcosahedronGeometry(1.08 * scale, 0), '#6b9336', -0.85 * scale, trunkH + 0.35 * scale, 0.42 * scale, true);
+  const c2 = createLowPolyMesh(new THREE.IcosahedronGeometry(1.08 * scale, 0), '#6b9336', -0.92 * scale, trunkH + 0.38 * scale, 0.38 * scale, true);
   c2.scale.set(1.15, 0.80, 1.10);
-  const c3 = createLowPolyMesh(new THREE.IcosahedronGeometry(1.05 * scale, 0), '#7ca440',  0.85 * scale, trunkH + 0.42 * scale, -0.35 * scale, true);
+  const c3 = createLowPolyMesh(new THREE.IcosahedronGeometry(1.05 * scale, 0), '#7ca440',  0.92 * scale, trunkH + 0.42 * scale, -0.32 * scale, true);
   c3.scale.set(1.12, 0.82, 1.12);
 
   grp.add(trunk, branchL, branchR, c1, c2, c3);
@@ -814,9 +949,22 @@ function addLowPolyCypressPineTree(x, z, scale = 1.0, addCol = true) {
   recordMiracleWorldTree(x, z, 'cypress', scale);
   const by = getBaseGroundHeight(x, z);
   const grp = new THREE.Group();
+  const seed = Math.abs(Math.round(x * 17 + z * 19)) + 13;
   const trunkH = 2.6 * scale;
 
-  const trunk = createLowPolyMesh(new THREE.CylinderGeometry(0.16 * scale, 0.34 * scale, trunkH, 6), '#7c4728', 0, trunkH * 0.5, 0, true);
+  const trunkGeo = createOrganicWoodTrunkGeo(
+    [
+      [0, -0.06 * scale, 0],
+      [0.08 * scale, trunkH * 0.38, -0.05 * scale],
+      [-0.04 * scale, trunkH * 0.72, 0.06 * scale],
+      [0.02 * scale, trunkH, 0]
+    ],
+    [0.36 * scale, 0.26 * scale, 0.20 * scale, 0.13 * scale],
+    6,
+    seed,
+    true
+  );
+  const trunk = createLowPolyMesh(trunkGeo, '#7c4728', 0, 0, 0, true);
   const cone1 = createLowPolyMesh(new THREE.ConeGeometry(1.35 * scale, 2.5 * scale, 6), '#365314', 0, trunkH + 0.35 * scale, 0, true);
   const cone2 = createLowPolyMesh(new THREE.ConeGeometry(1.05 * scale, 2.2 * scale, 6), '#3f6212', 0, trunkH + 1.55 * scale, 0, true);
   cone2.rotation.y = 0.5;
@@ -837,24 +985,40 @@ function addLowPolyPalmTree(x, z, scale = 1.0, addCol = true) {
   recordMiracleWorldTree(x, z, 'palm', scale);
   const by = getBaseGroundHeight(x, z);
   const grp = new THREE.Group();
-  const trunkH = 3.5 * scale;
-  const trunkGeo = new THREE.CylinderGeometry(0.18 * scale, 0.34 * scale, trunkH, 6);
-  const trunk = createLowPolyMesh(trunkGeo, '#854d0e', 0, trunkH * 0.5, 0, true);
-  trunk.rotation.z = 0.05;
+  const seed = Math.abs(Math.round(x * 11 + z * 23)) + 31;
+  const trunkH = 3.65 * scale;
+  const curveDir = (seed % 2 === 0 ? 1 : -1);
+  const topX = curveDir * 0.42 * scale;
+  const topZ = ((seed % 3) - 1) * 0.22 * scale;
 
-  const coco1 = createLowPolyMesh(new THREE.DodecahedronGeometry(0.22 * scale, 0), '#451a03', 0.15 * scale, trunkH - 0.15 * scale, 0.15 * scale, false);
-  const coco2 = createLowPolyMesh(new THREE.DodecahedronGeometry(0.20 * scale, 0), '#5c2d0c', -0.15 * scale, trunkH - 0.18 * scale, -0.12 * scale, false);
+  const palmTrunkGeo = createOrganicWoodTrunkGeo(
+    [
+      [0, -0.06 * scale, 0],
+      [topX * 0.18, trunkH * 0.25, topZ * 0.20],
+      [topX * 0.48, trunkH * 0.52, topZ * 0.50],
+      [topX * 0.80, trunkH * 0.78, topZ * 0.82],
+      [topX, trunkH, topZ]
+    ],
+    [0.38 * scale, 0.28 * scale, 0.24 * scale, 0.20 * scale, 0.16 * scale],
+    6,
+    seed,
+    true
+  );
+  const trunk = createLowPolyMesh(palmTrunkGeo, '#854d0e', 0, 0, 0, true);
+
+  const coco1 = createLowPolyMesh(new THREE.DodecahedronGeometry(0.22 * scale, 0), '#451a03', topX + 0.15 * scale, trunkH - 0.16 * scale, topZ + 0.15 * scale, false);
+  const coco2 = createLowPolyMesh(new THREE.DodecahedronGeometry(0.20 * scale, 0), '#5c2d0c', topX - 0.15 * scale, trunkH - 0.20 * scale, topZ - 0.12 * scale, false);
   grp.add(trunk, coco1, coco2);
 
   for (let i = 0; i < 6; i++) {
-    const ang = (i / 6) * Math.PI * 2;
+    const ang = (i / 6) * Math.PI * 2 + (seed % 5) * 0.15;
     const leafGeo = new THREE.ConeGeometry(0.48 * scale, 2.35 * scale, 4);
     const leaf = createLowPolyMesh(
       leafGeo,
       i % 2 === 0 ? '#4d7c0f' : '#65a30d',
-      Math.cos(ang) * 0.98 * scale,
-      trunkH - 0.05 * scale,
-      Math.sin(ang) * 0.98 * scale,
+      topX + Math.cos(ang) * 0.98 * scale,
+      trunkH - 0.04 * scale,
+      topZ + Math.sin(ang) * 0.98 * scale,
       true
     );
     leaf.rotation.z = -Math.cos(ang) * 1.18;
@@ -899,21 +1063,50 @@ function createLowPolySycamoreTree(x, z, scale = 1.45) {
   recordMiracleWorldTree(x, z, 'sycamore', scale);
   const by = getBaseGroundHeight(x, z);
   const grp = new THREE.Group();
+  const seed = Math.abs(Math.round(x * 19 + z * 37)) + 41;
   const trunkH = 3.6 * scale;
-  const trunk = createLowPolyMesh(new THREE.CylinderGeometry(0.42 * scale, 0.68 * scale, trunkH, 7), '#5c2d0c', 0, trunkH * 0.5, 0, true);
 
-  const branch = createLowPolyMesh(new THREE.CylinderGeometry(0.18 * scale, 0.24 * scale, 2.6 * scale, 6), '#5c2d0c', 1.1 * scale, trunkH * 0.72, 0.4 * scale, true);
-  branch.rotation.z = -1.25;
+  // 굵고 울퉁불퉁하게 휘어 올라가는 비정형 소프트 로우폴리 돌무화과나무 기둥 (뿌리 버팀목 포함)
+  const trunkGeo = createOrganicWoodTrunkGeo(
+    [
+      [0, -0.10 * scale, 0],
+      [0.14 * scale, trunkH * 0.32, -0.10 * scale],
+      [-0.10 * scale, trunkH * 0.66, 0.12 * scale],
+      [0.05 * scale, trunkH, 0.04 * scale]
+    ],
+    [0.74 * scale, 0.56 * scale, 0.48 * scale, 0.38 * scale],
+    7,
+    seed,
+    true
+  );
+  const trunk = createLowPolyMesh(trunkGeo, '#5c2d0c', 0, 0, 0, true);
+
+  // 삭개오가 올라앉는 굵고 비정형으로 뻗은 주 가지 + 반대편 보조 가지들
+  const branchMain = createOrganicWoodSegmentMesh(
+    new THREE.Vector3(-0.04 * scale, trunkH * 0.58, 0.08 * scale),
+    new THREE.Vector3(2.05 * scale, trunkH * 0.86, 0.65 * scale),
+    0.28 * scale, 0.14 * scale, '#5c2d0c', seed + 17, 0.16, false
+  );
+  const branchOpp = createOrganicWoodSegmentMesh(
+    new THREE.Vector3(-0.08 * scale, trunkH * 0.68, 0.04 * scale),
+    new THREE.Vector3(-1.55 * scale, trunkH * 0.96, -0.42 * scale),
+    0.24 * scale, 0.12 * scale, '#6b3612', seed + 29, 0.18, false
+  );
+  const branchBack = createOrganicWoodSegmentMesh(
+    new THREE.Vector3(0.02 * scale, trunkH * 0.72, -0.06 * scale),
+    new THREE.Vector3(0.35 * scale, trunkH * 1.02, -1.35 * scale),
+    0.20 * scale, 0.10 * scale, '#5c2d0c', seed + 43, 0.15, false
+  );
 
   const mainCrown = createLowPolyMesh(new THREE.IcosahedronGeometry(2.3 * scale, 0), '#3f6212', 0, trunkH + 0.8 * scale, 0, true);
   mainCrown.scale.set(1.25, 0.72, 1.25);
   const subCrown1 = createLowPolyMesh(new THREE.IcosahedronGeometry(1.5 * scale, 0), '#4d7c0f', 1.6 * scale, trunkH + 0.35 * scale, 0.5 * scale, true);
   const subCrown2 = createLowPolyMesh(new THREE.IcosahedronGeometry(1.4 * scale, 0), '#65a30d', -1.4 * scale, trunkH + 0.45 * scale, -0.4 * scale, true);
 
-  grp.add(trunk, branch, mainCrown, subCrown1, subCrown2);
+  grp.add(trunk, branchMain, branchOpp, branchBack, mainCrown, subCrown1, subCrown2);
   grp.position.set(x, by, z);
   worldGroup.add(grp);
-  wallMeshes.push(trunk, mainCrown, subCrown1, subCrown2);
+  wallMeshes.push(trunk, branchMain, mainCrown, subCrown1, subCrown2);
   colliders.push({ minX: x - 0.95 * scale, maxX: x + 0.95 * scale, minZ: z - 0.95 * scale, maxZ: z + 0.95 * scale });
   return grp;
 }
@@ -1567,49 +1760,101 @@ function mergeStaticLowPolyGroupToVertexColor(rootGrp, opts = {}) {
   return rootGrp;
 }
 
-// 비정형 아마포(린넨) 차양막 생성기 — 줄무늬 없이 자연스러운 천 처짐·주름·앞단 처마 표현
-function createOrganicLinenAwningGroup(awW, awD, linenSpec, woodHex, seed = 1, tiltX = 0.22, withPosts = true, postH = 2.48) {
+// 비정형 아마포(린넨) 차양막 생성기 — 자연스러운 천 처짐·주름·앞단 처마 + 일부 상점용 농도차 스트라이프 무늬 지원!
+const MIRACLE_STRIPED_AWNING_PAIRS = [
+  { light: '#f4ead6', dark: '#c79f6b', trimLight: '#e5d4b4', trimDark: '#b38853' }, // 크림 베이지 · 황토 스트라이프
+  { light: '#efe1c6', dark: '#b8834d', trimLight: '#dec9a4', trimDark: '#9e6d3b' }, // 샌드 · 테라코타 브라운 스트라이프
+  { light: '#f6eedf', dark: '#cfa672', trimLight: '#e6d8be', trimDark: '#ba8e58' }, // 라이트 린넨 · 오커 스트라이프
+  { light: '#ebe0cc', dark: '#a97d4d', trimLight: '#dacab0', trimDark: '#92683b' }  // 오트밀 · 짙은 아마포 스트라이프
+];
+
+function createOrganicLinenAwningGroup(awW, awD, linenSpec, woodHex, seed = 1, tiltX = 0.22, withPosts = true, postH = 2.48, opts = {}) {
   const grp = new THREE.Group();
   const mainCol = (linenSpec && linenSpec.main) ? linenSpec.main : '#e8dbc2';
   const trimCol = (linenSpec && linenSpec.trim) ? linenSpec.trim : '#d7c6a6';
-
-  // 1) 처짐과 천 주름이 살아있는 단색 아마포 캐노피 지오메트리
-  const clothGeo = new THREE.BoxGeometry(awW, 0.085, awD, 5, 1, 3);
-  const pos = clothGeo.attributes.position;
-  for (let i = 0; i < pos.count; i++) {
-    let x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
-    // 좌·우·중앙 목재 서까래 사이로 천이 부드럽게 처지는 주름
-    const nx = x / (awW * 0.5);
-    const nz = z / (awD * 0.5);
-    const baySag = Math.abs(Math.sin(nx * Math.PI)) * 0.075 * (1 - Math.abs(nz) * 0.25);
-    const fold = Math.sin(x * 3.1 + z * 2.4 + seed) * 0.022;
-    pos.setXYZ(i, x, y - baySag + fold, z);
-  }
-  const clothNon = clothGeo.toNonIndexed();
-  clothNon.computeVertexNormals();
-  clothGeo.dispose();
+  const isStriped = Boolean(opts && opts.striped);
+  const stripePair = MIRACLE_STRIPED_AWNING_PAIRS[Math.abs(seed) % MIRACLE_STRIPED_AWNING_PAIRS.length];
 
   const tiltPivot = new THREE.Group();
   tiltPivot.rotation.x = tiltX;
 
-  const clothMesh = createLowPolyMesh(clothNon, mainCol, 0, 0.04, 0, true);
-  tiltPivot.add(clothMesh);
+  if (isStriped) {
+    // 농도 차이가 살아있는 스트라이프 천막 (레퍼런스 이미지 스타일 · 정점 색상 병합 시 각 줄무늬 색 유지!)
+    const stripeCount = awW >= 3.4 ? 9 : 7;
+    const stripeW = awW / stripeCount;
+    for (let st = 0; st < stripeCount; st++) {
+      const sxCenter = -awW * 0.5 + (st + 0.5) * stripeW;
+      const isDark = (st % 2 === 1);
+      const sCol = isDark ? stripePair.dark : stripePair.light;
+      const vCol = isDark ? stripePair.trimDark : stripePair.trimLight;
 
-  // 2) 앞쪽 끝단에 자연스럽게 늘어진 아마포 처마 주름(같은 아마포 계열 살짝 짙은 톤)
-  const valGeo = new THREE.BoxGeometry(awW + 0.04, 0.24, 0.06, 5, 1, 1);
-  const vPos = valGeo.attributes.position;
-  for (let i = 0; i < vPos.count; i++) {
-    const vx = vPos.getX(i), vy = vPos.getY(i), vz = vPos.getZ(i);
-    if (vy < 0) {
-      const scallop = Math.sin((vx / (awW * 0.5)) * Math.PI * 2.5 + seed) * 0.045;
-      vPos.setXYZ(i, vx, vy + scallop, vz + 0.015);
+      const stripGeo = new THREE.BoxGeometry(stripeW + 0.008, 0.088, awD, 1, 1, 3);
+      const sp = stripGeo.attributes.position;
+      for (let i = 0; i < sp.count; i++) {
+        const lx = sp.getX(i), y = sp.getY(i), z = sp.getZ(i);
+        const gx = sxCenter + lx;
+        const nx = gx / (awW * 0.5);
+        const nz = z / (awD * 0.5);
+        const baySag = Math.abs(Math.sin(nx * Math.PI)) * 0.072 * (1 - Math.abs(nz) * 0.25);
+        const fold = Math.sin(gx * 3.1 + z * 2.4 + seed) * 0.020;
+        sp.setXYZ(i, lx, y - baySag + fold, z);
+      }
+      const stripNon = stripGeo.toNonIndexed();
+      stripNon.computeVertexNormals();
+      stripGeo.dispose();
+      tiltPivot.add(createLowPolyMesh(stripNon, sCol, sxCenter, 0.04, 0, true));
+
+      // 앞단 스트라이프 물결 처마(발란스)
+      const valStripGeo = new THREE.BoxGeometry(stripeW + 0.01, 0.24, 0.06, 1, 1, 1);
+      const vp = valStripGeo.attributes.position;
+      for (let i = 0; i < vp.count; i++) {
+        const vx = vp.getX(i), vy = vp.getY(i), vz = vp.getZ(i);
+        if (vy < 0) {
+          const gx = sxCenter + vx;
+          const scallop = Math.sin((gx / (awW * 0.5)) * Math.PI * 2.5 + seed) * 0.042;
+          vp.setXYZ(i, vx, vy + scallop, vz + 0.015);
+        }
+      }
+      const valNon = valStripGeo.toNonIndexed();
+      valNon.computeVertexNormals();
+      valStripGeo.dispose();
+      tiltPivot.add(createLowPolyMesh(valNon, vCol, sxCenter, -0.10, awD * 0.5 - 0.01, false));
     }
+  } else {
+    // 1) 처짐과 천 주름이 살아있는 단색 아마포 캐노피 지오메트리
+    const clothGeo = new THREE.BoxGeometry(awW, 0.085, awD, 5, 1, 3);
+    const pos = clothGeo.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      let x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+      const nx = x / (awW * 0.5);
+      const nz = z / (awD * 0.5);
+      const baySag = Math.abs(Math.sin(nx * Math.PI)) * 0.075 * (1 - Math.abs(nz) * 0.25);
+      const fold = Math.sin(x * 3.1 + z * 2.4 + seed) * 0.022;
+      pos.setXYZ(i, x, y - baySag + fold, z);
+    }
+    const clothNon = clothGeo.toNonIndexed();
+    clothNon.computeVertexNormals();
+    clothGeo.dispose();
+
+    const clothMesh = createLowPolyMesh(clothNon, mainCol, 0, 0.04, 0, true);
+    tiltPivot.add(clothMesh);
+
+    // 2) 앞쪽 끝단에 자연스럽게 늘어진 아마포 처마 주름(같은 아마포 계열 살짝 짙은 톤)
+    const valGeo = new THREE.BoxGeometry(awW + 0.04, 0.24, 0.06, 5, 1, 1);
+    const vPos = valGeo.attributes.position;
+    for (let i = 0; i < vPos.count; i++) {
+      const vx = vPos.getX(i), vy = vPos.getY(i), vz = vPos.getZ(i);
+      if (vy < 0) {
+        const scallop = Math.sin((vx / (awW * 0.5)) * Math.PI * 2.5 + seed) * 0.045;
+        vPos.setXYZ(i, vx, vy + scallop, vz + 0.015);
+      }
+    }
+    const valNon = valGeo.toNonIndexed();
+    valNon.computeVertexNormals();
+    valGeo.dispose();
+    const valance = createLowPolyMesh(valNon, trimCol, 0, -0.10, awD * 0.5 - 0.01, false);
+    tiltPivot.add(valance);
   }
-  const valNon = valGeo.toNonIndexed();
-  valNon.computeVertexNormals();
-  valGeo.dispose();
-  const valance = createLowPolyMesh(valNon, trimCol, 0, -0.10, awD * 0.5 - 0.01, false);
-  tiltPivot.add(valance);
 
   // 3) 천 아래 목재 지지대 가로보 & 3개 서까래
   const frontBar = createLowPolyMesh(new THREE.CylinderGeometry(0.055, 0.060, awW + 0.16, 5), woodHex, 0, -0.05, awD * 0.44, false);
@@ -1623,7 +1868,7 @@ function createOrganicLinenAwningGroup(awW, awD, linenSpec, woodHex, seed = 1, t
 
   grp.add(tiltPivot);
 
-  // 4) 앞쪽 수직 목재 기둥 (옵션)
+  // 4) 앞쪽 수직 비정형 목재 기둥 (옵션)
   if (withPosts) {
     const dropY = Math.sin(tiltX) * (awD * 0.44);
     const p1 = createLowPolyMesh(new THREE.CylinderGeometry(0.085, 0.105, postH, 6), woodHex, -awW * 0.44, -dropY - postH * 0.5, awD * 0.42, true);
@@ -1632,6 +1877,125 @@ function createOrganicLinenAwningGroup(awW, awD, linenSpec, woodHex, seed = 1, t
   }
   return grp;
 }
+
+// 1세기 지중해 시장 상점 진열대 4종 팩토리 (과일청과 / 곡식향신료 / 토기올리브유 / 빵·직물)
+function createRichMarketDisplayGroup(themeIdx = 0, seed = 1, linenSpec = null) {
+  const g = new THREE.Group();
+  const woodDark = '#6b3e1e';
+  const woodMid  = '#8c5328';
+  const woodLite = '#a96a38';
+  const basketCol = '#c48334';
+  const sackCol   = (linenSpec && linenSpec.trim) ? linenSpec.trim : '#d8c39e';
+  const mkBox = (w, h, d, sd) => createOrganicBoxGeo(w, h, d, sd, 0.055, 0.96, 1);
+
+  // 공통 목재 시장 진열 탁자(4다리 + 경사진 진열판 + 앞턱)
+  const tblTop = createLowPolyMesh(mkBox(2.55, 0.13, 1.08, seed + 1), woodMid, 0, 0.78, 0, true);
+  tblTop.rotation.x = 0.08;
+  const tblLip = createLowPolyMesh(mkBox(2.58, 0.16, 0.08, seed + 2), woodDark, 0, 0.80, 0.52, false);
+  const shelfLo = createLowPolyMesh(mkBox(2.32, 0.09, 0.84, seed + 3), woodLite, 0, 0.28, -0.04, false);
+  [[-1.12, -0.42], [1.12, -0.42], [-1.12, 0.42], [1.12, 0.42]].forEach(([lx, lz]) => {
+    g.add(createLowPolyMesh(new THREE.CylinderGeometry(0.065, 0.080, 0.78, 5), woodDark, lx, 0.39, lz, false));
+  });
+  g.add(tblTop, tblLip, shelfLo);
+
+  const addProduceBasket = (bx, by, bz, r, itemCols, sd) => {
+    const bsk = createLowPolyMesh(new THREE.CylinderGeometry(r, r * 0.76, r * 0.82, 7), basketCol, bx, by + r * 0.40, bz, true);
+    const rim = createLowPolyMesh(new THREE.TorusGeometry(r * 0.96, 0.032, 4, 7), '#92400e', bx, by + r * 0.78, bz, false);
+    rim.rotation.x = Math.PI / 2;
+    g.add(bsk, rim);
+    for (let k = 0; k < 5; k++) {
+      const ang = (k / 5) * Math.PI * 2 + sd;
+      const rr = k === 0 ? 0 : r * 0.44;
+      const fy = k === 0 ? (by + r * 0.95) : (by + r * 0.84);
+      const fItem = createLowPolyMesh(
+        new THREE.DodecahedronGeometry(r * (k === 0 ? 0.36 : 0.30), 0),
+        itemCols[k % itemCols.length],
+        bx + Math.cos(ang) * rr,
+        fy,
+        bz + Math.sin(ang) * rr,
+        false
+      );
+      g.add(fItem);
+    }
+  };
+
+  const theme = Math.abs(themeIdx) % 4;
+  if (theme === 0) {
+    // 1) 청과·과일 상점 (석류·사과·무화과·감귤·청포도·올리브 바구니 + 옆 포대 & 토기)
+    addProduceBasket(-0.82, 0.84,  0.04, 0.36, ['#dc2626', '#ef4444', '#b91c1c'], seed + 10); // 붉은 석류/사과
+    addProduceBasket( 0.00, 0.84,  0.02, 0.38, ['#65a30d', '#84cc16', '#4d7c0f'], seed + 20); // 청포도/올리브
+    addProduceBasket( 0.82, 0.84,  0.05, 0.36, ['#f59e0b', '#fbbf24', '#ea580c'], seed + 30); // 황금 감귤/레몬
+    // 하단 선반 나무 상자 + 보라빛 무화과
+    const loCrate = createLowPolyMesh(mkBox(0.95, 0.36, 0.64, seed + 35), '#9a5b25', -0.45, 0.48, 0.04, false);
+    const figs = createLowPolyMesh(new THREE.DodecahedronGeometry(0.24, 0), '#6b21a8', -0.45, 0.68, 0.04, false);
+    figs.scale.set(1.3, 0.55, 1.0);
+    const sackSide = createLowPolyMesh(new THREE.IcosahedronGeometry(0.38, 0), sackCol, 1.56, 0.32, 0.10, true);
+    sackSide.scale.set(0.95, 1.08, 0.92);
+    const sideJar = createBuildingAmphoraProp(0.86, '#c26533', '#8f471e');
+    sideJar.position.set(-1.55, 0, 0.14);
+    g.add(loCrate, figs, sackSide, sideJar);
+  } else if (theme === 1) {
+    // 2) 곡식·향신료 상점 (사프란·계피·허브·밀가루 소복이 쌓인 4색 원뿔 향신료 + 포대 2개)
+    const spiceSpecs = [
+      { x: -0.92, col: '#eab308', bowl: '#92400e' }, // 강황/사프란
+      { x: -0.30, col: '#c2410c', bowl: '#7c2d12' }, // 붉은 향신료
+      { x:  0.32, col: '#65a30d', bowl: '#854d0e' }, // 건조 허브
+      { x:  0.92, col: '#ede0c8', bowl: '#9a5b25' }  // 고운 밀가루/소금
+    ];
+    spiceSpecs.forEach((sp, si) => {
+      const bowl = createLowPolyMesh(new THREE.CylinderGeometry(0.28, 0.20, 0.22, 7), sp.bowl, sp.x, 0.94, 0.02, false);
+      const cone = createLowPolyMesh(new THREE.ConeGeometry(0.25, 0.30, 6), sp.col, sp.x, 1.15, 0.02, false);
+      g.add(bowl, cone);
+    });
+    const sack1 = createLowPolyMesh(new THREE.IcosahedronGeometry(0.40, 0), sackCol, -1.55, 0.34, 0.08, true);
+    sack1.scale.set(0.92, 1.15, 0.90);
+    const sack2 = createLowPolyMesh(new THREE.IcosahedronGeometry(0.35, 0), '#e5d4b4', -1.18, 0.28, 0.44, true);
+    sack2.scale.set(1.05, 0.88, 0.95);
+    const grainTop = createLowPolyMesh(new THREE.DodecahedronGeometry(0.22, 0), '#eab308', -1.55, 0.72, 0.08, false);
+    grainTop.scale.set(1.0, 0.55, 1.0);
+    const jarR = createBuildingAmphoraProp(0.92, '#b86232', '#7c3a18');
+    jarR.position.set(1.54, 0, 0.06);
+    g.add(sack1, sack2, grainTop, jarR);
+  } else if (theme === 2) {
+    // 3) 토기·올리브유 상점 (크기·색감이 다양한 테라코타 암포라·물병·토기 그릇 진열)
+    const potConfigs = [
+      { x: -0.92, y: 0.84, z: -0.05, sc: 0.86, b: '#c26533', r: '#8f471e' },
+      { x: -0.34, y: 0.84, z:  0.10, sc: 0.70, b: '#d4824a', r: '#9a4f25' },
+      { x:  0.24, y: 0.84, z: -0.08, sc: 0.94, b: '#a85124', r: '#78350f' },
+      { x:  0.84, y: 0.84, z:  0.08, sc: 0.76, b: '#c97844', r: '#8c441e' }
+    ];
+    potConfigs.forEach(pc => {
+      const a = createBuildingAmphoraProp(pc.sc, pc.b, pc.r);
+      a.position.set(pc.x, pc.y, pc.z);
+      g.add(a);
+    });
+    const bigJarL = createBuildingAmphoraProp(1.18, '#b86232', '#7c3a18');
+    bigJarL.position.set(-1.58, 0, 0.06);
+    const bigJarR = createBuildingAmphoraProp(1.02, '#c97844', '#8f471e');
+    bigJarR.position.set(1.56, 0, 0.14);
+    const clayStack = createLowPolyMesh(new THREE.CylinderGeometry(0.30, 0.22, 0.16, 7), '#d98a54', 0, 0.40, 0.02, false);
+    g.add(bigJarL, bigJarR, clayStack);
+  } else {
+    // 4) 빵·직물 상점 (따뜻한 보리빵/납작빵 + 말아둔 알록달록 유대 직물 두루마리 + 와인/기름 항아리)
+    for (let b = 0; b < 4; b++) {
+      const loaf = createLowPolyMesh(new THREE.DodecahedronGeometry(0.22, 0), b % 2 === 0 ? '#e5a952' : '#d4903a', -0.92 + b * 0.24, 0.95 + (b % 2) * 0.08, 0.06 + (b % 2) * 0.08, false);
+      loaf.scale.set(1.15, 0.56, 1.0);
+      g.add(loaf);
+    }
+    const clothCols = ['#b91c1c', '#1d4ed8', '#d97706', '#0f766e', '#f3ead8'];
+    clothCols.forEach((cc, ci) => {
+      const bolt = createLowPolyMesh(new THREE.CylinderGeometry(0.11, 0.11, 0.76, 6), cc, 0.18 + ci * 0.22, 0.96 + (ci % 2) * 0.14, -0.02, true);
+      bolt.rotation.x = Math.PI / 2;
+      g.add(bolt);
+    });
+    addProduceBasket(-1.55, 0.0, 0.12, 0.38, ['#f59e0b', '#dc2626', '#84cc16'], seed + 44);
+    const fabricSack = createLowPolyMesh(new THREE.IcosahedronGeometry(0.36, 0), sackCol, 1.54, 0.30, 0.12, true);
+    fabricSack.scale.set(1.0, 0.92, 1.05);
+    g.add(fabricSack);
+  }
+  return g;
+}
+window.createRichMarketDisplayGroup = createRichMarketDisplayGroup;
 
 // 양손잡이 토기 암포라(항아리) 공용 생성기
 function createBuildingAmphoraProp(scale = 1.0, bodyHex = '#c26533', rimHex = '#8f471e') {
@@ -2031,7 +2395,8 @@ function addLowPolyVillageHouse(
     houseGrp.add(rugMain, rugBand1, rugBand2, pp1, pp2, pp3, pBeamF, pBeamB, chimney);
 
     const awW = 3.1, awD = 1.85;
-    const sideLinenAwning = createOrganicLinenAwningGroup(awW, awD, linenSpec, woodCol, seed + 140, 0.18, true, h * 0.65);
+    const useSideStripes = ((seed % 3) === 0);
+    const sideLinenAwning = createOrganicLinenAwningGroup(awW, awD, linenSpec, woodCol, seed + 140, 0.18, true, h * 0.65, { striped: useSideStripes });
     sideLinenAwning.rotation.y = -stairSide * (Math.PI / 2);
     sideLinenAwning.position.set(-stairSide * (w * 0.5 + awD * 0.44), h * 0.72, -0.4);
     houseGrp.add(sideLinenAwning);
@@ -2048,18 +2413,16 @@ function addLowPolyVillageHouse(
     });
   }
 
-  // [D] 시장 상점형 가옥(variant === 2) — 자연 아마포 차양막(건물별 농도 배리에이션) & 시장 진열대
+  // [D] 시장 상점형 가옥(variant === 2) — 일부 상점 농도차 스트라이프 천막 & 4종 풍성한 시장 진열대
   if (variant === 2) {
-    const awW = 3.25, awD = 1.95;
-    const awX = w * 0.22, awZ = d * 0.5 + awD * 0.5;
-    const frontLinenAwning = createOrganicLinenAwningGroup(awW, awD, linenSpec, woodCol, seed + 150, 0.22, true, 2.48);
-    frontLinenAwning.position.set(awX, 2.82, awZ);
-    const crate = createLowPolyMesh(createOrganicBoxGeo(1.45, 0.65, 0.95, seed + 151, 0.06, 0.96, 1), '#b45309', awX, 0.33, awZ, true);
-    const fruit1 = createLowPolyMesh(new THREE.DodecahedronGeometry(0.28, 0), '#facc15', awX - 0.3, 0.78, awZ, true);
-    const fruit2 = createLowPolyMesh(new THREE.DodecahedronGeometry(0.26, 0), '#4ade80', awX + 0.3, 0.78, awZ, true);
-    const sackShop = createLowPolyMesh(new THREE.IcosahedronGeometry(0.36, 0), linenSpec.trim, awX + 1.12, 0.28, awZ + 0.12, true);
-    sackShop.scale.set(1.0, 0.82, 1.1);
-    houseGrp.add(frontLinenAwning, crate, fruit1, fruit2, sackShop);
+    const awW = 3.85, awD = 2.15;
+    const awX = w * 0.20, awZ = d * 0.5 + awD * 0.5;
+    const useShopStripes = ((seed % 2) === 0);
+    const frontLinenAwning = createOrganicLinenAwningGroup(awW, awD, linenSpec, woodCol, seed + 150, 0.22, true, 2.52, { striped: useShopStripes });
+    frontLinenAwning.position.set(awX, 2.88, awZ);
+    const displayGrp = createRichMarketDisplayGroup(seed % 4, seed + 151, linenSpec);
+    displayGrp.position.set(awX, 0, awZ - 0.18);
+    houseGrp.add(frontLinenAwning, displayGrp);
   }
 
   // [E] 외벽 돌계단 + 계단 외벽과 바닥부터 일체화된 돌벽 난간(들뜸 완전 해결) & 물리 발판 등록
@@ -4227,7 +4590,46 @@ function createIrregularFieldstoneGeo(bw = 0.85, bh = 0.44, bd = 1.15, seed = 1)
 }
 window.createIrregularFieldstoneGeo = createIrregularFieldstoneGeo;
 
-// 스테이지 공용: 언덕 계단식 비정형 자연석 돌담 빌더 (전체 1 드로우콜 병합)
+// 돌담 공용 물리 등록기: 걸어서는 통과할 수 없지만(topY > gyMax + 0.65), 점프하면 가볍게 올라서거나 뛰어넘을 수 있음(jump apex ≈ 2.75m)!
+function registerJumpableStoneWallColliders(pts, courses = 3, heightFn = null) {
+  if (!Array.isArray(pts) || pts.length < 2 || typeof platforms === 'undefined') return;
+  const getH = typeof heightFn === 'function'
+    ? heightFn
+    : ((x, z) => (typeof getBaseGroundHeight === 'function' ? getBaseGroundHeight(x, z) : 0));
+  const wallAboveGround = (courses >= 3) ? 1.08 : 0.90;
+  const halfThick = 0.60;
+
+  for (let p = 0; p < pts.length - 1; p++) {
+    const [x0, z0] = pts[p];
+    const [x1, z1] = pts[p + 1];
+    const segLen = Math.hypot(x1 - x0, z1 - z0);
+    if (segLen < 0.4) continue;
+    // 세그먼트 수직 법선(양옆 경사면 중 높은 쪽 기준으로도 걸어서 통과 못하도록 보장!)
+    const nx = -(z1 - z0) / segLen;
+    const nz =  (x1 - x0) / segLen;
+    const subCount = Math.max(2, Math.ceil(segLen / 0.78));
+    for (let k = 0; k < subCount; k++) {
+      const t = (k + 0.5) / subCount;
+      const sx = x0 + (x1 - x0) * t;
+      const sz = z0 + (z1 - z0) * t;
+      const gyC = getH(sx, sz);
+      const gyL = getH(sx + nx * 0.68, sz + nz * 0.68);
+      const gyR = getH(sx - nx * 0.68, sz - nz * 0.68);
+      const gyMax = Math.max(gyC, gyL, gyR);
+      platforms.push({
+        minX: sx - halfThick,
+        maxX: sx + halfThick,
+        minZ: sz - halfThick,
+        maxZ: sz + halfThick,
+        topY: gyMax + wallAboveGround,
+        isStoneWall: true
+      });
+    }
+  }
+}
+window.registerJumpableStoneWallColliders = registerJumpableStoneWallColliders;
+
+// 스테이지 공용: 언덕 계단식 비정형 자연석 돌담 빌더 (전체 1 드로우콜 병합 + 점프 월담 물리 등록)
 function buildStageDryStoneTerraceWalls(curves, heightFn, seedBase = 700) {
   const stoneWallGrp = new THREE.Group();
   const stoneCols = ['#ede0c8', '#e1cda9', '#d4bc94', '#c6aa80', '#f2e7d3', '#baa078'];
@@ -4239,6 +4641,7 @@ function buildStageDryStoneTerraceWalls(curves, heightFn, seedBase = 700) {
   curves.forEach((curve, ci) => {
     const pts = curve.pts || curve;
     const courses = curve.courses || 3;
+    registerJumpableStoneWallColliders(pts, courses, heightFn);
     for (let p = 0; p < pts.length - 1; p++) {
       const [x0, z0] = pts[p];
       const [x1, z1] = pts[p + 1];
@@ -4258,11 +4661,11 @@ function buildStageDryStoneTerraceWalls(curves, heightFn, seedBase = 700) {
           const gy = heightFn(sx, sz);
           const isCapstone = (row === courses - 1);
           const bw = (isCapstone ? 0.88 : 0.82) + hash1(s) * 0.24;
-          const bh = (isCapstone ? 0.36 : 0.40) + hash1(s + 1) * 0.14;
+          const bh = (isCapstone ? 0.38 : 0.42) + hash1(s + 1) * 0.14;
           const bd = 0.86 + hash1(s + 2) * 0.38;
           const col = stoneCols[Math.floor(hash1(s + 3) * stoneCols.length) % stoneCols.length];
           const geo = createIrregularFieldstoneGeo(bw, bh, bd, s);
-          const by = gy - 0.10 + row * 0.31 + (hash1(s + 4) - 0.5) * 0.04;
+          const by = gy - 0.06 + row * 0.35 + (hash1(s + 4) - 0.5) * 0.04;
           const stone = createLowPolyMesh(geo, col, sx, by, sz, true);
           stone.rotation.y = yaw + (hash1(s + 5) - 0.5) * 0.18;
           stone.rotation.z = (hash1(s + 6) - 0.5) * 0.08;
@@ -4515,11 +4918,15 @@ window.runEp4OpeningSequence = function () {
       : false;
 
     if (typeof showToast === 'function' && !startedTutorial) {
-      showToast(
-        miracleIsPostResurrection
-          ? '✨ 부활 이후의 갈릴리와 예루살렘 오픈월드입니다! 엠마오·도마·바닷가 아침식사를 체험하고 감람산으로 오르세요!'
-          : '🗺️ 성경 오픈월드에 오신 것을 환영합니다! 빛기둥이 켜진 순서(1→2→3→4)대로 메인 스테이지를 진행해 보세요!'
-      );
+      if (typeof currentMode !== 'undefined' && currentMode === 'timeattack') {
+        showToast('🌿 이곳은 자유롭게 탐험하는 오픈월드입니다! 제한 시간 없이 예수님의 발자취를 마음껏 둘러보세요.');
+      } else {
+        showToast(
+          miracleIsPostResurrection
+            ? '✨ 부활 이후의 갈릴리와 예루살렘 오픈월드입니다! 엠마오·도마·바닷가 아침식사를 체험하고 감람산으로 오르세요!'
+            : '🗺️ 성경 오픈월드에 오신 것을 환영합니다! 빛기둥이 켜진 순서(1→2→3→4)대로 메인 스테이지를 진행해 보세요!'
+        );
+      }
     }
 
     // HUD 수치 동기화 (튜토리얼 진행 중이면 말풍선·음성은 튜토리얼 종료 직후 자동 출력!)
@@ -4692,7 +5099,7 @@ function ensureMiracleCustomUI() {
         </button>
       </div>
 
-      <div id="miracle-notebook-modal" class="hidden pointer-events-auto fixed inset-0 bg-slate-950/75 backdrop-blur-sm z-40 flex items-center justify-center p-3">
+      <div id="miracle-notebook-modal" style="z-index: 64;" class="hidden pointer-events-auto fixed inset-0 bg-slate-950/75 backdrop-blur-sm z-[64] flex items-center justify-center p-3">
         <div class="mc-card modal-scroll w-full max-w-2xl rounded-3xl p-4 sm:p-6 flex flex-col gap-3 max-h-[88dvh]">
           <div class="flex items-center justify-between border-b-2 border-amber-300 pb-2">
             <div class="flex items-center gap-2">
@@ -4898,6 +5305,7 @@ window.updateMiracleMiniNavigatorUI = function (info) {
 window.openMiracleNotebookModal = function (tabKey = 'all') {
   ensureMiracleCustomUI();
   if (typeof setHudMenuOpen === 'function') setHudMenuOpen(false);
+  if (typeof hideMissionGuideBubbleImmediately === 'function') hideMissionGuideBubbleImmediately();
   currentNotebookTab = tabKey;
   const modal = document.getElementById('miracle-notebook-modal');
   const listEl = document.getElementById('miracle-notebook-list');
@@ -4905,6 +5313,7 @@ window.openMiracleNotebookModal = function (tabKey = 'all') {
   if (!modal || !listEl) return;
 
   playSfx('switch');
+  modal.style.zIndex = '64';
   modal.classList.remove('hidden');
   const modalCountEl = document.getElementById('miracle-notebook-modal-count');
   if (modalCountEl) {

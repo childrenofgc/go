@@ -5,7 +5,7 @@
 // =========================================================================
 
 window.__GAME_BUILD_VERSIONS__ = window.__GAME_BUILD_VERSIONS__ || {};
-window.__GAME_BUILD_VERSIONS__.core = '20261122_v16';
+window.__GAME_BUILD_VERSIONS__.core = '20261122_v17';
 
 // 퀴즈 선택지 순서 무작위 셔플 공용 헬퍼 (정답이 항상 1번에 고정되지 않도록 보장)
 function shuffleQuizOptions(opts, ansIdx = 0) {
@@ -1316,10 +1316,142 @@ if (typeof window !== 'undefined') {
   });
 }
 
+// 성경 약어 및 장:절 표기(예: '막 10:13', '마 7:24~27')를 자연스러운 한국어 TTS 발음('마가복음 십장 십삼절')으로 변환
+const KOREAN_BIBLE_BOOK_MAP = {
+  // 구약 39권 약어 + 정식 명칭
+  '창': '창세기', '창세기': '창세기',
+  '출': '출애굽기', '출애굽기': '출애굽기',
+  '레': '레위기', '레위기': '레위기',
+  '민': '민수기', '민수기': '민수기',
+  '신': '신명기', '신명기': '신명기',
+  '수': '여호수아', '여호수아': '여호수아',
+  '삿': '사사기', '사사기': '사사기',
+  '룻': '룻기', '룻기': '룻기',
+  '삼상': '사무엘상', '사무엘상': '사무엘상',
+  '삼하': '사무엘하', '사무엘하': '사무엘하',
+  '왕상': '열왕기상', '열왕기상': '열왕기상',
+  '왕하': '열왕기하', '열왕기하': '열왕기하',
+  '대상': '역대상', '역대상': '역대상',
+  '대하': '역대하', '역대하': '역대하',
+  '스': '에스라', '에스라': '에스라',
+  '느': '느헤미야', '느헤미야': '느헤미야',
+  '에': '에스더', '에스더': '에스더',
+  '욥': '욥기', '욥기': '욥기',
+  '시': '시편', '시편': '시편',
+  '잠': '잠언', '잠언': '잠언',
+  '전': '전도서', '전도서': '전도서',
+  '아': '아가', '아가': '아가',
+  '사': '이사야', '이사야': '이사야',
+  '렘': '예레미야', '예레미야': '예레미야',
+  '애': '예레미야애가', '예레미야애가': '예레미야애가',
+  '겔': '에스겔', '에스겔': '에스겔',
+  '단': '다니엘', '다니엘': '다니엘',
+  '호': '호세아', '호세아': '호세아',
+  '욜': '요엘', '요엘': '요엘',
+  '암': '아모스', '아모스': '아모스',
+  '옵': '오바댜', '오바댜': '오바댜',
+  '욘': '요나', '요나': '요나',
+  '미': '미가', '미가': '미가',
+  '나': '나훔', '나훔': '나훔',
+  '합': '하박국', '하박국': '하박국',
+  '습': '스바냐', '스바냐': '스바냐',
+  '학': '학개', '학개': '학개',
+  '슥': '스가랴', '스가랴': '스가랴',
+  '말': '말라기', '말라기': '말라기',
+  // 신약 27권 약어 + 정식 명칭
+  '마': '마태복음', '마태복음': '마태복음',
+  '막': '마가복음', '마가복음': '마가복음',
+  '눅': '누가복음', '누가복음': '누가복음',
+  '요': '요한복음', '요한복음': '요한복음',
+  '행': '사도행전', '사도행전': '사도행전',
+  '롬': '로마서', '로마서': '로마서',
+  '고전': '고린도전서', '고린도전서': '고린도전서',
+  '고후': '고린도후서', '고린도후서': '고린도후서',
+  '갈': '갈라디아서', '갈라디아서': '갈라디아서',
+  '엡': '에베소서', '에베소서': '에베소서',
+  '빌': '빌립보서', '빌립보서': '빌립보서',
+  '골': '골로새서', '골로새서': '골로새서',
+  '살전': '데살로니가전서', '데살로니가전서': '데살로니가전서',
+  '살후': '데살로니가후서', '데살로니가후서': '데살로니가후서',
+  '딤전': '디모데전서', '디모데전서': '디모데전서',
+  '딤후': '디모데후서', '디모데후서': '디모데후서',
+  '딛': '디도서', '디도서': '디도서',
+  '몬': '빌레몬서', '빌레몬서': '빌레몬서',
+  '히': '히브리서', '히브리서': '히브리서',
+  '약': '야고보서', '야고보서': '야고보서',
+  '벧전': '베드로전서', '베드로전서': '베드로전서',
+  '벧후': '베드로후서', '베드로후서': '베드로후서',
+  '요일': '요한일서', '요한일서': '요한일서',
+  '요이': '요한이서', '요한이서': '요한이서',
+  '요삼': '요한삼서', '요한삼서': '요한삼서',
+  '유': '유다서', '유다서': '유다서',
+  '계': '요한계시록', '요한계시록': '요한계시록'
+};
+
+const _KOREAN_BIBLE_BOOK_KEYS_PATTERN = Object.keys(KOREAN_BIBLE_BOOK_MAP)
+  .sort((a, b) => b.length - a.length)
+  .join('|');
+const _KOREAN_BIBLE_COLON_REGEX = new RegExp(
+  `(^|[^가-힣])(${_KOREAN_BIBLE_BOOK_KEYS_PATTERN})\\s*(\\d+)\\s*:\\s*(\\d+)(?:\\s*[-~～]\\s*(\\d+))?`,
+  'g'
+);
+const _KOREAN_BIBLE_CHAPTER_WORD_REGEX = new RegExp(
+  `(^|[^가-힣])(${_KOREAN_BIBLE_BOOK_KEYS_PATTERN})\\s*(\\d+)\\s*(장|편)(?:\\s*(\\d+)\\s*절(?:\\s*[-~～]\\s*(\\d+)\\s*절?)?)?`,
+  'g'
+);
+
+function toSinoKoreanBibleNum(n) {
+  const num = parseInt(n, 10);
+  if (!Number.isFinite(num) || num <= 0 || num >= 1000) return String(n);
+  const digits = ['', '일', '이', '삼', '사', '오', '육', '칠', '팔', '구'];
+  const h = Math.floor(num / 100);
+  const t = Math.floor((num % 100) / 10);
+  const o = num % 10;
+  let out = '';
+  if (h > 0) out += (h === 1 ? '백' : digits[h] + '백');
+  if (t > 0) out += (t === 1 ? '십' : digits[t] + '십');
+  if (o > 0) out += digits[o];
+  return out || String(num);
+}
+
+function formatKoreanBibleTextForTTS(text) {
+  if (!text) return '';
+  let out = String(text);
+  // 1) '막 10:13', '마 7:24~27', '시 23:1' -> '마가복음 십장 십삼절', '마태복음 칠장 이십사절에서 이십칠절', '시편 이십삼편 일절'
+  out = out.replace(_KOREAN_BIBLE_COLON_REGEX, (match, prefix, bookKey, ch, vStart, vEnd) => {
+    const fullBook = KOREAN_BIBLE_BOOK_MAP[bookKey] || bookKey;
+    const chUnit = (fullBook === '시편') ? '편' : '장';
+    const chStr = toSinoKoreanBibleNum(ch);
+    const vStartStr = toSinoKoreanBibleNum(vStart);
+    if (vEnd) {
+      const vEndStr = toSinoKoreanBibleNum(vEnd);
+      return `${prefix}${fullBook} ${chStr}${chUnit} ${vStartStr}절에서 ${vEndStr}절`;
+    }
+    return `${prefix}${fullBook} ${chStr}${chUnit} ${vStartStr}절`;
+  });
+  // 2) '막 10장 13절'처럼 이미 장/절로 표기된 약어도 전체 성경책 이름과 한자어 숫자로 교정
+  out = out.replace(_KOREAN_BIBLE_CHAPTER_WORD_REGEX, (match, prefix, bookKey, ch, unit, vStart, vEnd) => {
+    const fullBook = KOREAN_BIBLE_BOOK_MAP[bookKey] || bookKey;
+    const chUnit = (fullBook === '시편') ? '편' : unit;
+    const chStr = toSinoKoreanBibleNum(ch);
+    if (vStart) {
+      const vStartStr = toSinoKoreanBibleNum(vStart);
+      if (vEnd) {
+        return `${prefix}${fullBook} ${chStr}${chUnit} ${vStartStr}절에서 ${toSinoKoreanBibleNum(vEnd)}절`;
+      }
+      return `${prefix}${fullBook} ${chStr}${chUnit} ${vStartStr}절`;
+    }
+    return `${prefix}${fullBook} ${chStr}${chUnit}`;
+  });
+  return out;
+}
+window.formatKoreanBibleTextForTTS = formatKoreanBibleTextForTTS;
+
 let melodyTimer = null;
 function speakText(text) {
   if (!text) return;
-  const cleanText = text.replace(/⚡/g, '').replace(/&/g, '과').trim();
+  const formattedText = formatKoreanBibleTextForTTS(text);
+  const cleanText = formattedText.replace(/⚡/g, '').replace(/&/g, '과').trim();
   if (melodyTimer) { clearInterval(melodyTimer); melodyTimer = null; }
   let ttsWorked = false;
   if ('speechSynthesis' in window) {
@@ -1385,6 +1517,12 @@ const MODE_META = {
   senior: { badge: '🍎 소년반', dept: '🍎 소년반(초등 4-6학년)', quizCount: 2 },
   timeattack: { badge: '⚡ 타임어택', dept: '⚡ 타임어택(스피드 도전)', quizCount: 1 }
 };
+
+// 에피소드 4에서는 타임어택도 시간 제한 없이 소년반(senior)과 동일한 구성으로 운영
+function isEffectiveSeniorMode(ep = currentEpisode, mode = currentMode) {
+  return mode === 'senior' || (ep === 'miracle' && mode === 'timeattack');
+}
+window.isEffectiveSeniorMode = isEffectiveSeniorMode;
 
 let playerProgressData = {
   noah:    { maxClearedStage: 0, completed: false, certIssued: false, attempts: 0 },
@@ -2624,7 +2762,7 @@ function rebuildPlayerAppearance() {
     playerGroup = createHeroMesh(currentEpisode === 'exodus');
   }
   guideArrowGroup = createGuideArrowMesh();
-  guideArrowGroup.visible = (currentMode !== 'senior');
+  guideArrowGroup.visible = !isEffectiveSeniorMode(currentEpisode, currentMode);
   playerGroup.add(guideArrowGroup);
   playerGroup.position.copy(playerPos);
   scene.add(playerGroup);
@@ -3465,7 +3603,7 @@ function setPlayerMeshVisibilityForCamera(isFpsMode) {
   if (!playerGroup) return;
   playerGroup.children.forEach(child => {
     if (child === guideArrowGroup) {
-      child.visible = (currentMode !== 'senior');
+      child.visible = !isEffectiveSeniorMode(currentEpisode, currentMode);
       if (isFpsMode) {
         child.position.set(0, 1.35, 2.2);
       } else {
@@ -3703,8 +3841,9 @@ function applyCoreCameraByMode() {
       endLookZ = playerPos.z - cosY * 8.0;
     } else if (window.globalCameraViewMode === 'topdown') {
       endCamX = playerPos.x + sinY * 11.5;
-      endCamY = playerPos.y + 8.5;
       endCamZ = playerPos.z + cosY * 11.5;
+      const gEndTop = (typeof getBaseGroundHeight === 'function') ? getBaseGroundHeight(endCamX, endCamZ) : 0;
+      endCamY = Math.max(playerPos.y + 8.5, gEndTop + 1.85);
       endLookX = playerPos.x;
       endLookY = playerPos.y + 1.5;
       endLookZ = playerPos.z;
@@ -3714,8 +3853,9 @@ function applyCoreCameraByMode() {
       const distMult = isPortrait ? 1.0 : 0.85;
       const hMult = isPortrait ? 0.55 : 0.45;
       endCamX = playerPos.x + sinY * (11.5 * distMult);
-      endCamY = playerPos.y + (8.5 * hMult);
       endCamZ = playerPos.z + cosY * (11.5 * distMult);
+      const gEndDef = (typeof getBaseGroundHeight === 'function') ? getBaseGroundHeight(endCamX, endCamZ) : 0;
+      endCamY = Math.max(playerPos.y + (8.5 * hMult), gEndDef + 1.85);
       endLookX = playerPos.x;
       endLookY = playerPos.y + 2.4;
       endLookZ = playerPos.z;
@@ -3761,6 +3901,31 @@ function applyCoreCameraByMode() {
     return;
   }
 
+  // 언덕 내리막길에서 카메라가 뒷편 지형 속으로 파고들어 땅이 하늘색으로 비치는(백페이스 컬링) 현상을 원천 차단하는 지형 안전 고도 계산기
+  const computeTerrainSafeCamY = (lookY, targetCamX, targetCamZ, baseCamY) => {
+    if (typeof getBaseGroundHeight !== 'function') return { safeY: baseCamY, camGroundMax: -999 };
+    const pad = 0.75;
+    const gC  = getBaseGroundHeight(targetCamX, targetCamZ);
+    const gL  = getBaseGroundHeight(targetCamX - pad, targetCamZ);
+    const gR  = getBaseGroundHeight(targetCamX + pad, targetCamZ);
+    const gF  = getBaseGroundHeight(targetCamX, targetCamZ + pad);
+    const gB  = getBaseGroundHeight(targetCamX, targetCamZ - pad);
+    const camGroundMax = Math.max(gC, gL, gR, gF, gB);
+
+    let requiredY = Math.max(baseCamY, camGroundMax + 1.85);
+    const raySamples = [0.28, 0.50, 0.72, 0.88];
+    for (let i = 0; i < raySamples.length; i++) {
+      const t = raySamples[i];
+      const sx = playerPos.x + (targetCamX - playerPos.x) * t;
+      const sz = playerPos.z + (targetCamZ - playerPos.z) * t;
+      const sg = getBaseGroundHeight(sx, sz);
+      const neededForSight = lookY + ((sg + 0.90) - lookY) / t;
+      if (neededForSight > requiredY) requiredY = neededForSight;
+    }
+    const cappedY = Math.min(requiredY, baseCamY + 14.5);
+    return { safeY: Math.max(cappedY, camGroundMax + 1.60), camGroundMax };
+  };
+
   if (window.globalCameraViewMode === 'fps') {
     setPlayerMeshVisibilityForCamera(true);
     const eyeX = playerPos.x - sinY * 0.15;
@@ -3778,34 +3943,37 @@ function applyCoreCameraByMode() {
     const camX = playerPos.x + sinY * lowDist;
     const camZ = playerPos.z + cosY * lowDist;
     const groundH = Math.max(playerPos.y, getBaseGroundHeight(camX, camZ));
-    const camY = Math.max(playerPos.y + 1.45, groundH + 1.15);
+    const camY = Math.max(playerPos.y + 1.45, groundH + 1.35);
 
     camera.position.set(camX, camY, camZ);
     camera.lookAt(playerPos.x - sinY * 8.0, playerPos.y + 5.2, playerPos.z - cosY * 8.0);
     
   } else if (window.globalCameraViewMode === 'topdown') {
-    // [변경 전 원본 카메라] 에피소드 1~3에서 기본으로 사용되는 예전 구도 
+    // [변경 전 원본 카메라] 에피소드 1~3에서 기본으로 사용되는 예전 구도 (언덕 지형 관통 방지 포함)
     setPlayerMeshVisibilityForCamera(false);
     const camDist = (currentStage === 1 || currentStage === 4) ? 11.5 : (currentEpisode === 'exodus' ? 11.2 : 8.4);
     const camH = (currentStage === 1 || currentStage === 4) ? 8.5 : (currentEpisode === 'exodus' ? 8.0 : 7.0);
-    camera.position.set(
-      playerPos.x + sinY * camDist,
-      playerPos.y + camH,
-      playerPos.z + cosY * camDist
-    );
+    const topX = playerPos.x + sinY * camDist;
+    const topZ = playerPos.z + cosY * camDist;
+    const isTopIndoor = (currentStage === 2 || currentStage === 3) && currentEpisode !== 'miracle';
+    let topY = playerPos.y + camH;
+    if (!isTopIndoor) {
+      topY = computeTerrainSafeCamY(playerPos.y + 1.5, topX, topZ, topY).safeY;
+    }
+    camera.position.set(topX, topY, topZ);
     camera.lookAt(playerPos.x, playerPos.y + 1.5, playerPos.z);
     
   } else {
-    // [새로운 입체형 기본 카메라] 에피소드 4 기본 시점 (야외 반투명 연동 + 실내 부드러운 벽 보정)
-        setPlayerMeshVisibilityForCamera(false);
+    // [새로운 입체형 기본 카메라] 에피소드 4 기본 시점 (야외 반투명 연동 + 언덕 내리막 지형 관통 원천 차단 + 실내 벽 보정)
+    setPlayerMeshVisibilityForCamera(false);
 
-        const aspect = window.innerWidth / Math.max(1, window.innerHeight);
-        const isPortrait = aspect < 1.0;
-        const isIndoor = (currentStage === 2 || currentStage === 3) && currentEpisode !== 'miracle';
+    const aspect = window.innerWidth / Math.max(1, window.innerHeight);
+    const isPortrait = aspect < 1.0;
+    const isIndoor = (currentStage === 2 || currentStage === 3) && currentEpisode !== 'miracle';
 
-        // 에피소드 4는 스테이지에 상관없이 통합된 11.5 / 8.5 기준 거리를 사용하도록 수정
-        const baseDist = (currentEpisode === 'miracle') ? 11.5 : ((currentStage === 1 || currentStage === 4) ? 11.5 : (currentEpisode === 'exodus' ? 11.2 : 8.4));
-        const baseH = (currentEpisode === 'miracle') ? 8.5 : ((currentStage === 1 || currentStage === 4) ? 8.5 : (currentEpisode === 'exodus' ? 8.0 : 7.0));
+    // 에피소드 4는 스테이지에 상관없이 통합된 11.5 / 8.5 기준 거리를 사용하도록 수정
+    const baseDist = (currentEpisode === 'miracle') ? 11.5 : ((currentStage === 1 || currentStage === 4) ? 11.5 : (currentEpisode === 'exodus' ? 11.2 : 8.4));
+    const baseH = (currentEpisode === 'miracle') ? 8.5 : ((currentStage === 1 || currentStage === 4) ? 8.5 : (currentEpisode === 'exodus' ? 8.0 : 7.0));
 
     let distMult = 1.0, hMult = 1.0;
 
@@ -3848,6 +4016,14 @@ function applyCoreCameraByMode() {
       if (closestDist < fullTargetDist) {
         desiredDist = Math.max(1.2, closestDist - 0.35);
       }
+    } else if (!isIndoor && typeof getBaseGroundHeight === 'function') {
+      // 가파른 언덕을 내려갈 때 뒤쪽 경사가 높으면 카메라 거리를 살짝 당겨 시야를 편안하게 유지
+      const rearGroundH = getBaseGroundHeight(idealCamPos.x, idealCamPos.z);
+      const slopeBehind = rearGroundH - playerPos.y;
+      if (slopeBehind > 1.2) {
+        const pullFactor = Math.max(0.76, 1.0 - (slopeBehind - 1.2) * 0.045);
+        desiredDist = fullTargetDist * pullFactor;
+      }
     }
 
     // 거리 변화 시 순간 이동 대신 부드러운 보간 적용
@@ -3858,7 +4034,22 @@ function applyCoreCameraByMode() {
       window._smoothDefaultCamDist += (desiredDist - window._smoothDefaultCamDist) * lerpRate;
     }
 
-    camera.position.copy(lookTarget).add(dirToCam.multiplyScalar(window._smoothDefaultCamDist));
+    const placedPos = lookTarget.clone().add(dirToCam.clone().multiplyScalar(window._smoothDefaultCamDist));
+
+    // 야외 언덕 내리막 시 카메라가 지형 아래로 내려가 땅이 하늘색으로 뚫려 보이는 현상 완전 차단!
+    if (!isIndoor) {
+      const { safeY, camGroundMax } = computeTerrainSafeCamY(lookTarget.y, placedPos.x, placedPos.z, placedPos.y);
+      const targetLift = Math.max(0, safeY - placedPos.y);
+      if (typeof window._smoothDefaultCamLift !== 'number' || !Number.isFinite(window._smoothDefaultCamLift)) {
+        window._smoothDefaultCamLift = targetLift;
+      } else {
+        const liftRate = targetLift > window._smoothDefaultCamLift ? 0.58 : 0.14;
+        window._smoothDefaultCamLift += (targetLift - window._smoothDefaultCamLift) * liftRate;
+      }
+      placedPos.y = Math.max(placedPos.y + window._smoothDefaultCamLift, camGroundMax + 1.55);
+    }
+
+    camera.position.copy(placedPos);
     camera.lookAt(lookTarget);
   }
 }
@@ -3866,6 +4057,7 @@ function applyCoreCameraByMode() {
 function snapCameraToPlayer() {
   if (!playerGroup || !camera) return;
   window._smoothDefaultCamDist = null;
+  window._smoothDefaultCamLift = null;
   ensureGlobalCameraViewToggleUI();
   playerGroup.position.copy(playerPos);
   applyCoreCameraByMode();
@@ -3950,7 +4142,8 @@ function startVoxelGame(mode, targetStage = 1, fromMapSelect = false) {
 
   const epPlugin = getActiveEpisodePlugin();
   const timerBox = document.getElementById('hud-timer-box');
-  if (mode === 'timeattack' && targetStage <= 3) {
+  const useTimeAttackTimer = (mode === 'timeattack' && targetStage <= 3 && currentEpisode !== 'miracle');
+  if (useTimeAttackTimer) {
     if (epPlugin && typeof epPlugin.getInitialTime === 'function') {
       timeRemaining = epPlugin.getInitialTime(targetStage);
     } else {
@@ -3969,9 +4162,10 @@ function startVoxelGame(mode, targetStage = 1, fromMapSelect = false) {
     timerBox.classList.add('hidden'); timerBox.classList.remove('flex');
   }
 
-  guideArrowGroup.visible = (mode !== 'senior');
+  const hideGuideForSenior = isEffectiveSeniorMode(currentEpisode, mode);
+  guideArrowGroup.visible = !hideGuideForSenior;
   const compassHintEl = document.getElementById('hud-compass-hint');
-  if (compassHintEl) compassHintEl.classList.toggle('hidden', mode === 'senior');
+  if (compassHintEl) compassHintEl.classList.toggle('hidden', hideGuideForSenior);
 
   if (runEp4Opening && window.MiracleGuideUI) {
     window.MiracleGuideUI.suppressedDuringIntro = true;
@@ -4087,7 +4281,12 @@ function retryCurrentStage() {
   const pauseAtStart = epPlugin && typeof epPlugin.pauseTimerAtStart === 'function'
     ? epPlugin.pauseTimerAtStart(currentStage)
     : (currentEpisode === 'exodus' && currentStage === 2);
-  isTimeAttackActive = (currentMode === 'timeattack' && !pauseAtStart);
+  isTimeAttackActive = (currentMode === 'timeattack' && currentEpisode !== 'miracle' && !pauseAtStart);
+  const timerBox = document.getElementById('hud-timer-box');
+  if (timerBox && currentEpisode === 'miracle') {
+    timerBox.classList.add('hidden');
+    timerBox.classList.remove('flex');
+  }
   isPlaying = !pauseAtStart;
 
   if (currentEpisode === 'miracle') {
@@ -5180,6 +5379,7 @@ function initEngine(skipInitialPreview = false) {
 function parseAdminDirectJumpParams() {
   const validEps = new Set(['noah', 'exodus', 'david', 'miracle']);
   const validModes = new Set(['kinder', 'junior', 'senior', 'timeattack']);
+  const validMiracleSubs = new Set(['openworld', 'main1_galilee', 'main1_boat', 'main2_loaves', 'main3_cross', 'main4_tomb', 'ascension']);
 
   const tryExtract = (searchStr) => {
     if (!searchStr) return null;
@@ -5197,9 +5397,11 @@ function parseAdminDirectJumpParams() {
     const ep = (p.get('ep') || '').trim().toLowerCase();
     const mode = (p.get('mode') || '').trim().toLowerCase();
     const stage = parseInt(p.get('stage') || '0', 10);
+    const subRaw = (p.get('sub') || '').trim().toLowerCase();
+    const sub = validMiracleSubs.has(subRaw) ? subRaw : '';
     const name = (p.get('name') || '관리자').trim() || '관리자';
     if (validEps.has(ep) && validModes.has(mode) && stage >= 1 && stage <= 4) {
-      return { ep, mode, stage, name };
+      return { ep, mode, stage, sub, name };
     }
     return null;
   };
@@ -5228,9 +5430,11 @@ function parseAdminDirectJumpParams() {
           const ep = String(saved.ep || '').trim().toLowerCase();
           const mode = String(saved.mode || '').trim().toLowerCase();
           const stage = parseInt(saved.stage || '0', 10);
+          const subRaw = String(saved.sub || '').trim().toLowerCase();
+          const sub = validMiracleSubs.has(subRaw) ? subRaw : '';
           const name = String(saved.name || '관리자').trim() || '관리자';
           if (validEps.has(ep) && validModes.has(mode) && stage >= 1 && stage <= 4) {
-            jump = { ep, mode, stage, name };
+            jump = { ep, mode, stage, sub, name };
           }
         }
       }
@@ -5256,6 +5460,29 @@ function applyAdminDirectJump(jump) {
     }
   }
   openScreen(null);
+  if (jump.ep === 'miracle' && jump.sub) {
+    if (jump.sub === 'openworld') {
+      startVoxelGame(jump.mode, 1, false);
+      return;
+    }
+    if (jump.sub === 'ascension') {
+      startVoxelGame(jump.mode, 4, true);
+      return;
+    }
+    if (typeof window.startMiracleDirectSubStage === 'function') {
+      isMenuBgmActive = false;
+      currentMode = jump.mode;
+      isTimeAttackActive = false;
+      const timerBox = document.getElementById('hud-timer-box');
+      if (timerBox) { timerBox.classList.add('hidden'); timerBox.classList.remove('flex'); }
+      rebuildPlayerAppearance();
+      window.globalCameraViewMode = 'default';
+      ensureGlobalCameraViewToggleUI();
+      if (guideArrowGroup) guideArrowGroup.visible = !isEffectiveSeniorMode('miracle', jump.mode);
+      window.startMiracleDirectSubStage(jump.sub);
+      return;
+    }
+  }
   startVoxelGame(jump.mode, jump.stage, jump.stage === 4);
 }
 
