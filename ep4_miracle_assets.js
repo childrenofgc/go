@@ -6,7 +6,7 @@
 // =========================================================================
 
 window.__GAME_BUILD_VERSIONS__ = window.__GAME_BUILD_VERSIONS__ || {};
-window.__GAME_BUILD_VERSIONS__.ep4_assets = '20261122_v17';
+window.__GAME_BUILD_VERSIONS__.ep4_assets = '20261122_v18';
 
 const _miracleDoubleSideMatCache = {};
 function matLowPolyDouble(hexColor) {
@@ -1942,15 +1942,76 @@ const ISRAELITE_FEMALE_VARIANTS = [
   }
 ];
 
+// 온라인 멀티플레이 전용 어린이 대원(패스파인더 · 어드벤처러) 소프트 로우폴리 반팔 팔 빌더
+function createKidShortSleeveArm(isLeft, shirtHex, cuffHex, skinHex) {
+  const side = isLeft ? -1 : 1;
+  const armGrp = new THREE.Group();
+  armGrp.position.set(side * 0.27, 1.46, 0.0);
+
+  const sleevePivot = new THREE.Group();
+  sleevePivot.rotation.z = side * 0.20;
+
+  // 반팔 소매 어깨 캡 & 짧은 통소매
+  const shoulderCap = createLowPolyMesh(new THREE.DodecahedronGeometry(0.128, 0), shirtHex, 0, 0.01, 0);
+  shoulderCap.scale.set(1.0, 0.88, 0.96);
+  const shortSleeve = createLowPolyMesh(new THREE.CylinderGeometry(0.115, 0.132, 0.24, 7), shirtHex, 0, -0.11, 0);
+  const sleeveCuff = createLowPolyMesh(new THREE.CylinderGeometry(0.134, 0.136, 0.036, 7), cuffHex, 0, -0.22, 0, false);
+  sleevePivot.add(shoulderCap, shortSleeve, sleeveCuff);
+
+  // 반팔 아래 드러난 맨팔(전완)과 소프트 로우폴리 손
+  const lowerArmGrp = new THREE.Group();
+  lowerArmGrp.position.set(0, -0.23, 0);
+  lowerArmGrp.rotation.z = -side * 0.10;
+
+  const bareArm = createLowPolyMesh(new THREE.CylinderGeometry(0.076, 0.068, 0.30, 6), skinHex, 0, -0.15, 0);
+  const palm = createLowPolyMesh(new THREE.BoxGeometry(0.095, 0.11, 0.11), skinHex, 0, -0.34, 0.01);
+  const fingers = createLowPolyMesh(new THREE.BoxGeometry(0.084, 0.075, 0.095), skinHex, -side * 0.014, -0.41, 0.01);
+  fingers.rotation.z = -side * 0.22;
+  const thumb = createLowPolyMesh(new THREE.BoxGeometry(0.042, 0.07, 0.05), skinHex, -side * 0.048, -0.35, 0.06, false);
+  thumb.rotation.x = 0.28;
+
+  lowerArmGrp.add(bareArm, palm, fingers, thumb);
+  sleevePivot.add(lowerArmGrp);
+  armGrp.add(sleevePivot);
+  return armGrp;
+}
+
 window.createLowPolyPersonMesh = function (preset = 'disciple', idx = 0) {
   const lodGroup = new THREE.LOD();
 
   let isFemale = false;
   let cfg = null;
   let sc = 1.0;
+  const isClubKid = (preset === 'pathfinder' || preset === 'adventurer');
 
   if (preset === 'jesus') {
     cfg = ISRAELITE_MALE_VARIANTS[0];
+  } else if (preset === 'pathfinder') {
+    // [온라인 멀티플레이 전용] 파란색 반팔 티셔츠 어린이 — 패스파인더 대원
+    isFemale = false;
+    cfg = {
+      shirt: '#2563eb', shirtTrim: '#1d4ed8', shorts: '#334155',
+      scarf: '#facc15', scarfTrim: '#dc2626', pack: '#1e40af', packFlap: '#38bdf8',
+      shoe: '#1e293b', shoeTrim: '#f8fafc', sock: '#f8fafc',
+      hair: '#261910', skin: '#f3d0b3',
+      robe: '#2563eb', sleeve: '#2563eb', shawl: '#facc15',
+      belt: '#1e3a8a', beltSub: '#1d4ed8', sandal: '#1e293b',
+      beardStyle: 'none', headwear: 'none', clubBadge: '#facc15'
+    };
+    sc = 0.78;
+  } else if (preset === 'adventurer') {
+    // [온라인 멀티플레이 전용] 노란색 반팔 티셔츠 어린이 — 어드벤처러 대원
+    isFemale = false;
+    cfg = {
+      shirt: '#facc15', shirtTrim: '#eab308', shorts: '#1e3a8a',
+      scarf: '#b91c1c', scarfTrim: '#fef08a', pack: '#991b1b', packFlap: '#fde047',
+      shoe: '#dc2626', shoeTrim: '#f8fafc', sock: '#f8fafc',
+      hair: '#3b2314', skin: '#f5d4b8',
+      robe: '#facc15', sleeve: '#facc15', shawl: '#b91c1c',
+      belt: '#991b1b', beltSub: '#7f1d1d', sandal: '#dc2626',
+      beardStyle: 'none', headwear: 'none', clubBadge: '#dc2626'
+    };
+    sc = 0.78;
   } else if (preset === 'woman' || preset.startsWith('female_')) {
     isFemale = true;
     const fIdx = preset.startsWith('female_') ? parseInt(preset.split('_')[1], 10) : (idx % 3);
@@ -1966,8 +2027,17 @@ window.createLowPolyPersonMesh = function (preset = 'disciple', idx = 0) {
       cfg = { ...ISRAELITE_MALE_VARIANTS[Math.floor(idx / 2) % 3] };
     }
   } else if (preset === 'hero') {
+    // [오픈월드 기본 캐릭터] NPC 6종과 겹치지 않는 전용 탐험가 디자인 (청록 튜닉 · 아이보리/터콰이즈/금빛 숄 · 황금 머리띠+리본 · 가죽 두루마리 탐험가방 · 수염 없는 젊은 인상)
     isFemale = false;
-    cfg = { ...ISRAELITE_MALE_VARIANTS[0] };
+    cfg = {
+      robe: '#0f766e', sleeve: '#115e59', shawl: '#faf3e0',
+      stripe1: '#06b6d4', stripe2: '#d97706',
+      headcloth: null, agal1: null, agal2: null,
+      belt: '#78350f', beltSub: '#d97706',
+      hair: '#3d2415', skin: '#f1cfb2', sandal: '#451a03',
+      beardStyle: 'none', headwear: 'headband',
+      hasExplorerSatchel: true
+    };
     sc = 1.0;
   } else if (preset === 'zacchaeus') {
     isFemale = false;
@@ -2063,6 +2133,84 @@ window.createLowPolyPersonMesh = function (preset = 'disciple', idx = 0) {
     head.add(faceMesh, facialFeatures, beardGroup, hairGroup);
 
     gHigh.add(lLeg, rLeg, skirtMesh, bodiceMesh, collarYoke, neck, beltGrp, redSashGrp, lArm, rArm, head);
+  } else if (isClubKid) {
+    // [온라인 멀티플레이 전용] 소프트 로우폴리 반팔 티셔츠 어린이 대원 (인덱스 0..9 정확히 유지!)
+    const buildKidLeg = (isLeft) => {
+      const legGrp = new THREE.Group();
+      legGrp.position.set(isLeft ? -0.14 : 0.14, 0.68, 0);
+      const shortLeg = createLowPolyMesh(new THREE.CylinderGeometry(0.112, 0.105, 0.22, 6), cfg.shorts, 0, -0.06, 0);
+      const calf = createLowPolyMesh(new THREE.CylinderGeometry(0.080, 0.072, 0.30, 6), cfg.skin, 0, -0.30, 0);
+      const sock = createLowPolyMesh(new THREE.CylinderGeometry(0.078, 0.076, 0.11, 6), cfg.sock, 0, -0.48, 0, false);
+      const shoeBody = createLowPolyMesh(new THREE.BoxGeometry(0.19, 0.13, 0.34), cfg.shoe, 0, -0.58, 0.05);
+      const shoeSole = createLowPolyMesh(new THREE.BoxGeometry(0.20, 0.05, 0.36), cfg.shoeTrim, 0, -0.64, 0.05, false);
+      const shoeToe  = createLowPolyMesh(new THREE.BoxGeometry(0.16, 0.08, 0.10), cfg.shoeTrim, 0, -0.58, 0.20, false);
+      legGrp.add(shortLeg, calf, sock, shoeBody, shoeSole, shoeToe);
+      return legGrp;
+    };
+    const lLeg = buildKidLeg(true);
+    const rLeg = buildKidLeg(false);
+
+    // [2] 반바지 골반부
+    const shortsHip = createLowPolyMesh(new THREE.CylinderGeometry(0.24, 0.25, 0.28, 8), cfg.shorts, 0, 0.78, 0);
+    shortsHip.scale.set(1.02, 1.0, 0.74);
+
+    // [3] 반팔 티셔츠 상의 몸통 + 목선 라운드넥 + 가슴 대원 엠블럼
+    const shirtGroup = new THREE.Group();
+    const shirtBody = createLowPolyMesh(getAnatomicalUpperTorsoGeo(), cfg.shirt, 0, 1.24, 0);
+    const shirtLower = createLowPolyMesh(new THREE.CylinderGeometry(0.245, 0.255, 0.26, 8), cfg.shirt, 0, 0.99, 0);
+    shirtLower.scale.set(1.03, 1.0, 0.74);
+    const crewNeck = createLowPolyMesh(new THREE.CylinderGeometry(0.145, 0.19, 0.07, 8), cfg.shirtTrim, 0, 1.52, 0, false);
+    crewNeck.scale.set(1.02, 1.0, 0.76);
+    const chestBadge = createLowPolyMesh(new THREE.OctahedronGeometry(0.068, 0), cfg.clubBadge, -0.10, 1.32, 0.185, false);
+    chestBadge.scale.set(1.0, 1.0, 0.35);
+    shirtGroup.add(shirtBody, shirtLower, crewNeck, chestBadge);
+
+    // [4] 목
+    const neck = createLowPolyMesh(new THREE.CylinderGeometry(0.088, 0.108, 0.22, 8), cfg.skin, 0, 1.63, 0, false);
+
+    // [5] 패스파인더 / 어드벤처러 스카프(항건) & 등 뒤 탐험 배낭
+    const clubGearGroup = new THREE.Group();
+    const scarfCollar = createLowPolyMesh(new THREE.CylinderGeometry(0.165, 0.22, 0.08, 8), cfg.scarf, 0, 1.50, 0.01, false);
+    scarfCollar.scale.set(1.05, 1.0, 0.80);
+    const scarfBackTri = createLowPolyMesh(new THREE.ConeGeometry(0.22, 0.36, 4), cfg.scarf, 0, 1.30, -0.18, false);
+    scarfBackTri.rotation.x = Math.PI + 0.14;
+    scarfBackTri.rotation.y = Math.PI / 4;
+    scarfBackTri.scale.set(1.05, 1.0, 0.22);
+    const scarfBackTrim = createLowPolyMesh(new THREE.ConeGeometry(0.24, 0.39, 4), cfg.scarfTrim, 0, 1.29, -0.17, false);
+    scarfBackTrim.rotation.x = Math.PI + 0.14;
+    scarfBackTrim.rotation.y = Math.PI / 4;
+    scarfBackTrim.scale.set(1.05, 1.0, 0.16);
+    const scarfSlide = createLowPolyMesh(new THREE.CylinderGeometry(0.048, 0.048, 0.07, 6), cfg.scarfTrim, 0, 1.43, 0.175, false);
+    const scarfTipL = createLowPolyMesh(new THREE.BoxGeometry(0.065, 0.16, 0.032), cfg.scarf, -0.045, 1.32, 0.182, false);
+    scarfTipL.rotation.z = -0.18;
+    const scarfTipR = createLowPolyMesh(new THREE.BoxGeometry(0.065, 0.16, 0.032), cfg.scarf,  0.045, 1.32, 0.182, false);
+    scarfTipR.rotation.z = 0.18;
+    // 등 뒤 앙증맞은 탐험 배낭
+    const packBody = createLowPolyMesh(new THREE.BoxGeometry(0.36, 0.42, 0.18), cfg.pack, 0, 1.20, -0.25);
+    const packFlap = createLowPolyMesh(new THREE.BoxGeometry(0.38, 0.13, 0.20), cfg.packFlap, 0, 1.38, -0.26, false);
+    const packPocket = createLowPolyMesh(new THREE.BoxGeometry(0.24, 0.16, 0.08), cfg.scarf, 0, 1.09, -0.35, false);
+    clubGearGroup.add(scarfCollar, scarfBackTrim, scarfBackTri, scarfSlide, scarfTipL, scarfTipR, packBody, packFlap, packPocket);
+
+    // [6] 깔끔한 티셔츠 밑단 & 반바지 허리밴드
+    const waistBand = createLowPolyMesh(new THREE.CylinderGeometry(0.252, 0.256, 0.065, 8), cfg.shirtTrim, 0, 0.89, 0, false);
+    waistBand.scale.set(1.03, 1.0, 0.75);
+
+    // [7], [8] 반팔 티셔츠 양팔
+    const lArm = createKidShortSleeveArm(true, cfg.shirt, cfg.shirtTrim, cfg.skin);
+    const rArm = createKidShortSleeveArm(false, cfg.shirt, cfg.shirtTrim, cfg.skin);
+
+    // [9] 밝고 씩씩한 어린이 머리
+    const head = new THREE.Group();
+    head.position.set(0, 1.92, 0);
+    const faceMesh = createLowPolyMesh(getSoftLowPolyHeadGeo(false, false), cfg.skin, 0, 0, 0);
+    faceMesh.name = 'headBase';
+    const facialFeatures = createSoftFacialFeaturesGroup(cfg.skin, cfg.hair, false, false);
+    const earL = createLowPolyMesh(getSculptedEarGeo(true),  cfg.skin, -0.236, -0.008, -0.012, false);
+    const earR = createLowPolyMesh(getSculptedEarGeo(false), cfg.skin,  0.236, -0.008, -0.012, false);
+    earL.name = 'ear'; earR.name = 'ear';
+    head.add(faceMesh, facialFeatures, earL, earR, createSoftMaleHairGroup(cfg.hair, preset === 'adventurer' ? 1 : 0));
+
+    gHigh.add(lLeg, rLeg, shortsHip, shirtGroup, neck, clubGearGroup, waistBand, lArm, rArm, head);
   } else {
     const buildLeg = (isLeft) => {
       const legGrp = new THREE.Group();
@@ -2096,6 +2244,21 @@ window.createLowPolyPersonMesh = function (preset = 'disciple', idx = 0) {
     const mantleGroup = createCleanIsraeliteMantleGroup(cfg.shawl, cfg.stripe1, cfg.stripe2, isFemale);
     const beltGroup   = createEllipticalDoubleRopeBelt(cfg.belt, cfg.beltSub, true);
 
+    // [오픈월드 기본 캐릭터 전용] 가죽 크로스 탐험 가방 & 말아 넣은 두루마리 (뒤·옆에서 NPC와 즉시 차별화!)
+    if (cfg.hasExplorerSatchel) {
+      const strapF = createLowPolyMesh(new THREE.BoxGeometry(0.075, 0.68, 0.045), '#78350f', -0.02, 1.25, 0.185, false);
+      strapF.rotation.z = -0.62;
+      const strapB = createLowPolyMesh(new THREE.BoxGeometry(0.075, 0.68, 0.045), '#78350f', -0.02, 1.25, -0.185, false);
+      strapB.rotation.z = -0.62;
+      const satchelBody = createLowPolyMesh(new THREE.BoxGeometry(0.20, 0.28, 0.24), '#92400e', 0.27, 0.90, -0.05);
+      const satchelFlap = createLowPolyMesh(new THREE.BoxGeometry(0.22, 0.11, 0.26), '#b45309', 0.27, 1.00, -0.05, false);
+      const satchelClasp = createLowPolyMesh(new THREE.BoxGeometry(0.06, 0.06, 0.06), '#fbbf24', 0.37, 0.94, -0.05, false);
+      const scrollRoll = createLowPolyMesh(new THREE.CylinderGeometry(0.045, 0.045, 0.26, 6), '#fef3c7', 0.26, 1.06, -0.12, false);
+      scrollRoll.rotation.x = Math.PI * 0.45;
+      const beltBuckle = createLowPolyMesh(new THREE.BoxGeometry(0.11, 0.09, 0.05), '#f59e0b', 0, 1.00, 0.205, false);
+      beltGroup.add(strapF, strapB, satchelBody, satchelFlap, satchelClasp, scrollRoll, beltBuckle);
+    }
+
     const lArm = createSeamlessPonchoArm(true, cfg.shawl, cfg.stripe1, cfg.stripe2, cfg.sleeve, cfg.skin);
     const rArm = createSeamlessPonchoArm(false, cfg.shawl, cfg.stripe1, cfg.stripe2, cfg.sleeve, cfg.skin);
 
@@ -2103,14 +2266,15 @@ window.createLowPolyPersonMesh = function (preset = 'disciple', idx = 0) {
     head.position.set(0, 1.92, 0);
 
     const isHelmet = (!isFemale && cfg.headwear === 'helmet');
-    const isHooded = isFemale || (cfg.headwear !== 'none' && !isHelmet);
+    const isHeadband = (!isFemale && cfg.headwear === 'headband');
+    const isHooded = isFemale || (cfg.headwear !== 'none' && !isHelmet && !isHeadband);
 
     const faceMesh = createLowPolyMesh(getSoftLowPolyHeadGeo(isHooded || isHelmet, isFemale), cfg.skin, 0, 0, 0);
     faceMesh.name = 'headBase';
     const facialFeatures = createSoftFacialFeaturesGroup(cfg.skin, cfg.hair, isFemale, isHooded || isHelmet, cfg.browColor || null);
     head.add(faceMesh, facialFeatures);
 
-    // 두건을 쓰지 않은 남자(및 투구 병사)는 입체 귀 장착 (두건 착용 시 귀는 두건 내부 수납으로 돌출 방지)
+    // 두건을 쓰지 않은 남자(및 투구 병사·기본 탐험가)는 입체 귀 장착 (두건 착용 시 귀는 두건 내부 수납으로 돌출 방지)
     if (!isHooded) {
       const earX = isHelmet ? 0.228 : 0.236;
       const earL = createLowPolyMesh(getSculptedEarGeo(true),  cfg.skin, -earX, -0.008, -0.012, false);
@@ -2150,9 +2314,22 @@ window.createLowPolyPersonMesh = function (preset = 'disciple', idx = 0) {
     if (isFemale) {
       head.add(createHoodedInnerHairGroup(cfg.hair, true));
     } else {
-      if (cfg.headwear === 'none') {
-        const hairStyleIdx = (cfg.beardStyle === 'trimmed') ? 1 : (cfg.beardStyle === 'short' ? 0 : (idx % 2));
+      if (cfg.headwear === 'none' || isHeadband) {
+        const hairStyleIdx = isHeadband ? 0 : ((cfg.beardStyle === 'trimmed') ? 1 : (cfg.beardStyle === 'short' ? 0 : (idx % 2)));
         head.add(createSoftMaleHairGroup(cfg.hair, hairStyleIdx));
+        if (isHeadband) {
+          // [오픈월드 기본 캐릭터] 황금빛 탐험가 머리띠 + 뒤쪽 나부끼는 두 갈래 리본 꼬리
+          const bandMain = createLowPolyMesh(new THREE.CylinderGeometry(0.272, 0.275, 0.058, 10), '#d97706', 0, 0.145, -0.008, false);
+          bandMain.scale.set(1.02, 1.0, 1.04);
+          const bandTrim = createLowPolyMesh(new THREE.CylinderGeometry(0.278, 0.280, 0.022, 10), '#fbbf24', 0, 0.145, -0.008, false);
+          bandTrim.scale.set(1.02, 1.0, 1.04);
+          const knotBack = createLowPolyMesh(new THREE.DodecahedronGeometry(0.056, 0), '#d97706', 0, 0.135, -0.295, false);
+          const tailL = createLowPolyMesh(new THREE.BoxGeometry(0.048, 0.22, 0.024), '#f59e0b', -0.048, 0.02, -0.32, false);
+          tailL.rotation.set(0.28, 0, -0.22);
+          const tailR = createLowPolyMesh(new THREE.BoxGeometry(0.048, 0.19, 0.024), '#06b6d4',  0.048, 0.03, -0.32, false);
+          tailR.rotation.set(0.28, 0,  0.22);
+          head.add(bandMain, bandTrim, knotBack, tailL, tailR);
+        }
       } else {
         head.add(createHoodedInnerHairGroup(cfg.hair, false));
       }
@@ -2231,23 +2408,25 @@ function getSharedLowPolySilhouetteMat() {
 const _lowPolySilhouetteGeoCache = {};
 function getMergedLowPolySilhouetteGeo(preset, cfg, isFemale) {
   const isJesus = (preset === 'jesus');
+  const isClubKid = (preset === 'pathfinder' || preset === 'adventurer');
   const isHelmet = (!isJesus && !isFemale && cfg.headwear === 'helmet');
-  const isHooded = (!isJesus && !isHelmet) && (isFemale || cfg.headwear !== 'none');
+  const isHeadband = (!isJesus && !isFemale && cfg.headwear === 'headband');
+  const isHooded = (!isJesus && !isHelmet && !isHeadband && !isClubKid) && (isFemale || cfg.headwear !== 'none');
 
   const skinCol   = isJesus ? '#f2cfb4' : cfg.skin;
   const hairCol   = isJesus ? '#4e2f1e' : cfg.hair;
   const hoodCol   = isHooded ? (isFemale ? cfg.veil : cfg.headcloth) : '';
-  const bodiceCol = isJesus ? '#e8e6e2' : (isFemale ? cfg.bodice : cfg.robe);
-  const skirtCol  = isJesus ? '#e8e6e2' : (isFemale ? cfg.skirt : cfg.robe);
-  const shawlCol  = isJesus ? '#c83228' : cfg.shawl;
-  const sleeveCol = isJesus ? '#e8e6e2' : cfg.shawl;
+  const bodiceCol = isJesus ? '#e8e6e2' : (isClubKid ? cfg.shirt : (isFemale ? cfg.bodice : cfg.robe));
+  const skirtCol  = isJesus ? '#e8e6e2' : (isClubKid ? cfg.shorts : (isFemale ? cfg.skirt : cfg.robe));
+  const shawlCol  = isJesus ? '#c83228' : (isClubKid ? cfg.scarf : cfg.shawl);
+  const sleeveCol = isJesus ? '#e8e6e2' : (isClubKid ? cfg.shirt : cfg.shawl);
   const beltCol   = isJesus ? '#9c846b' : cfg.belt;
-  const shoeCol   = isJesus ? '#3b2416' : (isFemale ? cfg.shoe : cfg.sandal);
+  const shoeCol   = isJesus ? '#3b2416' : (isClubKid ? cfg.shoe : (isFemale ? cfg.shoe : cfg.sandal));
   const hasWings  = Boolean(cfg.hasWings);
 
   const key = [
-    isJesus ? 'J' : (isFemale ? 'F' : 'M'),
-    isHooded ? 'H' : (isHelmet ? 'K' : 'U'),
+    isJesus ? 'J' : (isClubKid ? 'C' : (isFemale ? 'F' : 'M')),
+    isHooded ? 'H' : (isHelmet ? 'K' : (isHeadband ? 'B' : 'U')),
     hasWings ? 'W' : 'N',
     skinCol, hairCol, hoodCol, bodiceCol, skirtCol, shawlCol, beltCol, shoeCol
   ].join('|');

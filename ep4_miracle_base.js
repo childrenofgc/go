@@ -4,17 +4,18 @@
 // - 확장된 오픈월드 지형 고도 계산기(넓어진 골고다 언덕 포함) 및 소프트 로우 폴리곤 자연물 팩토리
 // =========================================================================
 window.__GAME_BUILD_VERSIONS__ = window.__GAME_BUILD_VERSIONS__ || {};
-window.__GAME_BUILD_VERSIONS__.ep4_base = '20261122_v17';
+window.__GAME_BUILD_VERSIONS__.ep4_base = '20261122_v18';
 
 // =========================================================================
-// 🎬 [에피소드 4 오프닝 영상 주소 설정]
-// 아래 EP4_OPENING_VIDEO_URL 에 영상 파일 경로 또는 링크를 입력해 주세요!
-//   • 로컬/서버 MP4 예시 : 'assets/ep4_opening.mp4'
+// 🎬 [에피소드 4 오프닝 · 엔딩 영상 주소 설정]
+// 아래 EP4_OPENING_VIDEO_URL / EP4_ENDING_VIDEO_URL 에 영상 파일 경로 또는 링크를 입력해 주세요!
+//   • 로컬/서버 MP4 예시 : 'assets/video/ep4_opening.mp4', 'assets/video/ep4_ending.mp4'
 //   • 외부 MP4/WebM 예시 : 'https://example.com/ep4_opening.mp4'
 //   • 유튜브(YouTube) 예시: 'https://youtu.be/영상ID' 또는 'https://www.youtube.com/watch?v=영상ID'
-// (비워 두면 영상 단계를 건너뛰고 바로 오픈월드 탑뷰 조망 연출로 시작합니다.)
+// (비워 두면 영상 단계를 건너뜁니다.)
 // =========================================================================
 window.EP4_OPENING_VIDEO_URL = window.EP4_OPENING_VIDEO_URL || 'assets/video/ep4_opening.mp4';
+window.EP4_ENDING_VIDEO_URL = window.EP4_ENDING_VIDEO_URL || 'assets/video/ep4_ending.mp4';
 
 const MIRACLE_SCRIPTURE = {
   1: {
@@ -288,7 +289,7 @@ const MIRACLE_BGM_CANDIDATES = [
 ];
 
 function canPlayMiracleOpenWorldOgg() {
-  if (window.__ep4OpeningVideoActive) return false; // 추가: 영상 재생 중에는 터치해도 BGM 켜짐 원천 차단
+  if (window.__ep4OpeningVideoActive || window.__ep4EndingVideoActive) return false; // 영상 재생 중에는 터치해도 BGM 켜짐 원천 차단
   if (typeof currentEpisode !== 'undefined' && currentEpisode !== 'miracle') return false;
   if (miracleSubMode !== 'openworld') return false;
   if (typeof isPlaying !== 'undefined' && !isPlaying) return false;
@@ -776,45 +777,126 @@ function recordMiracleWorldTree(x, z, type, scale) {
   window.miracleWorldTreePositions.push({ x, z, type, scale });
 }
 
-// 비정형 소프트 로우 폴리곤 나무 기둥·줄기·가지 생성기 (뿌리 버팀 플레어 + 자연스러운 꺾임/옹이 요철 + 플랫 셰이딩)
+// 비정형 소프트 로우 폴리곤 나무 기둥·줄기·가지 생성기
+// - 외향 법선(vVec = uVec × tang) 및 평행 이동(Parallel Transport) 프레임으로 뒤집힘/꼬임 원천 차단
+// - flareRoot=true 시 경사면에서도 밑둥이 절대 뜨지 않도록 지면 아래(-0.8~-1.2m) 수평 뿌리 스커트 + 부드러운 뿌리 버팀 곡선 적용
 function createOrganicWoodTrunkGeo(spinePts, radii, sides = 6, seed = 1, flareRoot = true) {
   const hashN = (n) => {
     const s = Math.sin(n * 127.1 + seed * 311.7) * 43758.5453;
     return s - Math.floor(s);
   };
-  const rings = [];
-  const upRef = new THREE.Vector3(0, 1, 0);
-  const altRef = new THREE.Vector3(1, 0, 0);
 
-  for (let r = 0; r < spinePts.length; r++) {
-    const p = spinePts[r];
+  // flareRoot=true인 나무 기둥은 지면 아래로 깊게 묻히는 수평 뿌리 스커트 + 지면부 완만한 뿌리 버팀 + 매끈한 줄기 연결 칼라를 자동 삽입
+  const effPts = [];
+  const effRads = [];
+  const effKinds = []; // 'sub' | 'base' | 'collar' | 'body'
+
+  if (flareRoot && spinePts.length >= 2) {
+    const p0 = spinePts[0];
+    const p1 = spinePts[1];
+    const r0 = radii[0];
+    const r1 = radii[1];
+    const buryDepth = Math.max(0.78, r0 * 1.65);
+
+    // 1) 지면 깊숙이 묻히는 수평 뿌리 스커트 (급경사 언덕에서도 밑둥 들뜸·하단 슬리버 원천 방지)
+    effPts.push([p0[0], p0[1] - buryDepth, p0[2]]);
+    effRads.push(r0 * 1.24);
+    effKinds.push('sub');
+
+    // 2) 지표면 맞닿는 부드러운 뿌리 밑둥 링 (수평 XZ 평면 정렬)
+    effPts.push([p0[0], Math.max(p0[1], 0.0) + 0.04, p0[2]]);
+    effRads.push(r0 * 1.12);
+    effKinds.push('base');
+
+    // 3) 밑둥에서 몸통으로 자연스럽게 좁아지는 중간 연결 칼라
+    const dy01 = p1[1] - p0[1];
+    if (dy01 > 0.32) {
+      const ct = 0.34;
+      effPts.push([
+        p0[0] + (p1[0] - p0[0]) * ct,
+        p0[1] + dy01 * ct,
+        p0[2] + (p1[2] - p0[2]) * ct
+      ]);
+      effRads.push(r0 * 0.62 + r1 * 0.38);
+      effKinds.push('collar');
+    }
+
+    for (let i = 1; i < spinePts.length; i++) {
+      effPts.push(spinePts[i]);
+      effRads.push(radii[i]);
+      effKinds.push('body');
+    }
+  } else {
+    for (let i = 0; i < spinePts.length; i++) {
+      effPts.push(spinePts[i]);
+      effRads.push(radii[i]);
+      effKinds.push('body');
+    }
+  }
+
+  const effSides = flareRoot ? Math.max(7, sides) : sides;
+  const rings = [];
+  let prevU = null;
+
+  for (let r = 0; r < effPts.length; r++) {
+    const p = effPts[r];
+    const kind = effKinds[r];
     let tang;
-    if (r === 0) {
-      tang = new THREE.Vector3(spinePts[1][0] - p[0], spinePts[1][1] - p[1], spinePts[1][2] - p[2]);
-    } else if (r === spinePts.length - 1) {
-      tang = new THREE.Vector3(p[0] - spinePts[r - 1][0], p[1] - spinePts[r - 1][1], p[2] - spinePts[r - 1][2]);
+    if (kind === 'sub' || kind === 'base') {
+      // 밑둥 2개 링은 기울어진 나무라도 반드시 수평(XZ)으로 땅에 평평하게 뿌리내리도록 수직 탄젠트 고정!
+      tang = new THREE.Vector3(0, 1, 0);
+    } else if (r === 0) {
+      tang = new THREE.Vector3(effPts[1][0] - p[0], effPts[1][1] - p[1], effPts[1][2] - p[2]);
+    } else if (r === effPts.length - 1) {
+      tang = new THREE.Vector3(p[0] - effPts[r - 1][0], p[1] - effPts[r - 1][1], p[2] - effPts[r - 1][2]);
     } else {
-      tang = new THREE.Vector3(spinePts[r + 1][0] - spinePts[r - 1][0], spinePts[r + 1][1] - spinePts[r - 1][1], spinePts[r + 1][2] - spinePts[r - 1][2]);
+      tang = new THREE.Vector3(effPts[r + 1][0] - effPts[r - 1][0], effPts[r + 1][1] - effPts[r - 1][1], effPts[r + 1][2] - effPts[r - 1][2]);
     }
     if (tang.lengthSq() < 1e-6) tang.set(0, 1, 0);
     else tang.normalize();
 
-    const ref = Math.abs(tang.y) > 0.92 ? altRef : upRef;
-    const uVec = new THREE.Vector3().crossVectors(tang, ref).normalize();
-    const vVec = new THREE.Vector3().crossVectors(tang, uVec).normalize();
+    let uVec;
+    if (prevU) {
+      // 평행 이동(Parallel Transport)으로 링 간 갑작스러운 90도 비틀림/주름 방지
+      uVec = prevU.clone().addScaledVector(tang, -prevU.dot(tang));
+      if (uVec.lengthSq() < 1e-5) {
+        const ref = Math.abs(tang.y) > 0.9 ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 1, 0);
+        uVec = new THREE.Vector3().crossVectors(ref, tang);
+      }
+      uVec.normalize();
+    } else {
+      if (Math.abs(tang.y) > 0.9) {
+        uVec = new THREE.Vector3(1, 0, 0);
+      } else {
+        uVec = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), tang).normalize();
+      }
+    }
+    // 오른손 외향 법선: tang × vVec = +uVec => vVec = uVec × tang
+    const vVec = new THREE.Vector3().crossVectors(uVec, tang).normalize();
+    prevU = uVec;
 
-    const baseRad = radii[r];
-    const twist = r * 0.24 + (hashN(r * 13 + 3) - 0.5) * 0.26;
+    const baseRad = effRads[r];
+    const twist = (kind === 'sub' || kind === 'base') ? 0 : (r * 0.14 + (hashN(r * 13 + 3) - 0.5) * 0.14);
     const ring = [];
-    for (let s = 0; s < sides; s++) {
-      const ang = (s / sides) * Math.PI * 2 + twist;
-      const rootButtress = (flareRoot && r === 0)
-        ? (1.0 + Math.max(0, Math.cos(ang * 3 + seed)) * 0.34 + hashN(s * 17 + 5) * 0.14)
-        : (1.0 + (hashN(r * 31 + s * 11) - 0.5) * 0.22);
-      const rad = baseRad * rootButtress;
+    for (let s = 0; s < effSides; s++) {
+      const ang = (s / effSides) * Math.PI * 2 + twist;
+      let radScale = 1.0;
+      if (kind === 'sub' || kind === 'base') {
+        // 3갈래 부드러운 뿌리 융기 (뾰족한 돌출 없이 둥글고 자연스럽게 땅과 연결)
+        const lobe = Math.cos(ang * 3 + seed * 0.85) * 0.12 + Math.sin(ang * 2 - seed * 0.5) * 0.05;
+        radScale = 1.0 + lobe;
+      } else if (kind === 'collar') {
+        const lobe = Math.cos(ang * 3 + seed * 0.85) * 0.06 + (hashN(r * 23 + s * 7) - 0.5) * 0.06;
+        radScale = 1.0 + lobe;
+      } else {
+        radScale = 1.0 + (hashN(r * 31 + s * 11) - 0.5) * 0.16;
+      }
+      const rad = baseRad * radScale;
       const ca = Math.cos(ang) * rad;
       const sa = Math.sin(ang) * rad;
-      const jitterY = (r > 0 && r < spinePts.length - 1) ? (hashN(r * 19 + s * 7) - 0.5) * baseRad * 0.28 : 0;
+      const jitterY = (kind === 'body' && r > 0 && r < effPts.length - 1)
+        ? (hashN(r * 19 + s * 7) - 0.5) * baseRad * 0.20
+        : 0;
       ring.push([
         p[0] + uVec.x * ca + vVec.x * sa,
         p[1] + uVec.y * ca + vVec.y * sa + jitterY,
@@ -829,24 +911,24 @@ function createOrganicWoodTrunkGeo(spinePts, radii, sides = 6, seed = 1, flareRo
   for (let r = 0; r < rings.length - 1; r++) {
     const r0 = rings[r];
     const r1 = rings[r + 1];
-    for (let s = 0; s < sides; s++) {
-      const sn = (s + 1) % sides;
-      // 외향 법선 유지 (반시계 권선)
+    for (let s = 0; s < effSides; s++) {
+      const sn = (s + 1) % effSides;
+      // 외향 법선 유지: (r1[s]-r0[s]) × (r0[sn]-r0[s]) = tang × vVec = +uVec
       pushTri(r0[s], r1[s], r0[sn]);
       pushTri(r0[sn], r1[s], r1[sn]);
     }
   }
   // 상단/하단 캡 마감
-  const topC = spinePts[spinePts.length - 1];
+  const topC = effPts[effPts.length - 1];
   const topRing = rings[rings.length - 1];
-  for (let s = 0; s < sides; s++) {
-    const sn = (s + 1) % sides;
+  for (let s = 0; s < effSides; s++) {
+    const sn = (s + 1) % effSides;
     pushTri(topRing[s], topC, topRing[sn]);
   }
-  const botC = spinePts[0];
+  const botC = effPts[0];
   const botRing = rings[0];
-  for (let s = 0; s < sides; s++) {
-    const sn = (s + 1) % sides;
+  for (let s = 0; s < effSides; s++) {
+    const sn = (s + 1) % effSides;
     pushTri(botRing[sn], botC, botRing[s]);
   }
 
@@ -1110,6 +1192,113 @@ function createLowPolySycamoreTree(x, z, scale = 1.45) {
   colliders.push({ minX: x - 0.95 * scale, maxX: x + 0.95 * scale, minZ: z - 0.95 * scale, maxZ: z + 0.95 * scale });
   return grp;
 }
+
+// [삭개오 미션 전용] 삭개오가 걸터앉는 노출된 수평 가지 + 높은 우산형 수관 전용 돌무화과나무
+// - 삭개오의 머리부터 매달린 발끝까지 전신이 나뭇잎에 가리지 않고 100% 선명하게 보이도록 설계
+// - 미션 구역 내 랜덤 스폰 및 미션 종료 시 충돌체/메쉬 깔끔히 정리 가능
+function createZacchaeusPerchSycamoreTree(x, z, scale = 1.38, faceTargetX = 36.2, faceTargetZ = -5.8) {
+  const by = getBaseGroundHeight(x, z);
+  const grp = new THREE.Group();
+  const seed = Math.abs(Math.round(x * 23 + z * 41)) + 97;
+  const trunkH = 4.25 * scale;
+
+  // 1) 땅에 깊게 뿌리내린 굵고 자연스러운 비정형 줄기 (사선으로 살짝 기울어 오르기 좋은 형태)
+  const trunkGeo = createOrganicWoodTrunkGeo(
+    [
+      [0, -0.06 * scale, 0],
+      [-0.08 * scale, trunkH * 0.28, -0.06 * scale],
+      [-0.14 * scale, trunkH * 0.62, -0.10 * scale],
+      [-0.06 * scale, trunkH, -0.08 * scale]
+    ],
+    [0.64 * scale, 0.50 * scale, 0.42 * scale, 0.32 * scale],
+    7,
+    seed,
+    true
+  );
+  const trunk = createLowPolyMesh(trunkGeo, '#5c2d0c', 0, 0, 0, true);
+  grp.add(trunk);
+
+  // 키 작은 삭개오가 밟고 올라간 듯한 낮은 나무 옹이·뿌리 발판 2개
+  const stepRoot1 = createLowPolyMesh(new THREE.DodecahedronGeometry(0.32 * scale, 0), '#6b3612', 0.42 * scale, 0.28 * scale, 0.22 * scale, true);
+  stepRoot1.scale.set(1.25, 0.65, 1.0);
+  const stepKnot2 = createLowPolyMesh(new THREE.DodecahedronGeometry(0.24 * scale, 0), '#7c4728', 0.36 * scale, 1.08 * scale, 0.28 * scale, true);
+  stepKnot2.scale.set(1.1, 0.72, 1.1);
+  grp.add(stepRoot1, stepKnot2);
+
+  // 2) 삭개오가 걸터앉는 넓고 시야가 완전히 트인 전용 수평 주 가지 (+Z 로컬 방향으로 뻗어 Jesus 쪽을 향함)
+  const perchLocalY = 2.02 * scale; // 지면 위 약 2.75m — 아래에서도 삭개오 전신이 한눈에 또렷!
+  const perchLocalZ = 1.62 * scale;
+  const perchBranch = createOrganicWoodSegmentMesh(
+    new THREE.Vector3(-0.04 * scale, 1.56 * scale, 0.02 * scale),
+    new THREE.Vector3(0.0, perchLocalY, perchLocalZ + 0.52 * scale),
+    0.30 * scale, 0.16 * scale, '#6b3612', seed + 13, 0.08, false
+  );
+  // 삭개오가 앉는 가지 위 안정감 있는 나무 껍질 받침(시각적 굵기 보강)
+  const perchBoughRest = createLowPolyMesh(new THREE.CylinderGeometry(0.20 * scale, 0.23 * scale, 0.85 * scale, 6), '#5c2d0c', 0, perchLocalY - 0.04 * scale, perchLocalZ * 0.92, true);
+  perchBoughRest.rotation.x = Math.PI * 0.48;
+  grp.add(perchBranch, perchBoughRest);
+
+  // 3) 삭개오 머리 위쪽·뒤쪽으로 높이 솟아오른 상부 가지들 (앞·좌·우 시야를 전혀 가리지 않음!)
+  const upperB1 = createOrganicWoodSegmentMesh(
+    new THREE.Vector3(-0.10 * scale, trunkH * 0.76, -0.08 * scale),
+    new THREE.Vector3(-1.65 * scale, trunkH + 0.45 * scale, -0.45 * scale),
+    0.22 * scale, 0.10 * scale, '#6b3612', seed + 29, 0.14, false
+  );
+  const upperB2 = createOrganicWoodSegmentMesh(
+    new THREE.Vector3(-0.04 * scale, trunkH * 0.78, -0.06 * scale),
+    new THREE.Vector3(1.55 * scale, trunkH + 0.50 * scale, -0.35 * scale),
+    0.21 * scale, 0.10 * scale, '#5c2d0c', seed + 43, 0.14, false
+  );
+  const upperB3 = createOrganicWoodSegmentMesh(
+    new THREE.Vector3(-0.05 * scale, trunkH * 0.84, -0.08 * scale),
+    new THREE.Vector3(0.10 * scale, trunkH + 0.62 * scale, 0.95 * scale),
+    0.18 * scale, 0.09 * scale, '#6b3612', seed + 61, 0.12, false
+  );
+  grp.add(upperB1, upperB2, upperB3);
+
+  // 4) 높은 우산형 수관 (perchLocalY + 2.5m 이상 높이에 배치해 삭개오의 머리 위로 시원한 그늘만 형성!)
+  const canopyBaseY = trunkH + 0.92 * scale;
+  const mainCrown = createLowPolyMesh(new THREE.IcosahedronGeometry(2.05 * scale, 0), '#3f6212', -0.05 * scale, canopyBaseY + 0.35 * scale, -0.15 * scale, true);
+  mainCrown.scale.set(1.28, 0.62, 1.22);
+  const subCrownL = createLowPolyMesh(new THREE.IcosahedronGeometry(1.42 * scale, 0), '#4d7c0f', -1.55 * scale, canopyBaseY - 0.05 * scale, -0.45 * scale, true);
+  subCrownL.scale.set(1.18, 0.60, 1.12);
+  const subCrownR = createLowPolyMesh(new THREE.IcosahedronGeometry(1.38 * scale, 0), '#65a30d', 1.48 * scale, canopyBaseY, -0.35 * scale, true);
+  subCrownR.scale.set(1.16, 0.60, 1.12);
+  const subCrownFrontHigh = createLowPolyMesh(new THREE.IcosahedronGeometry(1.22 * scale, 0), '#558b2f', 0.12 * scale, canopyBaseY + 0.18 * scale, 1.05 * scale, true);
+  subCrownFrontHigh.scale.set(1.20, 0.54, 1.05);
+  grp.add(mainCrown, subCrownL, subCrownR, subCrownFrontHigh);
+
+  // 돌무화과 열매 장식 (높은 수관 가장자리에만 소량 배치)
+  [[-1.1, -0.35], [1.05, -0.25], [0.25, 0.85]].forEach(([fx, fz], idx) => {
+    const fig = createLowPolyMesh(new THREE.DodecahedronGeometry(0.14 * scale, 0), idx % 2 === 0 ? '#a3e635' : '#ca8a04', fx * scale, canopyBaseY - 0.58 * scale, fz * scale, false);
+    grp.add(fig);
+  });
+
+  // 예수님/군중 방향을 향해 노출된 삭개오 앉은 가지가 열리도록 회전
+  const faceAng = Math.atan2(faceTargetX - x, faceTargetZ - z);
+  grp.position.set(x, by, z);
+  grp.rotation.y = faceAng;
+  worldGroup.add(grp);
+
+  const perchWorldPos = new THREE.Vector3(
+    x + Math.sin(faceAng) * perchLocalZ,
+    by + perchLocalY + 0.16 * scale,
+    z + Math.cos(faceAng) * perchLocalZ
+  );
+
+  const registeredWallMeshes = [trunk, mainCrown, subCrownL, subCrownR, subCrownFrontHigh];
+  wallMeshes.push(...registeredWallMeshes);
+  const trunkCollider = {
+    minX: x - 0.85 * scale,
+    maxX: x + 0.85 * scale,
+    minZ: z - 0.85 * scale,
+    maxZ: z + 0.85 * scale
+  };
+  colliders.push(trunkCollider);
+
+  return { group: grp, perchWorldPos, faceAng, trunkCollider, registeredWallMeshes };
+}
+window.createZacchaeusPerchSycamoreTree = createZacchaeusPerchSycamoreTree;
 
 // [디테일 강화] 소프트 로우 폴리곤 갈릴리 고대 목조 어선 (타기 전 정박 어선 & 공용)
 function createLowPolyGalileeBoat(scale = 1.0) {
@@ -4886,6 +5075,131 @@ window.playEp4OpeningVideoThen = function (onComplete) {
         p.catch(() => {
           if (playFallbackBtn) {
             playFallbackBtn.textContent = '▶ 오프닝 영상 재생하기';
+            playFallbackBtn.classList.remove('hidden');
+            playFallbackBtn.onclick = () => {
+              playFallbackBtn.classList.add('hidden');
+              try { video.play(); } catch (e) {}
+            };
+          }
+        });
+      }
+    } catch (e) {}
+  }
+
+  modal.classList.remove('hidden');
+  modal.classList.add('flex');
+};
+
+const EP4_ENDING_WATCHED_STORAGE_KEY = 'bible_ep4_ending_video_watched_v1';
+
+window.getEp4EndingVideoWatchCount = function () {
+  try {
+    return Math.max(0, parseInt(localStorage.getItem(EP4_ENDING_WATCHED_STORAGE_KEY) || '0', 10) || 0);
+  } catch (e) {
+    return 0;
+  }
+};
+
+window.markEp4EndingVideoWatched = function () {
+  try {
+    const prev = window.getEp4EndingVideoWatchCount();
+    localStorage.setItem(EP4_ENDING_WATCHED_STORAGE_KEY, String(prev + 1));
+  } catch (e) {}
+};
+
+window.playEp4EndingVideoThen = function (onComplete) {
+  ensureMiracleCustomUI();
+  const url = String(window.EP4_ENDING_VIDEO_URL || '').trim();
+  const done = () => {
+    window.__ep4EndingVideoActive = false;
+    const modal = document.getElementById('ep4-opening-video-modal');
+    const slot = document.getElementById('ep4-opening-video-slot');
+    if (slot) slot.innerHTML = '';
+    if (modal) {
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+    }
+    if (typeof onComplete === 'function') onComplete();
+  };
+
+  if (!url) {
+    done();
+    return;
+  }
+
+  const modal = document.getElementById('ep4-opening-video-modal');
+  const slot = document.getElementById('ep4-opening-video-slot');
+  const skipBtn = document.getElementById('ep4-opening-video-skip-btn');
+  const playFallbackBtn = document.getElementById('ep4-opening-video-play-btn');
+  const statusTxt = document.getElementById('ep4-opening-video-status');
+  if (!modal || !slot) {
+    done();
+    return;
+  }
+
+  window.__ep4EndingVideoActive = true;
+  if (typeof setInGameHudControlsVisible === 'function') setInGameHudControlsVisible(false);
+  if (typeof stopStageBgm === 'function') stopStageBgm();
+  if (typeof window.stopMiracleOpenWorldOgg === 'function') window.stopMiracleOpenWorldOgg(false);
+
+  const watchedCount = window.getEp4EndingVideoWatchCount();
+  const canSkipNow = watchedCount >= 1; // 1회차: 건너뛰기 숨김 · 2회차부터 건너뛰기 버튼 표시!
+  let finished = false;
+  const finishOnce = (markWatched = true) => {
+    if (finished) return;
+    finished = true;
+    if (markWatched) window.markEp4EndingVideoWatched();
+    done();
+  };
+
+  if (skipBtn) {
+    skipBtn.textContent = '⏭️ 건너뛰기';
+    skipBtn.classList.toggle('hidden', !canSkipNow);
+    skipBtn.onclick = () => finishOnce(true);
+  }
+  if (playFallbackBtn) playFallbackBtn.classList.add('hidden');
+  if (statusTxt) {
+    statusTxt.textContent = canSkipNow
+      ? '🎬 에피소드 4 엔딩 영상'
+      : '🎬 에피소드 4 엔딩 영상이 재생 중입니다...';
+  }
+
+  slot.innerHTML = '';
+  const ytId = _parseEp4YouTubeId(url);
+  if (ytId) {
+    const iframe = document.createElement('iframe');
+    iframe.className = 'w-full h-full border-0 bg-black';
+    iframe.allow = 'autoplay; encrypted-media; fullscreen';
+    iframe.allowFullscreen = true;
+    iframe.src = `https://www.youtube.com/embed/${ytId}?autoplay=1&rel=0&playsinline=1&enablejsapi=1`;
+    slot.appendChild(iframe);
+    if (playFallbackBtn) {
+      playFallbackBtn.textContent = '🎬 엔딩 영상 시청 완료 · 오픈월드로 이동 ▶';
+      playFallbackBtn.classList.remove('hidden');
+      playFallbackBtn.onclick = () => finishOnce(true);
+    }
+  } else {
+    const video = document.createElement('video');
+    video.className = 'w-full h-full object-contain bg-black';
+    video.src = url;
+    video.volume = 0.3;
+    video.playsInline = true;
+    video.autoplay = true;
+    video.controls = false;
+    video.preload = 'auto';
+    video.onended = () => finishOnce(true);
+    video.onerror = () => {
+      if (statusTxt) statusTxt.textContent = '✨ 엔딩 여정을 마치고 오픈월드로 돌아갑니다...';
+      setTimeout(() => finishOnce(true), 900);
+    };
+    slot.appendChild(video);
+
+    try {
+      const p = video.play();
+      if (p && typeof p.catch === 'function') {
+        p.catch(() => {
+          if (playFallbackBtn) {
+            playFallbackBtn.textContent = '▶ 엔딩 영상 재생하기';
             playFallbackBtn.classList.remove('hidden');
             playFallbackBtn.onclick = () => {
               playFallbackBtn.classList.add('hidden');

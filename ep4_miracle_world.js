@@ -4,7 +4,7 @@
 // - 계단으로 건물 2층 등반 후 인접한 옆 건물 옥상·2층으로 점프 이동할 수 있는 근접 마을 배치
 // =========================================================================
 window.__GAME_BUILD_VERSIONS__ = window.__GAME_BUILD_VERSIONS__ || {};
-window.__GAME_BUILD_VERSIONS__.ep4_world = '20261122_v17';
+window.__GAME_BUILD_VERSIONS__.ep4_world = '20261122_v18';
 
 window.miracleOpenWorldIntroFlyover = {
   active: false,
@@ -3812,6 +3812,16 @@ function clearMiracleFieldEventObjects() {
   miracleWorldMissionObjects.forEach(obj => {
     if (obj.mesh && !obj.keepInWorld) worldGroup.remove(obj.mesh);
     if (obj.label) obj.label.remove();
+    if (obj.collider && Array.isArray(colliders)) {
+      const ci = colliders.indexOf(obj.collider);
+      if (ci >= 0) colliders.splice(ci, 1);
+    }
+    if (Array.isArray(obj.wallMeshes) && Array.isArray(wallMeshes)) {
+      obj.wallMeshes.forEach(wm => {
+        const wi = wallMeshes.indexOf(wm);
+        if (wi >= 0) wallMeshes.splice(wi, 1);
+      });
+    }
   });
   miracleWorldMissionObjects = [];
   miracleActiveFieldEvent = null;
@@ -4553,30 +4563,89 @@ function startMiracleFieldEvent(evSpot) {
     let fy = getMiracleOpenWorldGroundHeight(fx, fz);
 
     if (evSpot.zacchaeusGrove) {
-      // [삭개오 미션] 6그루 나무 숲 중 랜덤 1그루 위에 삭개오 배치 + 주변에 군중(12명) & 예수님 등장!
-      const grove = Array.isArray(window.miracleZacchaeusGroveTrees) && window.miracleZacchaeusGroveTrees.length > 0
-        ? window.miracleZacchaeusGroveTrees
-        : [{ x: 38, z: -2, scale: 1.55 }];
-      const chosenTree = grove[Math.floor(Math.random() * grove.length)];
-      fx = chosenTree.x + 1.05 * (chosenTree.scale || 1.5) * 0.72;
-      fz = chosenTree.z + 0.38 * (chosenTree.scale || 1.5) * 0.72;
-      const tBaseY = getMiracleOpenWorldGroundHeight(chosenTree.x, chosenTree.z);
-      fy = tBaseY + 2.55 * (chosenTree.scale || 1.5) * 0.86;
+      // [삭개오 미션] 여리고 미션 구역 내 랜덤 위치에 삭개오가 앉아있는 전용 돌무화과나무 스폰 + 군중(12명)·예수님 등장!
+      const grove = Array.isArray(window.miracleZacchaeusGroveTrees) ? window.miracleZacchaeusGroveTrees : [];
+      const bBounds = Array.isArray(window.miracleBuildingBounds) ? window.miracleBuildingBounds : [];
+      const isClearForZacTree = (cx, cz, minTreeDist = 3.8) => {
+        for (let i = 0; i < grove.length; i++) {
+          if (Math.hypot(cx - grove[i].x, cz - grove[i].z) < minTreeDist) return false;
+        }
+        for (let i = 0; i < bBounds.length; i++) {
+          const b = bBounds[i];
+          if (cx >= b.minX - 2.6 && cx <= b.maxX + 2.6 && cz >= b.minZ - 2.6 && cz <= b.maxZ + 2.6) return false;
+        }
+        return true;
+      };
+
+      const candidateZones = [
+        { x: 27.6, z: -6.2 },
+        { x: 34.4, z: -13.6 },
+        { x: 43.2, z: -10.8 },
+        { x: 47.2, z: -1.4 },
+        { x: 34.0, z:  4.6 },
+        { x: 41.2, z:  0.6 },
+        { x: 34.8, z: -3.2 },
+        { x: 40.6, z: -6.8 }
+      ].filter(pt => isClearForZacTree(pt.x, pt.z, 3.6));
+
+      let treeX = 34.8, treeZ = -3.2;
+      if (candidateZones.length > 0) {
+        const picked = candidateZones[Math.floor(Math.random() * candidateZones.length)];
+        // 후보지 주변 미세 랜덤 오프셋으로 매번 새로운 위치감 부여
+        const jx = picked.x + (Math.random() - 0.5) * 1.4;
+        const jz = picked.z + (Math.random() - 0.5) * 1.4;
+        if (isClearForZacTree(jx, jz, 3.4)) {
+          treeX = jx;
+          treeZ = jz;
+        } else {
+          treeX = picked.x;
+          treeZ = picked.z;
+        }
+      }
+
+      // 예수님과 군중은 전용 나무에서 5.8~7.2m 떨어진 여리고 숲길 중심에 배치 (나무와 겹치지 않도록 자동 보정)
+      let jesusX = 36.2, jesusZ = -5.8;
+      if (Math.hypot(treeX - jesusX, treeZ - jesusZ) < 5.6) {
+        const awayAng = Math.atan2(jesusX - treeX, jesusZ - treeZ) || 0.8;
+        jesusX = Math.max(29.0, Math.min(44.5, treeX + Math.sin(awayAng) * 6.4));
+        jesusZ = Math.max(-11.5, Math.min(3.0, treeZ + Math.cos(awayAng) * 6.4));
+      }
+
+      // 삭개오 전용 나무 생성 (노출된 수평 가지 + 높은 우산형 수관으로 삭개오 전신이 100% 또렷하게 보임!)
+      const zacTreeScale = 1.36;
+      const perchTree = (typeof window.createZacchaeusPerchSycamoreTree === 'function')
+        ? window.createZacchaeusPerchSycamoreTree(treeX, treeZ, zacTreeScale, jesusX, jesusZ)
+        : null;
+
+      if (perchTree) {
+        fx = perchTree.perchWorldPos.x;
+        fy = perchTree.perchWorldPos.y;
+        fz = perchTree.perchWorldPos.z;
+        miracleWorldMissionObjects.push({
+          mesh: perchTree.group,
+          collider: perchTree.trunkCollider,
+          wallMeshes: perchTree.registeredWallMeshes
+        });
+      } else {
+        fx = treeX + 1.4;
+        fz = treeZ + 0.5;
+        fy = getMiracleOpenWorldGroundHeight(treeX, treeZ) + 2.8;
+      }
 
       // 군중(12명) + 예수님 스폰
       const crowdGrp = new THREE.Group();
-      const jesusX = 36.2, jesusZ = -5.8;
       const jesusY = getMiracleOpenWorldGroundHeight(jesusX, jesusZ);
       const jesusNpc = createLowPolyPersonMesh('jesus', 0);
       jesusNpc.position.set(jesusX, jesusY, jesusZ);
-      jesusNpc.lookAt(chosenTree.x, jesusY, chosenTree.z);
+      jesusNpc.lookAt(fx, jesusY, fz);
       crowdGrp.add(jesusNpc);
 
       for (let ci = 0; ci < 12; ci++) {
         const ang = (ci / 12) * Math.PI * 2 + 0.25;
-        const rad = 2.6 + (ci % 3) * 1.15;
+        const rad = 2.4 + (ci % 3) * 1.05;
         const px = jesusX + Math.cos(ang) * rad;
         const pz = jesusZ + Math.sin(ang) * rad;
+        if (Math.hypot(px - treeX, pz - treeZ) < 2.2) continue;
         const py = getMiracleOpenWorldGroundHeight(px, pz);
         const preset = ci % 3 === 0 ? 'woman' : (ci % 4 === 0 ? 'child' : 'villager');
         const cNpc = createLowPolyPersonMesh(preset, 70 + ci);
@@ -4591,12 +4660,20 @@ function startMiracleFieldEvent(evSpot) {
 
       const fGrp = new THREE.Group();
       const zacMesh = createLowPolyPersonMesh('zacchaeus', 5);
-      zacMesh.scale.set(0.84, 0.84, 0.84);
-      // 나무 가지 위에 걸터앉은 포즈
-      if (zacMesh.userData && zacMesh.userData.lLeg && zacMesh.userData.rLeg) {
-        zacMesh.userData.lLeg.rotation.x = -1.1;
-        zacMesh.userData.rLeg.rotation.x = -1.1;
+      zacMesh.scale.set(0.90, 0.90, 0.90);
+      // 노출된 수평 가지 위에 걸터앉아 두 다리를 앞으로 드리우고 예수님을 반갑게 바라보는 전신 착석 포즈!
+      if (zacMesh.userData) {
+        if (zacMesh.userData.lLeg && zacMesh.userData.rLeg) {
+          zacMesh.userData.lLeg.rotation.x = -1.25;
+          zacMesh.userData.rLeg.rotation.x = -1.25;
+        }
+        if (zacMesh.userData.lArm && zacMesh.userData.rArm) {
+          zacMesh.userData.lArm.rotation.x = -0.52;
+          zacMesh.userData.rArm.rotation.x = -0.52;
+        }
       }
+      // 앉은 자세에서 엉덩이가 나뭇가지 바로 위에 안정적으로 놓이도록 미세 높이 보정
+      zacMesh.position.y = -0.34;
       fGrp.add(zacMesh);
       fGrp.position.set(fx, fy, fz);
       fGrp.lookAt(jesusX, fy, jesusZ);
@@ -4604,10 +4681,16 @@ function startMiracleFieldEvent(evSpot) {
 
       const fLbl = createWorldLabel(evSpot.findTargetLabel);
       fLbl.style.opacity = '0';
-      const targetObj = { mesh: fGrp, pos: new THREE.Vector3(fx, fy + 0.6, fz), label: fLbl, treePos: { x: chosenTree.x, z: chosenTree.z } };
+      const targetObj = {
+        mesh: fGrp,
+        pos: new THREE.Vector3(fx, fy + 1.15, fz),
+        label: fLbl,
+        treePos: { x: treeX, z: treeZ },
+        perchTree
+      };
       miracleWorldMissionObjects.push(targetObj);
       miracleActiveFieldEvent.targetZone = targetObj;
-      showToast('🌳 예수님과 군중이 여리고 숲길에 모였어요! 여러 나무 중 삭개오가 숨어있는 나무를 찾아보세요!');
+      showToast('🌳 예수님과 군중이 여리고 숲길에 모였어요! 삭개오가 올라가 앉아 있는 전용 나무를 찾아보세요!');
     } else if (evSpot.alleyRandomAura) {
       // [10명 중 돌아온 1명] 마을 건물 사이 랜덤 골목 + 빛나는 오라!
       const aPos = findSafeOpenWorldOutdoorPos({
@@ -5765,10 +5848,14 @@ function updateMiracleFieldEventFrame(dt, now) {
   } else if (fe.type === 'find_observe') {
     if (fe.targetZone) {
       const tz = fe.targetZone;
-      const horizD = Math.hypot(playerPos.x - tz.pos.x, playerPos.z - tz.pos.z);
-      updateWorldLabelPos(tz.label, tz.pos, horizD < (evSpot.zacchaeusGrove ? 7.5 : MIRACLE_TAG_DIST_SPOT));
+      const distPerch = Math.hypot(playerPos.x - tz.pos.x, playerPos.z - tz.pos.z);
+      const distTree = (evSpot.zacchaeusGrove && tz.treePos)
+        ? Math.hypot(playerPos.x - tz.treePos.x, playerPos.z - tz.treePos.z)
+        : distPerch;
+      const horizD = Math.min(distPerch, distTree);
+      updateWorldLabelPos(tz.label, tz.pos, horizD < (evSpot.zacchaeusGrove ? 8.5 : MIRACLE_TAG_DIST_SPOT));
 
-      const triggerDist = evSpot.widowCutscene ? 4.2 : 3.7;
+      const triggerDist = evSpot.widowCutscene ? 4.2 : (evSpot.zacchaeusGrove ? 4.0 : 3.7);
       if (horizD < triggerDist) {
         if (evSpot.widowCutscene && !fe.cutsceneActive) {
           // 두 렙돈 넣은 과부 전용 컷신 시작!

@@ -1608,10 +1608,9 @@ function updateDavidStage3InventoryHUD() {
   });
 
   const hudBox = document.getElementById('hud-block-box');
-  if (currentEpisode === 'david' && currentStage === 3) {
-    hudBox.classList.remove('hidden'); hudBox.classList.add('flex');
-    document.getElementById('hud-block-text').textContent =
-      `🪵${davidInventory.wood} · 🪨${davidInventory.stone} · ⚙️${davidInventory.iron}`;
+  if (hudBox && currentEpisode === 'david' && currentStage === 3) {
+    hudBox.classList.add('hidden');
+    hudBox.classList.remove('flex');
   }
   updateDavidStage3QuestTrackerUI();
 }
@@ -1814,6 +1813,11 @@ function buildDavidStage3World() {
   rebuildPlayerAppearance();
   if (playerGroup) playerGroup.rotation.y = Math.PI;
   if (guideArrowGroup) guideArrowGroup.visible = (currentMode !== 'senior');
+  if (typeof window.setGlobalCameraViewMode === 'function') {
+    window.setGlobalCameraViewMode('default');
+  } else {
+    window.globalCameraViewMode = 'default';
+  }
   snapCameraToPlayer();
   updateStageHUD();
   updateDavidStage3QuestTrackerUI();
@@ -2079,7 +2083,27 @@ function updateDavidStage3HUD(badge, countIcon, countText, missionText) {
   if (davidProphetUnlocked) {
     missionText.textContent = '북쪽 언약의 성막 앞으로 가서 선지자를 통해 하나님의 영원한 언약을 들으세요!';
   } else if (davidCurrentActiveQuestNpc) {
-    missionText.textContent = `현재 진행 중: [${davidCurrentActiveQuestNpc.roleTitle}]의 요청 자재를 새로 모아 전달하세요!`;
+    const qNpc = davidCurrentActiveQuestNpc;
+    const reqParts = [];
+    if (qNpc.req) {
+      if (qNpc.req.wood > 0) reqParts.push(`🪵 나무 ${Math.min(davidInventory.wood, qNpc.req.wood)}/${qNpc.req.wood}개`);
+      if (qNpc.req.stone > 0) reqParts.push(`🪨 돌 ${Math.min(davidInventory.stone, qNpc.req.stone)}/${qNpc.req.stone}개`);
+      if (qNpc.req.iron > 0) reqParts.push(`⚙️ 철 ${Math.min(davidInventory.iron, qNpc.req.iron)}/${qNpc.req.iron}개`);
+    }
+    const reqSummary = reqParts.join(', ');
+    const allMet = Boolean(
+      qNpc.req &&
+      davidInventory.wood >= qNpc.req.wood &&
+      davidInventory.stone >= qNpc.req.stone &&
+      davidInventory.iron >= qNpc.req.iron
+    );
+    if (allMet) {
+      missionText.textContent = `[${qNpc.roleTitle}] 요청 자재(${reqSummary})를 모두 모았어요! ${qNpc.roleTitle}에게 돌아가 전달하세요!`;
+    } else if (reqSummary) {
+      missionText.textContent = `[${qNpc.roleTitle}] 퀘스트 진행 중! ${reqSummary}를 모아 ${qNpc.roleTitle}에게 전달하세요!`;
+    } else {
+      missionText.textContent = `현재 진행 중: [${qNpc.roleTitle}]의 요청 자재를 새로 모아 전달하세요!`;
+    }
   } else if (doneCount >= 3) {
     missionText.textContent = '3가지 민원을 모두 해결했어요! 중앙 왕궁 앞 [왕궁 전령]에게 가세요!';
   } else {
@@ -2254,6 +2278,7 @@ function updateDavidRetainersAndResources(dt, now) {
 
         davidInventory[res.kind] = (davidInventory[res.kind] || 0) + 1;
         updateDavidStage3InventoryHUD();
+        updateStageHUD();
 
         if (davidCurrentActiveQuestNpc && davidCurrentActiveQuestNpc.req) {
           const req = davidCurrentActiveQuestNpc.req;
@@ -2617,7 +2642,7 @@ function startDavidStage3CovenantCutscene() {
   if (dlg && nameEl && textEl && btnEl) {
     dlg.classList.remove('hidden');
     nameEl.textContent = '✨ 나단 선지자 (하나님의 언약 메시지)';
-    btnEl.textContent = '아멘! 감사히 받겠나이다 👑';
+    btnEl.textContent = '아멘';
     textEl.textContent = '';
 
     if (davidStage3Cutscene._typingTimer) clearInterval(davidStage3Cutscene._typingTimer);

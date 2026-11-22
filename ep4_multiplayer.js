@@ -5,23 +5,25 @@
 // - 멀티플레이 미션 1: 반석 위의 집 확장형 (돌 20 + 나무 20, 도끼질 5회 / 돌 캐기 5회, 완료 시 말씀 출력)
 // =========================================================================
 window.__GAME_BUILD_VERSIONS__ = window.__GAME_BUILD_VERSIONS__ || {};
-window.__GAME_BUILD_VERSIONS__.ep4_mp = '20261122_v17';
+window.__GAME_BUILD_VERSIONS__.ep4_mp = '20261122_v18';
 
 // [선택적 온라인 릴레이 설정] 무료 Firebase Realtime Database URL을 넣으면 서로 다른 기기 간 실시간 온라인 접속!
 // 예: window.MP_FIREBASE_DB_URL = 'https://your-church-game-default-rtdb.asia-southeast1.firebasedatabase.app';
 window.MP_FIREBASE_DB_URL = window.MP_FIREBASE_DB_URL || 'https://gwangneung-bible-game-default-rtdb.asia-southeast1.firebasedatabase.app/';
 
-// 멀티플레이 선택 가능 캐릭터 8종 (예수님 'jesus' 및 천사 'angel'은 절대 선택 불가!)
+// 멀티플레이 선택 가능 캐릭터 10종 (온라인 전용 패스파인더·어드벤처러 대원 포함 · 예수님/천사 제외)
 const MP_FORBIDDEN_PRESETS = ['jesus', 'angel'];
 const MP_SELECTABLE_CHARACTERS = [
-  { id: 'hero',       preset: 'hero',     idx: 0, icon: '🧔', name: '갈릴리 청년',    desc: '푸른 숄과 흰 두건' },
-  { id: 'disciple_1', preset: 'disciple', idx: 1, icon: '🎣', name: '어부 제자',      desc: '따뜻한 황토 로브' },
-  { id: 'disciple_2', preset: 'disciple', idx: 2, icon: '🌿', name: '올리브 목자',    desc: '올리브빛 숄' },
-  { id: 'female_0',   preset: 'female_0', idx: 0, icon: '👩', name: '갈릴리 자매',    desc: '코랄 베일과 로브' },
-  { id: 'female_1',   preset: 'female_1', idx: 1, icon: '🌸', name: '베다니 자매',    desc: '청록빛 숄' },
-  { id: 'female_2',   preset: 'female_2', idx: 2, icon: '🧺', name: '나사렛 자매',    desc: '황금빛 베일' },
-  { id: 'child_0',    preset: 'child',    idx: 0, icon: '👦', name: '꼬마 탐험가(남)', desc: '씩씩한 소년 대원' },
-  { id: 'child_1',    preset: 'child',    idx: 1, icon: '👧', name: '꼬마 탐험가(여)', desc: '활발한 소녀 대원' }
+  { id: 'hero',       preset: 'hero',       idx: 0, icon: '🧭', name: '갈릴리 탐험가',  desc: '청록 튜닉 · 황금 머리띠' },
+  { id: 'pathfinder', preset: 'pathfinder', idx: 0, icon: '🏕️', name: '패스파인더 대원', desc: '파란 반팔 티셔츠 어린이' },
+  { id: 'adventurer', preset: 'adventurer', idx: 0, icon: '⭐', name: '어드벤처러 대원', desc: '노란 반팔 티셔츠 어린이' },
+  { id: 'disciple_1', preset: 'disciple',   idx: 1, icon: '🎣', name: '어부 제자',      desc: '따뜻한 황토 로브' },
+  { id: 'disciple_2', preset: 'disciple',   idx: 2, icon: '🌿', name: '올리브 목자',    desc: '올리브빛 숄' },
+  { id: 'female_0',   preset: 'female_0',   idx: 0, icon: '👩', name: '갈릴리 자매',    desc: '코랄 베일과 로브' },
+  { id: 'female_1',   preset: 'female_1',   idx: 1, icon: '🌸', name: '베다니 자매',    desc: '청록빛 숄' },
+  { id: 'female_2',   preset: 'female_2',   idx: 2, icon: '🧺', name: '나사렛 자매',    desc: '황금빛 베일' },
+  { id: 'child_0',    preset: 'child',      idx: 0, icon: '👦', name: '꼬마 탐험가(남)', desc: '씩씩한 소년 대원' },
+  { id: 'child_1',    preset: 'child',      idx: 1, icon: '👧', name: '꼬마 탐험가(여)', desc: '활발한 소녀 대원' }
 ];
 window.MP_SELECTABLE_CHARACTERS = MP_SELECTABLE_CHARACTERS;
 window.MP_FORBIDDEN_PRESETS = MP_FORBIDDEN_PRESETS;
@@ -145,7 +147,7 @@ const MiracleMultiplayer = {
 
         <div class="text-left mb-3">
           <div class="flex items-center justify-between mb-1.5">
-            <span class="font-jua text-xs sm:text-sm text-amber-950">🎭 캐릭터 선택 (8종 · 예수님/천사 제외)</span>
+            <span class="font-jua text-xs sm:text-sm text-amber-950">🎭 캐릭터 선택 (10종 · 온라인 전용 대원 포함)</span>
             <span class="text-[10px] text-slate-500">미션 1: 반석 위의 집 확장형</span>
           </div>
           <div id="mp-char-grid" class="grid grid-cols-2 gap-2">${charCardsHtml}</div>

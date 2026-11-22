@@ -5,7 +5,7 @@
 // =========================================================================
 
 window.__GAME_BUILD_VERSIONS__ = window.__GAME_BUILD_VERSIONS__ || {};
-window.__GAME_BUILD_VERSIONS__.core = '20261122_v17';
+window.__GAME_BUILD_VERSIONS__.core = '20261122_v18';
 
 // 퀴즈 선택지 순서 무작위 셔플 공용 헬퍼 (정답이 항상 1번에 고정되지 않도록 보장)
 function shuffleQuizOptions(opts, ansIdx = 0) {
@@ -648,6 +648,8 @@ function isAnyGlobalIntroOrCutsceneBlockingGuide() {
   if (currentEpisode === 'david' && typeof davidStage3Cutscene !== 'undefined' && davidStage3Cutscene && davidStage3Cutscene.active) return true;
   if (currentEpisode === 'miracle' && typeof miracleStageCutscene !== 'undefined' && miracleStageCutscene && miracleStageCutscene.active) return true;
   if (currentEpisode === 'miracle' && typeof window.__ep4OpeningVideoActive !== 'undefined' && window.__ep4OpeningVideoActive) return true;
+  if (currentEpisode === 'miracle' && typeof window.__ep4EndingVideoActive !== 'undefined' && window.__ep4EndingVideoActive) return true;
+  if (currentEpisode === 'miracle' && typeof miracleAscensionState !== 'undefined' && miracleAscensionState && miracleAscensionState.active) return true;
   if (currentEpisode === 'miracle' && window.miracleOpenWorldIntroFlyover && window.miracleOpenWorldIntroFlyover.active) return true;
   if (currentEpisode === 'miracle' && typeof miracleDialogState !== 'undefined' && miracleDialogState && miracleDialogState.active) return true;
   if (
@@ -878,7 +880,9 @@ window.openMiracleGuideFromButton = function () {
 window.syncMiracleStageGuideFromHUD = function (stageTitle, missionText, counterText) {
   if (window.isMiracleMultiplayerMode) return;
   const sub = (currentEpisode === 'miracle' && typeof miracleSubMode !== 'undefined') ? miracleSubMode : `st${currentStage}`;
-  const normalizedMission = String(missionText || '').replace(/\s*\(현재\s*\d+\/\d+개\)/g, '');
+  const normalizedMission = String(missionText || '')
+    .replace(/\s*\(현재\s*\d+\/\d+개\)/g, '')
+    .replace(/\d+\/(\d+개)/g, 'N/$1');
   const key = `stage|${currentEpisode}|${sub}|${normalizedMission}`;
   MiracleGuideUI.activeStageInfo = {
     key,
@@ -1642,9 +1646,9 @@ function showEndingWorldMapChoiceModal() {
   }
   if (descEl) {
     if (currentEpisode === 'noah') {
-      descEl.innerHTML = '무지개 언약의 제단에 도착했어요!<br/>월드맵으로 나가거나 뒤편 방주 내부 미로와 방주 지붕 위를 계속 둘러볼 수 있어요.';
+      descEl.innerHTML = '무지개 언약의 제단에 도착했어요!<br/>월드맵으로 나가거나 뒤편 방주와 새 세상을 계속 둘러볼 수 있어요.';
     } else if (currentEpisode === 'miracle') {
-      descEl.innerHTML = '예수님께서 하늘로 승천하신 감람산 자리예요!<br/>오픈월드로 돌아가 남은 미션과 수첩을 채우거나, 월드맵·엔딩 세상을 선택할 수 있어요.';
+      descEl.innerHTML = '예수님께서 하늘로 승천하신 감람산 자리예요!<br/>오픈월드로 돌아가거나 월드맵 이동, 엔딩 세상 계속 둘러보기를 선택할 수 있어요.';
     } else {
       descEl.innerHTML = '엔딩 제단(왕좌)에 도착했어요!<br/>월드맵으로 이동하거나 엔딩 세상을 자유롭게 더 둘러볼 수 있어요.';
     }
@@ -1662,7 +1666,9 @@ function closeEndingWorldMapChoiceModal(showLookAroundToast = false) {
     modal.classList.remove('flex');
   }
   if (showLookAroundToast) {
-    const landmarkWord = (currentEpisode === 'exodus') ? '십계명으로' : '제단으로';
+    const landmarkWord = (currentEpisode === 'exodus')
+      ? '십계명으로'
+      : (currentEpisode === 'miracle' ? '승천 장소로' : '제단으로');
     showToast(`🌈 엔딩 세상을 자유롭게 둘러보세요! (다시 ${landmarkWord} 다가오면 이동 창이 열려요)`);
   }
 }
@@ -3454,8 +3460,8 @@ function buildEndingWorld() {
   } else {
     showToast(
       allowCert
-        ? '🌈 엔딩 세상에 도착했어요! 제단으로 가거나 뒤편의 방주 안 미로와 방주 지붕 위도 구경해 보세요!'
-        : '🌈 무지개 언약의 엔딩 세상이에요! 뒤편 방주 안 미로와 바위 동산을 탐험하거나 제단으로 가보세요!'
+        ? '🌈 엔딩 세상에 도착했어요! 방주를 둘러보거나 무지개 언약의 제단으로 가보세요!'
+        : '🌈 무지개 언약의 엔딩 세상이에요! 방주를 둘러보거나 제단으로 가보세요!'
     );
   }
 }
@@ -3597,8 +3603,7 @@ function ensureGlobalCameraViewToggleUI() {
 
 function setPlayerMeshVisibilityForCamera(isFpsMode) {
   if (window.noahArkCeilingGroup) {
-    window.noahArkCeilingGroup.visible =
-      window.globalCameraViewMode === 'fps' || window.globalCameraViewMode === 'lookup';
+    window.noahArkCeilingGroup.visible = window.globalCameraViewMode !== 'topdown';
   }
   if (!playerGroup) return;
   playerGroup.children.forEach(child => {
@@ -3614,6 +3619,24 @@ function setPlayerMeshVisibilityForCamera(isFpsMode) {
     }
   });
 }
+
+window.setGlobalCameraViewMode = function (mode = 'default') {
+  const valid = (mode === 'default' || mode === 'topdown' || mode === 'fps' || mode === 'lookup') ? mode : 'default';
+  window.globalCameraViewMode = valid;
+  const btn = ensureGlobalCameraViewToggleUI();
+  if (btn) {
+    if (valid === 'default') {
+      btn.innerHTML = '<span class="text-sm leading-none">🎥</span><span id="global-camera-view-label" class="text-[9px] text-sky-200 mt-0.5 leading-none">기본</span>';
+    } else if (valid === 'topdown') {
+      btn.innerHTML = '<span class="text-sm leading-none">🚁</span><span id="global-camera-view-label" class="text-[9px] text-indigo-300 mt-0.5 leading-none">내려봄</span>';
+    } else if (valid === 'fps') {
+      btn.innerHTML = '<span class="text-sm leading-none">👀</span><span id="global-camera-view-label" class="text-[9px] text-emerald-300 mt-0.5 leading-none">1인칭</span>';
+    } else {
+      btn.innerHTML = '<span class="text-sm leading-none">🌤️</span><span id="global-camera-view-label" class="text-[9px] text-amber-300 mt-0.5 leading-none">올려봄</span>';
+    }
+  }
+  setPlayerMeshVisibilityForCamera(valid === 'fps');
+};
 
 window.cycleGlobalCameraViewMode = function () {
   // 에피소드 4 스테이지 1·2·3에서는 항상 기본 시점 카메라로 고정!
@@ -4049,6 +4072,10 @@ function applyCoreCameraByMode() {
       placedPos.y = Math.max(placedPos.y + window._smoothDefaultCamLift, camGroundMax + 1.55);
     }
 
+    if (isIndoor && currentEpisode === 'noah' && (currentStage === 2 || currentStage === 3)) {
+      placedPos.y = Math.min(placedPos.y, 5.75);
+    }
+
     camera.position.copy(placedPos);
     camera.lookAt(lookTarget);
   }
@@ -4112,20 +4139,9 @@ function startVoxelGame(mode, targetStage = 1, fromMapSelect = false) {
 
   rebuildPlayerAppearance();
   
-  // 에피소드 1~3은 '내려봄', 에피소드 4는 '기본' 시점으로 자동 설정
-  window.globalCameraViewMode = (currentEpisode === 'miracle') ? 'default' : 'topdown';
-
-  ensureGlobalCameraViewToggleUI();
-  
-  // 이미 생성된 버튼이 있을 수 있으므로 버튼 내용 강제 동기화
-  const viewBtn = document.getElementById('global-camera-view-btn');
-  if (viewBtn) {
-    if (window.globalCameraViewMode === 'default') {
-      viewBtn.innerHTML = '<span class="text-sm leading-none">🎥</span><span id="global-camera-view-label" class="text-[9px] text-sky-200 mt-0.5 leading-none">기본</span>';
-    } else {
-      viewBtn.innerHTML = '<span class="text-sm leading-none">🚁</span><span id="global-camera-view-label" class="text-[9px] text-indigo-300 mt-0.5 leading-none">내려봄</span>';
-    }
-  }
+  // 에피소드 4 전체 및 에피소드 3 스테이지 3은 '기본', 그 외 에피소드 1~3은 '내려봄' 시점으로 자동 설정
+  const initialCamMode = (currentEpisode === 'miracle' || (currentEpisode === 'david' && targetStage === 3)) ? 'default' : 'topdown';
+  window.setGlobalCameraViewMode(initialCamMode);
 
   const runEp4Opening = (
     currentEpisode === 'miracle' &&
@@ -4356,8 +4372,8 @@ function updateStageHUD() {
     } else {
       badge.textContent = '무지개 세상'; countText.textContent = '완주 🌈';
       missionText.textContent = canShowCertificateForCurrentRun()
-        ? '🌈 새 세상을 걷고 제단이나 인증서 보기를 누르세요!'
-        : '🌈 뒤편 방주 내부 미로와 바위 동산을 탐험하거나 제단으로 가보세요!';
+        ? '🌈 새 세상을 걷고 방주를 둘러보거나 제단으로 가보세요!'
+        : '🌈 방주를 둘러보거나 무지개 언약의 제단으로 가보세요!';
     }
   } else {
     if (currentStage === 1) {
@@ -4447,10 +4463,15 @@ function updateWallTransparency() {
   // 플레이어 주변 24m 이내 벽면만 레이캐스트 대상에 포함해 모바일 CPU 부하 대폭 절감
   const nearWalls = [];
   const px = playerPos.x, pz = playerPos.z;
+  const skipNoahEndingArkFade = (
+    currentEpisode === 'noah' && currentStage === 4 &&
+    (playerPos.y >= 4.8 || (playerPos.y >= 2.1 && px > -19.0 && px < 19.0 && pz > 12.5 && pz < 29.5))
+  );
   const _tmpWPos = new THREE.Vector3();
   for (let i = 0; i < wallMeshes.length; i++) {
     const wm = wallMeshes[i];
     if (!wm || !wm.visible || !wm.parent) continue;
+    if (skipNoahEndingArkFade && wm.userData && wm.userData.isNoahEndingArk) continue;
     wm.getWorldPosition(_tmpWPos);
     const dx = _tmpWPos.x - px, dz = _tmpWPos.z - pz;
     if (dx * dx + dz * dz < 625) nearWalls.push(wm);
@@ -4727,14 +4748,15 @@ function triggerContextAction() {
   }
 }
 
-function showEndingCertificate() {
+function showEndingCertificate(opts = {}) {
   setHudMenuOpen(false);
   hideMissionGuideBubbleImmediately();
   const alreadyGenerated = document.getElementById('cert-code').dataset.generated;
+  const forceShow = Boolean(opts && opts.forceShow);
 
   // [전체 에피소드 공통 요청사항] 2회차 이상의 시도나 맵 재선택으로 엔딩에 들어온 경우에는
   // 인증서 대신 [월드맵으로 이동하기 / 엔딩 세상 계속 둘러보기] 선택창을 출력!
-  if (!alreadyGenerated && !canShowCertificateForCurrentRun()) {
+  if (!forceShow && !alreadyGenerated && !canShowCertificateForCurrentRun()) {
     const certBtn = document.getElementById('cert-open-btn');
     if (certBtn) certBtn.classList.add('hidden');
     showEndingWorldMapChoiceModal();
@@ -4773,25 +4795,56 @@ function showEndingCertificate() {
   }
   const em = document.getElementById('ending-modal');
   const owCertBtn = document.getElementById('ending-return-openworld-btn');
+  const alreadyInEp4OpenWorld = (currentEpisode === 'miracle' && typeof miracleSubMode !== 'undefined' && miracleSubMode === 'openworld');
   if (owCertBtn) {
-    owCertBtn.classList.toggle('hidden', currentEpisode !== 'miracle');
+    owCertBtn.classList.toggle('hidden', currentEpisode !== 'miracle' || alreadyInEp4OpenWorld);
   }
   em.classList.remove('hidden'); em.classList.add('flex');
 }
 
 window.openCertificateModal = showEndingCertificate;
 
+function showEp4PostCertificateNewMeetingMessage() {
+  const msg = '새로운 만남을 찾아보세요!';
+  showToast(`✨ ${msg}`);
+  if (typeof window.showMiracleGuideBubble === 'function') {
+    window.showMiracleGuideBubble({
+      title: '🌿 복음서 오픈월드',
+      text: msg,
+      progressText: '✨ 새로운 여정',
+      canCancel: false,
+      autoCloseMs: 4200
+    });
+  }
+}
+
 function closeEndingToLookAround() {
   const em = document.getElementById('ending-modal');
   em.classList.add('hidden'); em.classList.remove('flex');
+  if (currentEpisode === 'miracle') {
+    if (window.__ep4ShowNewMeetingAfterCert) {
+      window.__ep4ShowNewMeetingAfterCert = false;
+      showEp4PostCertificateNewMeetingMessage();
+    } else if (typeof miracleSubMode !== 'undefined' && miracleSubMode === 'openworld') {
+      showEp4PostCertificateNewMeetingMessage();
+    } else {
+      showToast('🌈 엔딩 세상을 자유롭게 걸어보세요!');
+    }
+    return;
+  }
   showToast('🌈 엔딩 세상을 자유롭게 걸어보세요!');
 }
 
 function closeEndingToReturnMiracleOpenWorld() {
   const em = document.getElementById('ending-modal');
   if (em) { em.classList.add('hidden'); em.classList.remove('flex'); }
-  if (typeof returnToMiracleOpenWorld === 'function') {
+  const shouldShowNewMeeting = Boolean(window.__ep4ShowNewMeetingAfterCert);
+  window.__ep4ShowNewMeetingAfterCert = false;
+  if (typeof returnToMiracleOpenWorld === 'function' && (typeof miracleSubMode === 'undefined' || miracleSubMode !== 'openworld')) {
     returnToMiracleOpenWorld();
+  }
+  if (shouldShowNewMeeting || currentEpisode === 'miracle') {
+    showEp4PostCertificateNewMeetingMessage();
   }
 }
 
@@ -5175,7 +5228,11 @@ function initEngine(skipInitialPreview = false) {
 
     updateBlazingPillars(dt, now);
 
-    if (!isPlaying && !stage2CountdownActive && document.getElementById('hud-top').classList.contains('hidden')) {
+    const isMenuScreenOpen = ['screen-opening', 'screen-class', 'screen-map'].some(id => {
+      const el = document.getElementById(id);
+      return el && !el.classList.contains('hidden');
+    });
+    if (!isPlaying && !stage2CountdownActive && isMenuScreenOpen) {
       if (pausedGameSession && pausedGameSession.active) {
         renderer.render(scene, camera);
         return;

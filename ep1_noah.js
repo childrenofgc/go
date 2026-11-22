@@ -815,12 +815,19 @@ function checkAndFadeEndingArkIfBlocking() {
   if (currentEpisode !== 'noah' || currentStage !== 4 || noahEndingArkFadeMats.length === 0 || !camera) return;
   if (window.globalCameraViewMode === 'fps') return;
 
-  // 카메라와 노아(playerPos) 사이 시선이 방주 영역(x: -16.5~16.5, z: 15.2~26.8, y: 0~10.5)을 통과하는지 확인
+  // [요청사항] 모바일/PC 모두에서 노아가 바위 동산이나 방주 갑판·지붕 위로 올라갔을 때는 방주 투명화 원천 방지!
+  const isNoahOnOrClimbingArk =
+    playerPos.y >= 2.1 &&
+    playerPos.x > -19.0 && playerPos.x < 19.0 &&
+    playerPos.z > 12.5 && playerPos.z < 29.5;
+  if (isNoahOnOrClimbingArk || playerPos.y >= 4.8) return;
+
+  // 노아가 땅(바닥) 위에서 방주 뒤편에 가려졌을 때만 방주 영역 시야 차폐 검사
   const camX = camera.position.x, camY = camera.position.y, camZ = camera.position.z;
   const px = playerPos.x, py = playerPos.y + 1.4, pz = playerPos.z;
 
   let isObstructedByArk = false;
-  for (let i = 1; i <= 18; i++) {
+  for (let i = 1; i <= 16; i++) {
     const t = i / 18;
     const sx = camX + (px - camX) * t;
     const sy = camY + (py - camY) * t;
@@ -878,6 +885,7 @@ function buildNoahEndingArkAndSteppingRocks(arkZ = 21.0) {
 
   const addArkMesh = (mesh, registerRayHit = true) => {
     mesh.userData.linkedFadeMats = noahEndingArkFadeMats;
+    mesh.userData.isNoahEndingArk = true;
     worldGroup.add(mesh);
     if (registerRayHit) wallMeshes.push(mesh);
     return mesh;
@@ -921,14 +929,14 @@ function buildNoahEndingArkAndSteppingRocks(arkZ = 21.0) {
 
   // 2) 1층 상부 갑판(y = 6.62) + 2층 상층 선실(y = 7.75) + 2층 꼭대기 지붕(y = 9.48)
   const cabinW = 19.6, cabinH = 2.35, cabinD = 4.5, cabinZ = arkZ + 1.85;
-  addArkMesh(createBox(hullW + 2.4, 0.45, hullD + 0.8, deckWoodMat, 0, 6.4, arkZ));
+  addArkMesh(createBox(hullW + 2.4, 0.45, hullD + 0.8, deckWoodMat, 0, 6.4, arkZ), false);
   addArkMesh(createBox(hullW + 2.2, 0.55, 0.28, trimTimberMat, 0, 6.85, backZ + 0.2, false), false);
   addArkMesh(createBox(9.2, 0.55, 0.28, trimTimberMat, -8.6, 6.85, frontZ - 0.2, false), false);
   addArkMesh(createBox(9.2, 0.55, 0.28, trimTimberMat,  8.6, 6.85, frontZ - 0.2, false), false);
 
   addArkMesh(createBox(cabinW, cabinH, cabinD, cabinWoodMat, 0, 7.75, cabinZ));
-  addArkMesh(createBox(cabinW + 1.0, 0.38, cabinD + 0.9, roofTimberMat, 0, 9.1, cabinZ));
-  addArkMesh(createBox(cabinW + 0.3, 0.36, cabinD * 0.62, darkTimberMat, 0, 9.45, cabinZ));
+  addArkMesh(createBox(cabinW + 1.0, 0.38, cabinD + 0.9, roofTimberMat, 0, 9.1, cabinZ), false);
+  addArkMesh(createBox(cabinW + 0.3, 0.36, cabinD * 0.62, darkTimberMat, 0, 9.45, cabinZ), false);
   addArkMesh(createBox(cabinW + 0.6, 0.26, 0.55, trimTimberMat, 0, 9.74, cabinZ), false);
 
   const linkWindowMaterials = (winGroup) => {
@@ -1349,8 +1357,7 @@ function buildArkInteriorCeilingGroup(halfW, halfD, wallH) {
     ceilingGroup.add(createBox(0.7, 0.46, halfD * 2 + 1, beamMat, bx, wallH + 0.1, 0, false));
   });
 
-  ceilingGroup.visible =
-    window.globalCameraViewMode === 'fps' || window.globalCameraViewMode === 'lookup';
+  ceilingGroup.visible = window.globalCameraViewMode !== 'topdown';
   window.noahArkCeilingGroup = ceilingGroup;
   worldGroup.add(ceilingGroup);
 }
@@ -2074,8 +2081,7 @@ function updateNoahStageFrame(dt, now) {
 
   if (currentStage === 2 || currentStage === 3) {
     if (window.noahArkCeilingGroup) {
-      window.noahArkCeilingGroup.visible =
-        window.globalCameraViewMode === 'fps' || window.globalCameraViewMode === 'lookup';
+      window.noahArkCeilingGroup.visible = window.globalCameraViewMode !== 'topdown';
     }
     if (noahOuterSeaWaves.length > 0) {
       noahOuterSeaWaves.forEach(w => {
