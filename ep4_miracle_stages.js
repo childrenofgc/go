@@ -4,7 +4,7 @@
 // - 스테이지 3(십자가 사건): 넓어진 골고다 언덕 정상 고원과 세 십자가 등장 연출 적용
 // =========================================================================
 window.__GAME_BUILD_VERSIONS__ = window.__GAME_BUILD_VERSIONS__ || {};
-window.__GAME_BUILD_VERSIONS__.ep4_stages = '20261122_v19';
+window.__GAME_BUILD_VERSIONS__.ep4_stages = '20261122_v20';
 
 // 스테이지 3: 십자가를 지고 힘겹게 오르시는 예수님 보행 속도(더 천천히) 및 플레이어 대신 짊어졌을 때의 보행 속도
 const MIRACLE_STAGE3_JESUS_WALK_SPEED = 1.05;
@@ -2229,16 +2229,60 @@ function buildMiracleMainStage3Cross() {
     );
   }
 
-  // 북쪽 골고다 언덕 정상(z = -54)의 비정형 소프트 로우폴리 세 십자가
+  // 북쪽 골고다 언덕 정상(z = -54): 시작 시 양쪽 십자가 2개만 세워져 있고, 가운데 자리는 빈 돌 받침만 대기!
+  // -> 플레이어가 예수님의 십자가를 지고 언덕 정상에 올라오면 가운데 십자가가 장엄하게 세워짐!
   const summitCrossesGrp = new THREE.Group();
+  let centerSummitCross = null;
+  let centerCrossBeam = null;
+  let centerCrossBasePos = null;
   [
     [ 0.0, -54.5, 1.42, 0.0],
     [-7.2, -53.0, 1.08,  0.18],
     [ 7.2, -53.0, 1.08, -0.18]
   ].forEach(([cx, cz, sc, rotY], idx) => {
     const cy = getMiracleGroundHeight(cx, cz, 3);
+    if (idx === 0) {
+      // 가운데 빈 자리 돌 받침 & 홈 (십자가를 들고 올라오면 이곳에 세워짐)
+      const emptySocketGrp = new THREE.Group();
+      const socketMound = createLowPolyMesh(new THREE.DodecahedronGeometry(1.12 * sc, 0), '#78716c', 0, 0.28 * sc, 0, true);
+      socketMound.scale.set(1.25, 0.42, 1.25);
+      const socketHole = createLowPolyMesh(new THREE.CylinderGeometry(0.32 * sc, 0.24 * sc, 0.16 * sc, 6), '#292524', 0, 0.46 * sc, 0, false);
+      emptySocketGrp.add(socketMound, socketHole);
+      emptySocketGrp.position.set(cx, cy - 0.10 * sc, cz);
+      summitCrossesGrp.add(emptySocketGrp);
+
+      // 도착 시 바닥에서 서서히 세워질 가운데 예수님의 십자가 (처음에는 숨김 + 뒤로 눕힌 상태)
+      const cCross = (typeof createOrganicLowPolyCrossMesh === 'function')
+        ? createOrganicLowPolyCrossMesh(sc, { seed: 420, withBase: false, withPlaque: true })
+        : new THREE.Group();
+      if (cCross.children.length === 0) {
+        const vBeam = createLowPolyMesh(new THREE.CylinderGeometry(0.20 * sc, 0.25 * sc, 5.5 * sc, 6), '#5c2d0c', 0, 2.75 * sc, 0, true);
+        const hBeam = createLowPolyMesh(new THREE.CylinderGeometry(0.16 * sc, 0.16 * sc, 3.3 * sc, 6), '#5c2d0c', 0, 4.0 * sc, 0, true);
+        hBeam.rotation.z = Math.PI / 2;
+        cCross.add(vBeam, hBeam);
+      }
+      cCross.position.set(cx, cy + 0.10 * sc, cz);
+      cCross.rotation.set(-Math.PI * 0.46, rotY, 0);
+      cCross.visible = false;
+      summitCrossesGrp.add(cCross);
+      centerSummitCross = cCross;
+      centerCrossBasePos = new THREE.Vector3(cx, cy, cz);
+
+      const beamMat = new THREE.MeshBasicMaterial({
+        color: 0xfef08a,
+        transparent: true,
+        opacity: 0.0,
+        side: THREE.DoubleSide,
+        depthWrite: false
+      });
+      centerCrossBeam = new THREE.Mesh(new THREE.CylinderGeometry(1.15, 2.25, 22, 14, 1, true), beamMat);
+      centerCrossBeam.position.set(cx, cy + 11.0, cz);
+      centerCrossBeam.visible = false;
+      summitCrossesGrp.add(centerCrossBeam);
+      return;
+    }
     const singleCross = (typeof createOrganicLowPolyCrossMesh === 'function')
-      ? createOrganicLowPolyCrossMesh(sc, { seed: 420 + idx * 29, withBase: true, withPlaque: idx === 0 })
+      ? createOrganicLowPolyCrossMesh(sc, { seed: 420 + idx * 29, withBase: true, withPlaque: false })
       : new THREE.Group();
     if (singleCross.children.length === 0) {
       const rockBase = createLowPolyMesh(new THREE.DodecahedronGeometry(1.05 * sc, 0), '#78716c', 0, 0.35 * sc, 0, true);
@@ -2254,6 +2298,9 @@ function buildMiracleMainStage3Cross() {
   });
   worldGroup.add(summitCrossesGrp);
   miracleActiveMiniState.summitCrossesGrp = summitCrossesGrp;
+  miracleActiveMiniState.centerSummitCross = centerSummitCross;
+  miracleActiveMiniState.centerCrossBeam = centerCrossBeam;
+  miracleActiveMiniState.centerCrossBasePos = centerCrossBasePos;
 
   // ✅ 출발지 바로 뒤편(z = 40 외곽 성문 ~ z = 56 성전 본관)에 예루살렘 성전 단지 배치!
   buildStageJerusalemTemple(0, 0, 56, 1.0, 0, true, 16);
@@ -2453,7 +2500,7 @@ function attachCrossToPlayerBack() {
   carriedBlockGroup.add(crossGrp);
 }
 
-// 스테이지 3에서 십자가를 들어 올리는 모션 중 또는 무게에 넘어져 다시 일어날 때까지 이동 잠금 연동
+// 스테이지 3에서 십자가를 들어 올리는 모션·세우기 연출 중 또는 무게에 넘어져 다시 일어날 때까지 이동 잠금 연동
 const _ep4StagesOrigMoveLock = window.isPlayerMovementLocked;
 window.isPlayerMovementLocked = function () {
   const prev = (typeof _ep4StagesOrigMoveLock === 'function') ? _ep4StagesOrigMoveLock() : false;
@@ -2462,6 +2509,7 @@ window.isPlayerMovementLocked = function () {
     miracleActiveMiniState &&
     (
       miracleActiveMiniState.phase === 'pickup_cross' ||
+      miracleActiveMiniState.phase === 'raise_cross' ||
       (
         miracleActiveMiniState.phase === 'carry' &&
         (miracleActiveMiniState.stumbleState !== 'none' || miracleActiveMiniState.stumbleTimer > 0)
@@ -2572,6 +2620,9 @@ function completeCrossPickupToCarry(st) {
     st.jesusMesh.rotation.y = Math.PI;
   }
   st.phase = 'carry';
+  st.furthestCarryZ = playerPos.z;
+  st.prevCarryPlayerZ = playerPos.z;
+  st.wrongWayToastCd = 0;
   // 이미 지나친 넘어짐 체크포인트는 건너뛰고 앞으로 남은 오르막에서만 자연스럽게 넘어지도록 조정
   if (Array.isArray(st.stumbleCheckpoints)) {
     while (st.stumbleIdx < st.stumbleCheckpoints.length && playerPos.z <= st.stumbleCheckpoints[st.stumbleIdx] + 2.5) {
@@ -3020,37 +3071,70 @@ function updateMiracleMainStage3Frame(dt, now) {
       }
     }
 
-    if (st.jesusMesh) {
-      const targetJX = playerPos.x + 1.5;
-      const targetJZ = playerPos.z - 0.6;
-      const prevX = st.jesusMesh.position.x;
-      const prevZ = st.jesusMesh.position.z;
-      st.jesusMesh.position.x = THREE.MathUtils.lerp(st.jesusMesh.position.x, targetJX, dt * 4.5);
-      st.jesusMesh.position.z = THREE.MathUtils.lerp(st.jesusMesh.position.z, targetJZ, dt * 4.5);
-      st.jesusMesh.position.y = getMiracleGroundHeight(st.jesusMesh.position.x, st.jesusMesh.position.z, 3);
-      st.jesusMesh.rotation.y = playerFacing;
+    const prevZCarry = (typeof st.prevCarryPlayerZ === 'number') ? st.prevCarryPlayerZ : playerPos.z;
+    if (typeof st.furthestCarryZ !== 'number') st.furthestCarryZ = playerPos.z;
+    if (playerPos.z < st.furthestCarryZ) st.furthestCarryZ = playerPos.z;
+    const playerMovingBack = (playerPos.z > prevZCarry + 0.004);
+    const playerBehindProgress = (playerPos.z > st.furthestCarryZ + 0.30);
+    const isPlayerGoingWrongWay = (playerMovingBack || playerBehindProgress);
+    st.prevCarryPlayerZ = playerPos.z;
 
-      // 옆에서 함께 걸어가는 예수님 보행 애니메이션
-      const moved = Math.hypot(st.jesusMesh.position.x - prevX, st.jesusMesh.position.z - prevZ);
-      if (st.jesusPersonMesh && st.jesusPersonMesh.userData && st.stumbleState === 'none') {
-        const ju = st.jesusPersonMesh.userData;
-        const jSwing = moved > 0.005 ? Math.sin(now * 0.011) * 0.48 : 0;
-        if (ju.lLeg && ju.rLeg) { ju.lLeg.rotation.x = jSwing; ju.rLeg.rotation.x = -jSwing; }
-        if (ju.lArm && ju.rArm) {
-          ju.lArm.rotation.x = -jSwing * 0.5; ju.rArm.rotation.x = jSwing * 0.5;
-          ju.lArm.rotation.z = 0; ju.rArm.rotation.z = 0;
+    if (isPlayerGoingWrongWay) {
+      st.wrongWayToastCd = (st.wrongWayToastCd || 0) - dt;
+      if (st.wrongWayToastCd <= 0 && playerPos.z > st.furthestCarryZ + 1.6) {
+        st.wrongWayToastCd = 5.5;
+        showToast('⛰️ 반대 방향이에요! 예수님과 군인들이 기다리고 있는 골고다 언덕 정상으로 올라가요!');
+      }
+    }
+
+    if (st.jesusMesh) {
+      if (isPlayerGoingWrongWay) {
+        // 플레이어가 반대로 걸어가면 예수님은 따라오지 않고 제자리에 서서 플레이어를 바라봄!
+        const facePlayerAng = Math.atan2(playerPos.x - st.jesusMesh.position.x, playerPos.z - st.jesusMesh.position.z);
+        st.jesusMesh.rotation.y = lerpAngle(st.jesusMesh.rotation.y, facePlayerAng, Math.min(1, dt * 6.5));
+        st.jesusMesh.position.y = getMiracleGroundHeight(st.jesusMesh.position.x, st.jesusMesh.position.z, 3);
+        if (st.jesusPersonMesh && st.jesusPersonMesh.userData) {
+          const ju = st.jesusPersonMesh.userData;
+          if (ju.lLeg && ju.rLeg) { ju.lLeg.rotation.x = 0; ju.rLeg.rotation.x = 0; }
+          if (ju.lArm && ju.rArm) { ju.lArm.rotation.x = 0; ju.rArm.rotation.x = 0; ju.lArm.rotation.z = 0; ju.rArm.rotation.z = 0; }
+        }
+      } else {
+        const targetJX = playerPos.x + 1.5;
+        const targetJZ = Math.min(st.jesusMesh.position.z, playerPos.z - 0.6);
+        const prevX = st.jesusMesh.position.x;
+        const prevZ = st.jesusMesh.position.z;
+        st.jesusMesh.position.x = THREE.MathUtils.lerp(st.jesusMesh.position.x, targetJX, dt * 4.5);
+        st.jesusMesh.position.z = THREE.MathUtils.lerp(st.jesusMesh.position.z, targetJZ, dt * 4.5);
+        st.jesusMesh.position.y = getMiracleGroundHeight(st.jesusMesh.position.x, st.jesusMesh.position.z, 3);
+        st.jesusMesh.rotation.y = lerpAngle(st.jesusMesh.rotation.y, Math.PI, Math.min(1, dt * 6.5));
+
+        // 옆에서 함께 걸어가는 예수님 보행 애니메이션
+        const moved = Math.hypot(st.jesusMesh.position.x - prevX, st.jesusMesh.position.z - prevZ);
+        if (st.jesusPersonMesh && st.jesusPersonMesh.userData && st.stumbleState === 'none') {
+          const ju = st.jesusPersonMesh.userData;
+          const jSwing = moved > 0.005 ? Math.sin(now * 0.011) * 0.48 : 0;
+          if (ju.lLeg && ju.rLeg) { ju.lLeg.rotation.x = jSwing; ju.rLeg.rotation.x = -jSwing; }
+          if (ju.lArm && ju.rArm) {
+            ju.lArm.rotation.x = -jSwing * 0.5; ju.rArm.rotation.x = jSwing * 0.5;
+            ju.lArm.rotation.z = 0; ju.rArm.rotation.z = 0;
+          }
         }
       }
       updateWorldLabelPos(st.jesusLabel, st.jesusMesh.position, true);
     }
 
-    // 플레이어가 십자가를 대신 메고 오를 때도 로마 군인 3명이 예수님·플레이어 옆에서 함께 골고다 정상까지 행군!
+    // 로마 군인 3명: 반대로 가면 따라오지 않고 제자리에 서서 플레이어를 바라봄! 정상으로 오를 때만 함께 행군!
     if (Array.isArray(st.escortSoldiers)) {
       const isStumbling = (st.stumbleState !== 'none');
       st.escortSoldiers.forEach(sol => {
-        const tx = Math.max(-22, Math.min(22, playerPos.x + sol.carryOffX));
-        const tz = Math.max(-56, Math.min(28, playerPos.z + sol.carryOffZ));
-        animateEscortSoldier(sol, tx, tz, playerFacing, !isStumbling, isStumbling);
+        if (!sol || !sol.mesh) return;
+        if (isPlayerGoingWrongWay) {
+          animateEscortSoldier(sol, sol.mesh.position.x, sol.mesh.position.z, Math.PI, false, true);
+        } else {
+          const tx = Math.max(-22, Math.min(22, playerPos.x + sol.carryOffX));
+          const tz = Math.min(sol.mesh.position.z, Math.max(-56, Math.min(28, playerPos.z + sol.carryOffZ)));
+          animateEscortSoldier(sol, tx, tz, Math.PI, !isStumbling, isStumbling);
+        }
       });
     }
 
@@ -3058,7 +3142,11 @@ function updateMiracleMainStage3Frame(dt, now) {
     if (st.goalLabel) updateWorldLabelPos(st.goalLabel, st.goalPos, gd < 14.0);
 
     if (gd < 3.6) {
-      st.phase = 'golgotha_arrived';
+      // [골고다 정상 도착] 가운데 빈 자리에 예수님의 십자가가 장엄하게 세워지는 연출 시작!
+      st.phase = 'raise_cross';
+      st.raiseTimer = 0;
+      st.raiseDuration = 2.55;
+      st.raiseUprightSfxPlayed = false;
       st.stumbleState = 'none';
       st.stumbleTimer = 0;
       if (playerGroup) {
@@ -3066,14 +3154,94 @@ function updateMiracleMainStage3Frame(dt, now) {
         playerGroup.scale.set(1, 1, 1);
       }
       if (playerLimbs && playerLimbs.lArm && playerLimbs.rArm) {
+        playerLimbs.lArm.rotation.x = 0;
+        playerLimbs.rArm.rotation.x = 0;
         playerLimbs.lArm.rotation.z = 0;
         playerLimbs.rArm.rotation.z = 0;
       }
       if (carriedBlockGroup) {
         while (carriedBlockGroup.children.length > 0) carriedBlockGroup.remove(carriedBlockGroup.children[0]);
       }
+      if (st.goalRing) st.goalRing.visible = false;
       if (st.goalLabel) st.goalLabel.style.opacity = '0';
       if (st.jesusLabel) st.jesusLabel.style.opacity = '0';
+      if (st.centerSummitCross) {
+        st.centerSummitCross.visible = true;
+        st.centerSummitCross.rotation.x = -Math.PI * 0.46;
+      }
+      if (st.centerCrossBeam) {
+        st.centerCrossBeam.visible = true;
+        if (st.centerCrossBeam.material) st.centerCrossBeam.material.opacity = 0;
+      }
+      playSfx('build');
+      showToast('✝️ 골고다 언덕 가운데 빈 자리에 예수님의 십자가를 세우고 있어요...');
+      updateStageHUD();
+      return;
+    }
+  } else if (st.phase === 'raise_cross') {
+    // [골고다 가운데 십자가 세우기 연출] 눕혀진 가운데 십자가가 서서히 하늘을 향해 우뚝 세워짐!
+    st.raiseTimer = (st.raiseTimer || 0) + dt;
+    const t = st.raiseTimer;
+    const liftDur = 1.60;
+    const u = Math.min(1, t / liftDur);
+    const ease = u * u * (3 - 2 * u);
+    const cPos = st.centerCrossBasePos || new THREE.Vector3(0, getMiracleGroundHeight(0, -54.5, 3), -54.5);
+
+    if (st.centerSummitCross) {
+      st.centerSummitCross.visible = true;
+      st.centerSummitCross.rotation.x = THREE.MathUtils.lerp(-Math.PI * 0.46, 0, ease);
+    }
+    if (st.centerCrossBeam && st.centerCrossBeam.material) {
+      const beamT = Math.max(0, Math.min(1, (t - 0.85) / 1.15));
+      st.centerCrossBeam.material.opacity = beamT * 0.26;
+      st.centerCrossBeam.rotation.y += dt * 0.6;
+    }
+
+    // 플레이어·예수님·로마 군인 모두 세워지는 가운데 십자가를 숙연하게 바라봄
+    playerFacing = lerpAngle(playerFacing, Math.atan2(cPos.x - playerPos.x, cPos.z - playerPos.z), Math.min(1, dt * 6.0));
+    if (playerGroup) {
+      playerGroup.rotation.y = playerFacing;
+      playerGroup.rotation.x = 0;
+      playerGroup.scale.set(1, 1, 1);
+    }
+    if (st.jesusMesh) {
+      const jAng = Math.atan2(cPos.x - st.jesusMesh.position.x, cPos.z - st.jesusMesh.position.z);
+      st.jesusMesh.rotation.y = lerpAngle(st.jesusMesh.rotation.y, jAng, Math.min(1, dt * 6.0));
+      if (st.jesusPersonMesh && st.jesusPersonMesh.userData) {
+        const ju = st.jesusPersonMesh.userData;
+        if (ju.lLeg && ju.rLeg) { ju.lLeg.rotation.x = 0; ju.rLeg.rotation.x = 0; }
+        if (ju.lArm && ju.rArm) { ju.lArm.rotation.x = 0; ju.rArm.rotation.x = 0; }
+      }
+    }
+    if (Array.isArray(st.escortSoldiers)) {
+      st.escortSoldiers.forEach(sol => {
+        if (!sol || !sol.mesh) return;
+        const sAng = Math.atan2(cPos.x - sol.mesh.position.x, cPos.z - sol.mesh.position.z);
+        animateEscortSoldier(sol, sol.mesh.position.x, sol.mesh.position.z, sAng, false, false);
+      });
+    }
+
+    if (t >= liftDur && !st.raiseUprightSfxPlayed) {
+      st.raiseUprightSfxPlayed = true;
+      playSfx('rescue');
+      showToast('✝️ 골고다 언덕 가운데에 예수님의 십자가가 우뚝 세워졌어요.');
+      for (let k = 0; k < 10; k++) {
+        const ang = (k / 10) * Math.PI * 2;
+        const dust = createLowPolyMesh(new THREE.DodecahedronGeometry(0.22, 0), '#e7d5b5', cPos.x + Math.cos(ang) * 0.9, cPos.y + 0.25, cPos.z + Math.sin(ang) * 0.9, false);
+        worldGroup.add(dust);
+        st.stumbleDusts.push({
+          mesh: dust,
+          vx: Math.cos(ang) * (1.8 + Math.random() * 1.2),
+          vy: 2.2 + Math.random() * 1.4,
+          vz: Math.sin(ang) * (1.8 + Math.random() * 1.2),
+          life: 0.95,
+          maxLife: 0.95
+        });
+      }
+    }
+
+    if (t >= (st.raiseDuration || 2.55)) {
+      st.phase = 'golgotha_arrived';
       miracleMainStagesCleared[3] = true;
       saveMiracleNotebookProgress();
       openStageClearModal(3);
@@ -3822,6 +3990,7 @@ function buildMiracleEndingWorld() {
   let jesusMesh = null;
   let footCloudGroup = null;
   let footCloudPuffs = [];
+  let surroundingClouds = [];
   let angelL = null;
   let angelR = null;
   const ascensionDisciples = [];
@@ -3833,27 +4002,29 @@ function buildMiracleEndingWorld() {
     jesusMesh.position.set(0, 0, 0);
     jesusCloudGroup.add(jesusMesh);
 
-    // 발밑에서 시작해 서서히 반투명 -> 불투명으로 변하며 예수님 전신을 감싸는 다층 입체 구름
+    // [가로로 길게 펼쳐진 승천 구름] 예수님 발밑부터 전신을 포근히 덮으며 가로로 넓게 뻗어 나가는 다층 입체 구름!
     footCloudGroup = new THREE.Group();
     footCloudGroup.position.set(0, 0, 0);
     footCloudGroup.visible = false;
     const puffSpecs = [
-      // 하단(발밑) 층: 먼저 피어오름
-      { x:  0.00, y: -0.10, z:  0.00, r: 1.05, sx: 1.38, sy: 0.65, sz: 1.30, col: 0xffffff, delay: 0.70, riseY: 0.25 },
-      { x: -0.92, y: -0.14, z:  0.34, r: 0.88, sx: 1.26, sy: 0.62, sz: 1.18, col: 0xf8fafc, delay: 0.95, riseY: 0.30 },
-      { x:  0.94, y: -0.12, z:  0.28, r: 0.90, sx: 1.26, sy: 0.64, sz: 1.18, col: 0xfef9c3, delay: 1.05, riseY: 0.30 },
-      { x: -0.52, y: -0.16, z: -0.82, r: 0.92, sx: 1.28, sy: 0.64, sz: 1.16, col: 0xf1f5f9, delay: 1.20, riseY: 0.28 },
-      { x:  0.58, y: -0.15, z: -0.80, r: 0.88, sx: 1.24, sy: 0.62, sz: 1.18, col: 0xffffff, delay: 1.30, riseY: 0.28 },
-      { x: -1.55, y: -0.22, z: -0.12, r: 0.85, sx: 1.32, sy: 0.58, sz: 1.15, col: 0xf1f5f9, delay: 1.50, riseY: 0.32 },
-      { x:  1.58, y: -0.20, z: -0.10, r: 0.86, sx: 1.32, sy: 0.60, sz: 1.15, col: 0xffffff, delay: 1.60, riseY: 0.32 },
-      { x:  0.05, y: -0.24, z:  1.08, r: 0.94, sx: 1.36, sy: 0.62, sz: 1.14, col: 0xfef3c7, delay: 1.70, riseY: 0.35 },
-      // 중단·상단(허리~전신 감싸기) 층: 올라갈수록 짙고 불투명하게 예수님을 완전히 감싸며 하늘로 사라짐!
-      { x:  0.00, y:  0.75, z:  0.55, r: 1.02, sx: 1.35, sy: 0.95, sz: 1.25, col: 0xffffff, delay: 2.15, riseY: 0.65 },
-      { x: -0.78, y:  0.90, z:  0.22, r: 0.96, sx: 1.28, sy: 0.92, sz: 1.20, col: 0xf8fafc, delay: 2.35, riseY: 0.72 },
-      { x:  0.80, y:  0.92, z:  0.18, r: 0.96, sx: 1.28, sy: 0.92, sz: 1.20, col: 0xfef9c3, delay: 2.45, riseY: 0.72 },
-      { x:  0.00, y:  1.25, z: -0.45, r: 1.08, sx: 1.40, sy: 1.00, sz: 1.28, col: 0xf1f5f9, delay: 2.65, riseY: 0.78 },
-      { x:  0.00, y:  1.55, z:  0.15, r: 1.15, sx: 1.48, sy: 1.05, sz: 1.35, col: 0xffffff, delay: 2.95, riseY: 0.68 },
-      { x:  0.00, y: -0.46, z: -0.15, r: 1.30, sx: 1.50, sy: 0.60, sz: 1.40, col: 0xe0f2fe, delay: 1.85, riseY: 0.25 }
+      // 하단(발밑) 층: 가로로 넓게 뻗은 구름 띠
+      { x:  0.00, y: -0.14, z:  0.00, r: 1.08, sx: 2.15, sy: 0.56, sz: 1.38, col: 0xffffff, delay: 0.65, riseY: 0.25 },
+      { x: -1.65, y: -0.18, z:  0.25, r: 0.96, sx: 2.05, sy: 0.54, sz: 1.24, col: 0xf8fafc, delay: 0.85, riseY: 0.28 },
+      { x:  1.68, y: -0.16, z:  0.22, r: 0.98, sx: 2.08, sy: 0.54, sz: 1.24, col: 0xfef9c3, delay: 0.95, riseY: 0.28 },
+      { x: -3.25, y: -0.22, z: -0.18, r: 0.92, sx: 2.30, sy: 0.48, sz: 1.16, col: 0xf1f5f9, delay: 1.25, riseY: 0.34 },
+      { x:  3.30, y: -0.20, z: -0.15, r: 0.94, sx: 2.30, sy: 0.48, sz: 1.16, col: 0xffffff, delay: 1.35, riseY: 0.34 },
+      { x: -0.95, y: -0.22, z: -0.88, r: 0.96, sx: 1.95, sy: 0.55, sz: 1.22, col: 0xf1f5f9, delay: 1.15, riseY: 0.26 },
+      { x:  1.02, y: -0.20, z: -0.85, r: 0.94, sx: 1.95, sy: 0.55, sz: 1.22, col: 0xffffff, delay: 1.20, riseY: 0.26 },
+      { x:  0.05, y: -0.26, z:  1.05, r: 0.98, sx: 2.25, sy: 0.54, sz: 1.18, col: 0xfef3c7, delay: 1.45, riseY: 0.32 },
+      // 중단·상단(허리~전신 덮기) 층: 가로로 길고 두텁게 예수님을 완전히 덮으며 하늘로 사라짐!
+      { x:  0.00, y:  0.72, z:  0.58, r: 1.06, sx: 2.20, sy: 0.82, sz: 1.32, col: 0xffffff, delay: 1.95, riseY: 0.62 },
+      { x: -1.45, y:  0.84, z:  0.22, r: 1.02, sx: 2.15, sy: 0.78, sz: 1.25, col: 0xf8fafc, delay: 2.15, riseY: 0.68 },
+      { x:  1.48, y:  0.86, z:  0.18, r: 1.02, sx: 2.15, sy: 0.78, sz: 1.25, col: 0xfef9c3, delay: 2.25, riseY: 0.68 },
+      { x: -2.85, y:  0.66, z: -0.10, r: 0.96, sx: 2.35, sy: 0.68, sz: 1.18, col: 0xf1f5f9, delay: 2.40, riseY: 0.58 },
+      { x:  2.88, y:  0.68, z: -0.08, r: 0.96, sx: 2.35, sy: 0.68, sz: 1.18, col: 0xffffff, delay: 2.45, riseY: 0.58 },
+      { x:  0.00, y:  1.22, z: -0.45, r: 1.12, sx: 2.25, sy: 0.88, sz: 1.32, col: 0xf1f5f9, delay: 2.55, riseY: 0.74 },
+      { x:  0.00, y:  1.52, z:  0.16, r: 1.18, sx: 2.40, sy: 0.92, sz: 1.38, col: 0xffffff, delay: 2.80, riseY: 0.66 },
+      { x:  0.00, y: -0.48, z: -0.15, r: 1.35, sx: 2.65, sy: 0.52, sz: 1.45, col: 0xe0f2fe, delay: 1.65, riseY: 0.24 }
     ];
     puffSpecs.forEach((p, idx) => {
       const pMat = new THREE.MeshLambertMaterial({
@@ -3866,7 +4037,7 @@ function buildMiracleEndingWorld() {
       const puff = new THREE.Mesh(new THREE.IcosahedronGeometry(p.r, 0), pMat);
       puff.position.set(p.x, p.y, p.z);
       puff.scale.set(0.01, 0.01, 0.01);
-      puff.rotation.set(idx * 0.4, idx * 0.9, 0);
+      puff.rotation.set(idx * 0.25, idx * 0.65, 0);
       footCloudGroup.add(puff);
       footCloudPuffs.push({ mesh: puff, mat: pMat, spec: p, phase: idx * 0.85 });
     });
@@ -3874,6 +4045,43 @@ function buildMiracleEndingWorld() {
 
     jesusCloudGroup.position.set(0, jesusBaseY, -8.5);
     worldGroup.add(jesusCloudGroup);
+
+    // [높이 올라가면서 주변 하늘까지 함께 덮는 주변 구름 띠] 가로로 긴 구름 10덩이가 사방에서 모여 하늘을 포근히 덮음!
+    const surroundSpecs = [
+      { bx: -9.5,  by: summitPadY +  8.8, bz: -11.5, dx:  3.2, dy: 1.6, sx: 3.1, sy: 0.72, sz: 1.65, col: 0xffffff, delay: 1.4 },
+      { bx:  9.5,  by: summitPadY +  9.2, bz: -11.0, dx: -3.2, dy: 1.5, sx: 3.1, sy: 0.72, sz: 1.65, col: 0xfef9c3, delay: 1.5 },
+      { bx: -14.5, by: summitPadY + 11.8, bz:  -6.5, dx:  4.5, dy: 2.0, sx: 3.6, sy: 0.78, sz: 1.85, col: 0xf8fafc, delay: 1.8 },
+      { bx:  14.5, by: summitPadY + 12.2, bz:  -6.0, dx: -4.5, dy: 1.9, sx: 3.6, sy: 0.78, sz: 1.85, col: 0xffffff, delay: 1.9 },
+      { bx:  0.0,  by: summitPadY + 13.8, bz: -17.5, dx:  0.0, dy: 2.2, sx: 4.4, sy: 0.86, sz: 2.00, col: 0xf1f5f9, delay: 2.1 },
+      { bx: -7.5,  by: summitPadY + 14.5, bz: -14.5, dx:  2.4, dy: 2.1, sx: 3.4, sy: 0.80, sz: 1.75, col: 0xffffff, delay: 2.2 },
+      { bx:  7.8,  by: summitPadY + 14.8, bz: -14.2, dx: -2.4, dy: 2.1, sx: 3.4, sy: 0.80, sz: 1.75, col: 0xfef3c7, delay: 2.3 },
+      { bx: -12.0, by: summitPadY + 16.6, bz:  -9.5, dx:  4.2, dy: 1.8, sx: 3.9, sy: 0.84, sz: 1.95, col: 0xffffff, delay: 2.5 },
+      { bx:  12.0, by: summitPadY + 16.8, bz:  -9.2, dx: -4.2, dy: 1.8, sx: 3.9, sy: 0.84, sz: 1.95, col: 0xf8fafc, delay: 2.6 },
+      { bx:  0.0,  by: summitPadY + 17.8, bz:  -5.5, dx:  0.0, dy: 1.5, sx: 4.6, sy: 0.78, sz: 2.10, col: 0xffffff, delay: 2.8 }
+    ];
+    surroundSpecs.forEach((scSpec, sIdx) => {
+      const bankGrp = new THREE.Group();
+      const sMat = new THREE.MeshLambertMaterial({
+        color: scSpec.col,
+        flatShading: true,
+        transparent: true,
+        opacity: 0.0,
+        depthWrite: false
+      });
+      const mainPuff = new THREE.Mesh(new THREE.IcosahedronGeometry(1.55, 0), sMat);
+      mainPuff.scale.set(scSpec.sx, scSpec.sy, scSpec.sz);
+      const wingL = new THREE.Mesh(new THREE.IcosahedronGeometry(1.18, 0), sMat);
+      wingL.position.set(-scSpec.sx * 0.72, -0.18, 0.25);
+      wingL.scale.set(scSpec.sx * 0.78, scSpec.sy * 0.82, scSpec.sz * 0.85);
+      const wingR = new THREE.Mesh(new THREE.IcosahedronGeometry(1.18, 0), sMat);
+      wingR.position.set( scSpec.sx * 0.72, -0.16, -0.20);
+      wingR.scale.set(scSpec.sx * 0.78, scSpec.sy * 0.82, scSpec.sz * 0.85);
+      bankGrp.add(mainPuff, wingL, wingR);
+      bankGrp.position.set(scSpec.bx, scSpec.by, scSpec.bz);
+      bankGrp.visible = false;
+      worldGroup.add(bankGrp);
+      surroundingClouds.push({ group: bankGrp, mat: sMat, spec: scSpec, phase: sIdx * 0.9 });
+    });
 
     // 두 천사는 예수님 승천이 끝난 뒤 하늘에서 내려오도록 처음에는 상공에 숨겨 대기!
     angelL = createLowPolyPersonMesh('angel', 1);
@@ -3893,6 +4101,7 @@ function buildMiracleEndingWorld() {
     );
     skyBeam.position.set(0, summitPadY + 17.2, -8.5);
     const highCloud = createLowPolyCloudGroup(1.85, false);
+    highCloud.scale.set(1.55, 0.85, 1.0);
     highCloud.position.set(0, summitPadY + 21.0, -8.5);
     worldGroup.add(skyBeam, highCloud);
   }
@@ -3975,6 +4184,7 @@ function buildMiracleEndingWorld() {
     disciples: ascensionDisciples,
     footCloudGroup,
     footCloudPuffs,
+    surroundingClouds,
     angelsStarted: false,
     camLookCurrent: new THREE.Vector3(0, jesusBaseY + 1.4, -8.5),
     spotObj,
@@ -4022,7 +4232,7 @@ function triggerMiracleAscensionSequence() {
   if (sp && sp.spotRing) sp.spotRing.visible = false;
   unlockMiracleNotebookEntry('wd_matt2820', true);
   playSfx('clear');
-  showToast('☁️ 예수님께서 홀로 하늘로 올라가시며 발밑을 구름이 감싸 오릅니다...');
+  showToast('☁️ 예수님께서 홀로 하늘로 올라가시며 가로로 넓은 구름이 예수님과 온 하늘을 덮어갑니다...');
 }
 
 function updateMiracleEndingFrame(dt, now) {
@@ -4091,7 +4301,32 @@ function updateMiracleEndingFrame(dt, now) {
     });
   }
 
-  // [1단계: 0.0초 ~ 6.4초] 예수님 혼자 승천 + 발밑 구름이 반투명 -> 불투명으로 변하며 감싸고 하늘로 사라짐!
+  // [주변 하늘 구름 덮임 연출] 예수님이 높이 올라갈수록 주변 하늘의 가로로 긴 구름 띠들도 함께 몰려들어 하늘을 포근히 덮음!
+  if (Array.isArray(st.surroundingClouds) && st.surroundingClouds.length > 0) {
+    st.surroundingClouds.forEach(sc => {
+      const localT = Math.max(0, Math.min(1, (t - sc.spec.delay) / 2.8));
+      if (localT <= 0.001) {
+        sc.group.visible = false;
+        return;
+      }
+      sc.group.visible = true;
+      const sm = localT * localT * (3 - 2 * localT);
+      const afterAngelsFade = (t >= 6.4) ? Math.max(0.60, 1.0 - (t - 6.4) * 0.09) : 1.0;
+      const spreadX = 0.65 + sm * 0.72;
+      const spreadY = 0.60 + sm * 0.48;
+      sc.group.scale.set(spreadX, spreadY, 0.75 + sm * 0.45);
+      sc.group.position.set(
+        sc.spec.bx + sc.spec.dx * sm + Math.sin(t * 0.6 + sc.phase) * 0.45,
+        sc.spec.by + sc.spec.dy * sm,
+        sc.spec.bz + Math.cos(t * 0.5 + sc.phase) * 0.35
+      );
+      const op = Math.min(0.94, sm * 0.94 * afterAngelsFade);
+      sc.mat.opacity = op;
+      sc.mat.transparent = true;
+    });
+  }
+
+  // [1단계: 0.0초 ~ 6.4초] 예수님 혼자 승천 + 가로로 길게 펼쳐진 구름이 반투명 -> 불투명으로 변하며 예수님을 완전히 덮고 하늘로 사라짐!
   if (st.jesusCloudGroup && t < 6.8) {
     const riseSpeed = t < 1.6
       ? THREE.MathUtils.lerp(0.72, 1.85, t / 1.6)
@@ -4108,25 +4343,27 @@ function updateMiracleEndingFrame(dt, now) {
         ju.lArm.rotation.z = THREE.MathUtils.lerp(0,  0.46, armT);
         ju.rArm.rotation.z = THREE.MathUtils.lerp(0, -0.46, armT);
       }
-      // 구름이 불투명하게 완전히 감싼 뒤(t >= 5.45초) 예수님은 구름 너머 하늘로 사라짐
+      // 구름이 불투명하게 완전히 덮은 뒤(t >= 5.45초) 예수님은 구름 너머 하늘로 사라짐
       if (t >= 5.45) {
         st.jesusMesh.visible = false;
       }
     }
 
-    // 발밑 구름이 서서히 피어오르며 반투명(0 -> 0.5)에서 완전히 불투명(1.0)으로 바뀌어 예수님을 감쌈
+    // 발밑 구름이 가로로 길게 펼쳐지며 반투명(0 -> 0.5)에서 완전히 불투명(1.0)으로 바뀌어 예수님을 덮음
     if (st.footCloudGroup && Array.isArray(st.footCloudPuffs)) {
-      if (t >= 0.70) {
+      if (t >= 0.65) {
         st.footCloudGroup.visible = true;
-        st.footCloudGroup.rotation.y += dt * 0.24;
-        // 전체 불투명도 곡선: 0.7초~4.6초 동안 부드럽게 0.0 -> 1.0 (반투명 -> 완전 불투명!)
-        const globalOpaque = Math.max(0, Math.min(1, (t - 0.70) / 3.9));
+        // 가로로 긴 실루엣이 잘 유지되도록 회전 대신 완만한 좌우 숨결 흔들림 & 수평 확장 적용
+        const globalOpaque = Math.max(0, Math.min(1, (t - 0.65) / 3.9));
+        const horizStretch = 1.0 + globalOpaque * 0.42;
+        st.footCloudGroup.rotation.y = Math.sin(t * 0.35) * 0.08;
         st.footCloudPuffs.forEach(item => {
           const localT = Math.max(0, Math.min(1, (t - item.spec.delay) / 1.65));
           const smooth = localT * localT * (3 - 2 * localT);
-          const sc = Math.max(0.01, smooth * (1.0 + globalOpaque * 0.22));
-          item.mesh.scale.set(item.spec.sx * sc, item.spec.sy * sc, item.spec.sz * sc);
-          item.mesh.position.y = item.spec.y + (item.spec.riseY || 0.25) * globalOpaque + Math.sin(t * 1.7 + item.phase) * 0.07 * smooth;
+          const sc = Math.max(0.01, smooth * (1.0 + globalOpaque * 0.24));
+          item.mesh.scale.set(item.spec.sx * sc * horizStretch, item.spec.sy * sc, item.spec.sz * sc);
+          item.mesh.position.x = item.spec.x * (0.85 + 0.35 * globalOpaque);
+          item.mesh.position.y = item.spec.y + (item.spec.riseY || 0.25) * globalOpaque + Math.sin(t * 1.6 + item.phase) * 0.06 * smooth;
           // 반투명에서 서서히 완전 불투명(1.0)으로 전환!
           const opacityVal = Math.min(1.0, smooth * (0.35 + 0.65 * globalOpaque));
           item.mat.opacity = opacityVal;
@@ -4142,11 +4379,11 @@ function updateMiracleEndingFrame(dt, now) {
       }
     }
 
-    // 로우앵글 카메라: 올라가시는 예수님과 감싸는 구름을 올려다봄
+    // 로우앵글 카메라: 올라가시는 예수님과 가로로 넓게 덮어가는 구름을 올려다봄
     if (t < 6.4) {
       const lowCamProgress = Math.min(1, t / 5.6);
       const camLowY = padY + THREE.MathUtils.lerp(1.25, 1.05, lowCamProgress);
-      const camLowZ = THREE.MathUtils.lerp(-0.2, 2.6, lowCamProgress);
+      const camLowZ = THREE.MathUtils.lerp(-0.2, 3.0, lowCamProgress);
       const camLowX = Math.sin(lowCamProgress * 0.75) * 1.55;
       camera.position.lerp(new THREE.Vector3(camLowX, camLowY, camLowZ), Math.min(1, dt * 3.2));
 
@@ -4494,6 +4731,9 @@ REGISTER_EPISODE('miracle', {
       } else if (ms.phase === 'pickup_cross') {
         countText.textContent = '십자가 들어 올리는 중';
         missionText.textContent = '예수님의 무거운 십자가를 어깨에 들어 올리고 있어요!';
+      } else if (ms.phase === 'raise_cross') {
+        countText.textContent = '가운데 십자가 세우는 중';
+        missionText.textContent = '골고다 언덕 가운데 빈 자리에 예수님의 십자가가 세워지고 있어요...';
       } else {
         countText.textContent = '십자가 동행 등반';
         missionText.textContent = '예수님과 함께 무거운 십자가를 등에 지고 골고다 언덕 정상까지 올라가세요!';

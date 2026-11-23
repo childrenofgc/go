@@ -4,7 +4,7 @@
 // - 계단으로 건물 2층 등반 후 인접한 옆 건물 옥상·2층으로 점프 이동할 수 있는 근접 마을 배치
 // =========================================================================
 window.__GAME_BUILD_VERSIONS__ = window.__GAME_BUILD_VERSIONS__ || {};
-window.__GAME_BUILD_VERSIONS__.ep4_world = '20261122_v19';
+window.__GAME_BUILD_VERSIONS__.ep4_world = '20261122_v20';
 
 window.miracleOpenWorldIntroFlyover = {
   active: false,
@@ -3767,12 +3767,13 @@ function clearMiracleFieldEventObjects() {
       }
     }
   }
-  // 엠마오 두 제자: 원래 서 있던 두 제자를 미션 완료 시 제자리(-48, 42)까지 함께 걸어 귀가!
+  // 엠마오 두 제자 & 사도 도마: 원래 서 있던 NPC 본인을 미션 완료 시 제자리까지 함께 걸어 귀가, 포기 시 제자리 복귀!
   if (miracleActiveFieldEvent && Array.isArray(miracleActiveFieldEvent.reusedEscortNpcs)) {
     const walkHome = Boolean(miracleActiveFieldEvent.walkHomeEscortOnClear);
     miracleActiveFieldEvent.reusedEscortNpcs.forEach((entry, idx) => {
       const npc = entry.mesh;
       if (!npc) return;
+      npc.visible = true;
       if (walkHome && entry.origParent) {
         enqueueMiracleNpcWalkHome(npc, entry.origParent, entry.origLocalPos, entry.origRotY, entry.homeWorldX, entry.homeWorldZ, 4.1 + idx * 0.15);
       } else {
@@ -4750,7 +4751,42 @@ function startMiracleFieldEvent(evSpot) {
       miracleActiveFieldEvent.targetZone = targetObj;
       showToast('🪙 성전 헌금함 앞에 있는 가난한 과부에게 다가가 보세요!');
     } else if (evSpot.thomasCutscene) {
-      // [부활 이후 도마 미션] 예수님 위치를 매번 안전한 야외 랜덤 좌표로 스폰! + 무릎 높이 파형·파티클 오라 + 양손 못자국 컷신
+      // [부활 이후 도마 미션] 사도 도마 본인이 플레이어를 따라 걸어오고, 미션 완료 후 제자리로 걸어 귀가!
+      if (evSpot.npcMesh) {
+        reclaimReturningNpc(evSpot.npcMesh);
+        const origParent = evSpot.npcMesh.parent;
+        const origLocalPos = evSpot.npcMesh.position.clone();
+        const origRotY = evSpot.npcMesh.rotation.y;
+        const wp = new THREE.Vector3();
+        if (typeof evSpot.npcMesh.getWorldPosition === 'function') evSpot.npcMesh.getWorldPosition(wp);
+        else wp.set(evSpot.x, getMiracleOpenWorldGroundHeight(evSpot.x, evSpot.z), evSpot.z);
+        worldGroup.add(evSpot.npcMesh);
+        evSpot.npcMesh.position.set(wp.x, getMiracleOpenWorldGroundHeight(wp.x, wp.z), wp.z);
+        evSpot.npcMesh.visible = true;
+        miracleActiveFieldEvent.thomasFollower = {
+          mesh: evSpot.npcMesh,
+          origParent,
+          origLocalPos,
+          origRotY,
+          homeWorldX: evSpot.x,
+          homeWorldZ: evSpot.z,
+          speed: 7.4,
+          curHeading: evSpot.npcMesh.rotation.y || 0,
+          phase: 0.7,
+          navPath: null,
+          navPathIdx: 0
+        };
+        miracleActiveFieldEvent.reusedEscortNpcs = [{
+          mesh: evSpot.npcMesh,
+          origParent,
+          origLocalPos,
+          origRotY,
+          homeWorldX: evSpot.x,
+          homeWorldZ: evSpot.z
+        }];
+      }
+
+      // 예수님 위치를 매번 안전한 야외 랜덤 좌표로 스폰! + 무릎 높이 파형·파티클 오라 + 양손 못자국 컷신
       if (evSpot.randomJesusSpawn) {
         const tPos = findSafeOpenWorldOutdoorPos({
           cx: -14.5, cz: 56,
@@ -4813,7 +4849,7 @@ function startMiracleFieldEvent(evSpot) {
       };
       miracleWorldMissionObjects.push(targetObj);
       miracleActiveFieldEvent.targetZone = targetObj;
-      showToast('✨ 마을 어딘가에 나타나신 부활의 예수님을 찾아 손의 못자국을 확인해 보세요!');
+      showToast('✨ 도마가 뒤를 따라옵니다! 마을 어딘가에 나타나신 부활의 예수님을 찾아 손의 못자국을 확인해 보세요!');
     } else {
       const fGrp = new THREE.Group();
       const targetPerson = createLowPolyPersonMesh(evSpot.targetPreset || evSpot.npcPreset || 'disciple', 5);
@@ -5414,6 +5450,9 @@ function updateMiracleFieldEventFrame(dt, now) {
     if (fe.cutsceneTimer > 4.8) {
       fe.cutsceneActive = false;
       fe.cutsceneCameraActive = false;
+      if (fe.thomasFollower && fe.thomasFollower.mesh) {
+        fe.thomasFollower.mesh.visible = true;
+      }
       finishMiracleFieldEvent(evSpot);
       return;
     }
@@ -5846,6 +5885,25 @@ function updateMiracleFieldEventFrame(dt, now) {
       u.frLeg.rotation.x = -sw; u.blLeg.rotation.x = -sw;
     }
   } else if (fe.type === 'find_observe') {
+    // [부활 이후 도마 미션] 사도 도마가 플레이어를 따라 이동 (가까이 있으면 멈춰서 플레이어를 바라봄)
+    if (fe.thomasFollower && fe.thomasFollower.mesh && !fe.cutsceneActive) {
+      const tf = fe.thomasFollower;
+      const tm = tf.mesh;
+      tm.visible = true;
+      const distToPlayer = Math.hypot(playerPos.x - tm.position.x, playerPos.z - tm.position.z);
+      if (distToPlayer > 2.25) {
+        tf.speed = distToPlayer > 7.0 ? 8.2 : 6.4;
+        stepMiracleNpcTowardTarget(tf, playerPos.x, playerPos.z, dt, now);
+      } else {
+        const faceAng = Math.atan2(playerPos.x - tm.position.x, playerPos.z - tm.position.z);
+        tf.curHeading = lerpAngle(tf.curHeading || 0, faceAng, Math.min(1, dt * 8.0));
+        tm.rotation.y = tf.curHeading;
+        const tu = tm.userData || {};
+        if (tu.lLeg && tu.rLeg) { tu.lLeg.rotation.x = 0; tu.rLeg.rotation.x = 0; }
+        if (tu.lArm && tu.rArm) { tu.lArm.rotation.x = 0; tu.rArm.rotation.x = 0; }
+      }
+    }
+
     if (fe.targetZone) {
       const tz = fe.targetZone;
       const distPerch = Math.hypot(playerPos.x - tz.pos.x, playerPos.z - tz.pos.z);
@@ -5888,6 +5946,14 @@ function updateMiracleFieldEventFrame(dt, now) {
 
         if (evSpot.thomasCutscene && !fe.cutsceneActive) {
           // 부활하신 예수님과 도마 — 양손 못자국 확인 컷신 시작!
+          // (컷신 중 중복 표시 방지: 따라온 도마를 예수님 앞 위치에 대기시키고 임시 숨김, 컷신 종료 후 여기서 걸어 귀가!)
+          if (fe.thomasFollower && fe.thomasFollower.mesh) {
+            const tm = fe.thomasFollower.mesh;
+            const tx0 = tz.mesh.position.x;
+            const tz0 = tz.mesh.position.z + 1.35;
+            tm.position.set(tx0, getMiracleOpenWorldGroundHeight(tx0, tz0), tz0);
+            tm.visible = false;
+          }
           fe.cutsceneActive = true;
           fe.cutsceneCameraActive = true;
           fe.cutsceneType = 'thomas_wounds';

@@ -5,7 +5,7 @@
 // =========================================================================
 
 window.__GAME_BUILD_VERSIONS__ = window.__GAME_BUILD_VERSIONS__ || {};
-window.__GAME_BUILD_VERSIONS__.core = '20261122_v19';
+window.__GAME_BUILD_VERSIONS__.core = '20261122_v20';
 
 // 퀴즈 선택지 순서 무작위 셔플 공용 헬퍼 (정답이 항상 1번에 고정되지 않도록 보장)
 function shuffleQuizOptions(opts, ansIdx = 0) {
@@ -20,6 +20,7 @@ function shuffleQuizOptions(opts, ansIdx = 0) {
 }
 
 let audioCtx = null, bgmTimeout = null, bgmEnabled = true, bgmStep = 0;
+let bgmPausedByBackground = false;
 let isMenuBgmActive = false;
 let currentEpisode = 'noah'; // 'noah' | 'exodus' | 'david' | 'miracle'
 const EPISODE_SCRIPTURE = {};
@@ -28,6 +29,7 @@ let lastSpokenStageKey = '';
 
 // 현재 진행 중인 플레이에서 엔딩 인증서를 출력할 수 있는지 여부 (1차 시도 정규 클리어 시에만 true)
 let currentRunCanIssueCert = false;
+let certShownInCurrentRun = false;
 let enteredFromMapStageSelect = false;
 
 // =========================================================================
@@ -68,7 +70,10 @@ function getAudioCtx() {
     const AC = window.AudioContext || window.webkitAudioContext;
     if (AC) audioCtx = new AC();
   }
-  if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+  const isDocHidden = (typeof document !== 'undefined' && Boolean(document.hidden));
+  if (audioCtx && audioCtx.state === 'suspended' && !isDocHidden) {
+    try { audioCtx.resume(); } catch (e) {}
+  }
   return audioCtx;
 }
 
@@ -76,6 +81,36 @@ function playSfx(type) {
   const ctx = getAudioCtx();
   if (!ctx) return;
   const now = ctx.currentTime;
+
+  // [모험의 증표 인증 카드 등장 전용] 화려하게 빛나며 등장하는 "빠밤~!" 팡파레 효과음
+  if (type === 'card_reveal') {
+    const playTone = (freq, startOffset, dur, wave, vol) => {
+      const osc = ctx.createOscillator(), g = ctx.createGain();
+      const st = now + startOffset;
+      osc.type = wave;
+      osc.frequency.setValueAtTime(freq, st);
+      g.gain.setValueAtTime(0.001, st);
+      g.gain.linearRampToValueAtTime(vol, st + 0.018);
+      g.gain.exponentialRampToValueAtTime(0.001, st + dur);
+      osc.connect(g); g.connect(ctx.destination);
+      osc.start(st); osc.stop(st + dur + 0.02);
+    };
+    // "빠-" (힘찬 1타 팡파레 화음)
+    playTone(392.0, 0.00, 0.14, 'triangle', 0.18);
+    playTone(523.25, 0.00, 0.14, 'sawtooth', 0.10);
+    playTone(659.25, 0.00, 0.14, 'triangle', 0.14);
+    // "-밤~!" (웅장하게 퍼지는 장조 해결 화음)
+    playTone(523.25, 0.14, 0.62, 'triangle', 0.20);
+    playTone(659.25, 0.14, 0.62, 'triangle', 0.16);
+    playTone(783.99, 0.14, 0.62, 'sawtooth', 0.11);
+    playTone(1046.5, 0.15, 0.68, 'triangle', 0.22);
+    // 반짝이는 빛무리 차임 아르페지오
+    playTone(1318.5, 0.28, 0.22, 'sine', 0.12);
+    playTone(1568.0, 0.36, 0.26, 'sine', 0.12);
+    playTone(2093.0, 0.45, 0.36, 'sine', 0.14);
+    return;
+  }
+
   const epPlugin = getActiveEpisodePlugin();
   const customSfx = (epPlugin && epPlugin.customSfx && epPlugin.customSfx[type]) ? epPlugin.customSfx[type] : null;
 
@@ -274,7 +309,7 @@ const EXODUS_BGM_STYLE = {
 function midiToFreq(m) { return 440 * Math.pow(2, (m - 69) / 12); }
 
 function scheduleNextBgmBeat() {
-  if (!bgmEnabled) return;
+  if (!bgmEnabled || bgmPausedByBackground || (typeof document !== 'undefined' && document.hidden)) return;
   const ctx = getAudioCtx();
 
   if (isMenuBgmActive && !isPlaying) {
@@ -482,6 +517,81 @@ function stopStageBgm() {
   }
 }
 
+let _coreBgmVisibilityBound = false;
+function bindCoreBgmVisibilityHandlers() {
+  if (_coreBgmVisibilityBound) return;
+  _coreBgmVisibilityBound = true;
+
+  const pauseCoreBgmForBackground = () => {
+    const shouldResumeLater = Boolean(bgmEnabled && (isPlaying || isMenuBgmActive));
+    if (bgmTimeout) {
+      clearTimeout(bgmTimeout);
+      bgmTimeout = null;
+    }
+    if (shouldResumeLater) {
+      bgmPausedByBackground = true;
+    }
+    if (audioCtx && audioCtx.state === 'running' && typeof audioCtx.suspend === 'function') {
+      try { audioCtx.suspend().catch(() => {}); } catch (e) {}
+    }
+  };
+
+  const resumeCoreBgmFromBackground = () => {
+    if (typeof document !== 'undefined' && document.hidden) return;
+    if (!bgmPausedByBackground) return;
+    bgmPausedByBackground = false;
+    if (!bgmEnabled) return;
+    if (audioCtx && audioCtx.state === 'suspended' && typeof audioCtx.resume === 'function') {
+      try { audioCtx.resume().catch(() => {}); } catch (e) {}
+    }
+    if ((isPlaying || isMenuBgmActive) && !bgmTimeout && !window.__ep4OpeningVideoActive) {
+      scheduleNextBgmBeat();
+    }
+  };
+
+  if (typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) pauseCoreBgmForBackground();
+      else resumeCoreBgmFromBackground();
+    });
+  }
+  if (typeof window !== 'undefined') {
+    window.addEventListener('pagehide', pauseCoreBgmForBackground);
+    window.addEventListener('blur', () => {
+      if (typeof document !== 'undefined' && document.hidden) pauseCoreBgmForBackground();
+    });
+    window.addEventListener('pageshow', resumeCoreBgmFromBackground);
+    window.addEventListener('focus', resumeCoreBgmFromBackground);
+  }
+}
+bindCoreBgmVisibilityHandlers();
+
+// 탐험수첩·퀴즈·인증서·모험의 증표 등 오버레이 모달이 열렸을 때 조이스틱·점프·카메라 버튼을 확실히 숨겨 최상위 레이어 보장
+function syncOverlayModalBodyClass() {
+  if (typeof document === 'undefined' || !document.body) return false;
+  const fullModalIds = [
+    'miracle-notebook-modal',
+    'stage-modal',
+    'retry-modal',
+    'ending-modal',
+    'adventure-badges-modal',
+    'ending-map-choice-modal'
+  ];
+  let anyOpen = fullModalIds.some(id => {
+    const el = document.getElementById(id);
+    return Boolean(el && !el.classList.contains('hidden'));
+  });
+  if (!anyOpen) {
+    const dlg = document.getElementById('miracle-dialog-overlay');
+    if (dlg && !dlg.classList.contains('hidden') && dlg.classList.contains('is-quiz-overlay')) {
+      anyOpen = true;
+    }
+  }
+  document.body.classList.toggle('overlay-modal-open', anyOpen);
+  return anyOpen;
+}
+window.syncOverlayModalBodyClass = syncOverlayModalBodyClass;
+
 function syncHudMenuInfo() {
   const playerTag = document.getElementById('hud-player-tag');
   if (playerTag) {
@@ -490,6 +600,10 @@ function syncHudMenuInfo() {
   const levelBadge = document.getElementById('hud-level-badge');
   if (levelBadge && typeof MODE_META !== 'undefined' && MODE_META[currentMode]) {
     levelBadge.textContent = MODE_META[currentMode].badge;
+  }
+  const badgesCountEl = document.getElementById('hud-badges-count');
+  if (badgesCountEl && typeof getCollectedAdventureCertCount === 'function') {
+    badgesCountEl.textContent = `${getCollectedAdventureCertCount()} / ${EPISODE_ORDER.length}`;
   }
   const bgmBtn = document.getElementById('bgm-btn');
   if (bgmBtn) {
@@ -1005,9 +1119,18 @@ function buildUiTutorialSteps(isManual = false) {
     steps.push({
       id: 'hud-menu-btn',
       title: '☰ 메뉴 버튼',
-      desc: '내 이름이 적힌 메뉴 버튼을 누르면 현재 맵·레벨 확인, 월드맵 이동, 화면안내, 음악 끄기·전체화면을 열 수 있어요!',
+      desc: '내 이름이 적힌 메뉴 버튼을 누르면 현재 맵·레벨 확인, 월드맵 이동, 모험의 증표, 화면안내, 음악 끄기·전체화면을 열 수 있어요!',
       shape: 'pill'
     });
+    if (document.getElementById('hud-badges-btn')) {
+      steps.push({
+        id: 'hud-badges-btn',
+        openMenu: true,
+        title: '🏅 모험의 증표',
+        desc: '에피소드마다 완주해 모은 입체 인증 카드를 횡스크롤로 모아볼 수 있어요! 카드를 터치하면 앞면 그림과 뒷면 인증서·누적 클리어 레벨이 뒤집혀 보입니다.',
+        shape: 'pill'
+      });
+    }
   }
 
   if (_isTutorialTargetVisible('hud-progress-box')) {
@@ -1191,6 +1314,10 @@ function renderUiTutorialStep() {
     return;
   }
 
+  if (typeof setHudMenuOpen === 'function') {
+    setHudMenuOpen(Boolean(step.openMenu));
+  }
+
   const badgeEl = document.getElementById('ui-tut-badge');
   const titleEl = document.getElementById('ui-tut-title');
   const descEl = document.getElementById('ui-tut-desc');
@@ -1217,6 +1344,9 @@ function renderUiTutorialStep() {
 
   positionUiTutorialStep();
   setTimeout(positionUiTutorialStep, 30);
+  if (step.openMenu) {
+    setTimeout(positionUiTutorialStep, 210);
+  }
 }
 
 function openInterfaceTutorial(opts = {}) {
@@ -1296,6 +1426,10 @@ function closeUiTutorial(resumeGame = true) {
   UiTutorialState.idx = 0;
   UiTutorialState.isAutoStart = false;
   window.isUiTutorialActive = false;
+
+  if (typeof setHudMenuOpen === 'function') {
+    setHudMenuOpen(false);
+  }
 
   const overlay = document.getElementById('ui-tutorial-overlay');
   if (overlay) overlay.classList.add('hidden');
@@ -1553,6 +1687,231 @@ function isEffectiveSeniorMode(ep = currentEpisode, mode = currentMode) {
 }
 window.isEffectiveSeniorMode = isEffectiveSeniorMode;
 
+const MODE_CLEAR_ORDER = ['kinder', 'junior', 'senior', 'timeattack'];
+
+const EPISODE_CARD_META = {
+  noah: {
+    epNum: 1,
+    epLabel: 'EPISODE 01',
+    icon: '🛶',
+    shortTitle: '노아의 방주',
+    subtitle: '무지개 언약의 새 세상',
+    badge: '🌈 에피소드 1 : 노아의 방주 완주!',
+    title: '무지개 언약의 새 세상!',
+    verse: '"내가 내 무지개를 구름 속에 두었나니 이것이 나와 세상 사이의 언약의 증거니라" (창세기 9:13)',
+    mission: '노아의 방주 3단계 탐험 완주',
+    prefix: 'ARK-',
+    silhouetteHint: '방주와 동물 친구들, 무지개 언약의 이야기',
+    gradTop: '#0ea5e9',
+    gradBot: '#15803d',
+    accentHex: '#f59e0b'
+  },
+  exodus: {
+    epNum: 2,
+    epLabel: 'EPISODE 02',
+    icon: '🌊',
+    shortTitle: '출애굽과 시내산',
+    subtitle: '갈라진 홍해와 십계명 언약',
+    badge: '🌊 에피소드 2 : 출애굽과 시내산 십계명 완주!',
+    title: '홍해를 건너 시내산 언약의 백성으로!',
+    verse: '"너희가 내 말을 잘 듣고 내 언약을 지키면 너희는 모든 민족 중에서 내 소유가 되겠고" (출애굽기 19:5)',
+    mission: '홍해 도하 및 시내산 십계명 수직 등반 완주',
+    prefix: 'EXO-',
+    silhouetteHint: '갈라진 홍해 바다와 시내산 십계명 돌판',
+    gradTop: '#1d4ed8',
+    gradBot: '#0f172a',
+    accentHex: '#38bdf8'
+  },
+  david: {
+    epNum: 3,
+    epLabel: 'EPISODE 03',
+    icon: '👑',
+    shortTitle: '다윗과 골리앗',
+    subtitle: '믿음의 목동에서 이스라엘 왕으로',
+    badge: '👑 에피소드 3 : 믿음의 목동 다윗왕 완주!',
+    title: '양을 지키던 목동에서 백성을 섬기는 왕으로!',
+    verse: '"보라 날이 이르리니 내가 다윗에게 한 의로운 가지를 일으킬 것이라 그가 왕이 되어 지혜롭게 다스리며" (예레미야 23:5)',
+    mission: '베들레헴 양 떼 수호, 엘라 골짜기 승리 및 다윗성 백성 섬김 완주',
+    prefix: 'DAV-',
+    silhouetteHint: '청동 갑옷 거인과 물맷돌, 황금 왕관의 이야기',
+    gradTop: '#b45309',
+    gradBot: '#451a03',
+    accentHex: '#facc15'
+  },
+  miracle: {
+    epNum: 4,
+    epLabel: 'EPISODE 04',
+    icon: '🕊️',
+    shortTitle: '예수님의 기적',
+    subtitle: '갈릴리에서 감람산 승천까지',
+    badge: '🕊️ 에피소드 4 : 예수님의 기적과 부활·재림 언약 완주!',
+    title: '갈릴리에서 감람산까지, 다시 오실 예수님을 기다려요!',
+    verse: '"하늘로 올려지신 이 예수는 하늘로 가심을 본 그대로 오시리라" (사도행전 1:11)',
+    mission: '갈릴리 바다·오병이어·십자가의 길·빈 무덤 부활 및 복음서 오픈월드 완주',
+    prefix: 'JES-',
+    silhouetteHint: '예수님과 제자들이 함께한 기적과 부활의 여정',
+    gradTop: '#2563eb',
+    gradBot: '#065f46',
+    accentHex: '#fde047'
+  }
+};
+
+function getEpisodeCardMeta(epKey) {
+  const base = EPISODE_CARD_META[epKey] || EPISODE_CARD_META.noah;
+  const plugin = EPISODE_REGISTRY[epKey];
+  if (plugin && plugin.certMeta) {
+    return Object.assign({}, base, plugin.certMeta);
+  }
+  return base;
+}
+
+let adventureCertsData = {};
+
+function getAdventureCertsStorageKey(uniquePlayerId) {
+  return 'bible_adventure_certs_v1_' + (uniquePlayerId || 'guest');
+}
+
+function formatAdventureCertDate(dateObj = new Date()) {
+  const y = dateObj.getFullYear();
+  const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+  const d = String(dateObj.getDate()).padStart(2, '0');
+  return `${y}.${m}.${d}`;
+}
+
+function normalizeClearedModesList(list) {
+  const set = new Set();
+  (Array.isArray(list) ? list : []).forEach(m => {
+    if (MODE_META[m]) set.add(m);
+  });
+  return MODE_CLEAR_ORDER.filter(m => set.has(m));
+}
+
+function mapModeTextToKey(rawText) {
+  const s = String(rawText || '').trim().toLowerCase();
+  if (!s) return '';
+  if (s === 'kinder' || s.includes('유치')) return 'kinder';
+  if (s === 'junior' || s.includes('유년')) return 'junior';
+  if (s === 'senior' || s.includes('소년')) return 'senior';
+  if (s === 'timeattack' || s.includes('타임')) return 'timeattack';
+  return '';
+}
+
+function getCollectedAdventureCertCount() {
+  return EPISODE_ORDER.filter(ep => Boolean(adventureCertsData[ep])).length;
+}
+window.getCollectedAdventureCertCount = getCollectedAdventureCertCount;
+
+function saveAdventureCerts(uniquePlayerId) {
+  try {
+    localStorage.setItem(getAdventureCertsStorageKey(uniquePlayerId || explorerName), JSON.stringify(adventureCertsData));
+  } catch (e) {}
+}
+
+function loadAdventureCerts(uniquePlayerId) {
+  adventureCertsData = {};
+  const pid = uniquePlayerId || explorerName || 'guest';
+  try {
+    const raw = localStorage.getItem(getAdventureCertsStorageKey(pid));
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      EPISODE_ORDER.forEach(ep => {
+        const entry = parsed && parsed[ep];
+        if (entry && entry.code) {
+          adventureCertsData[ep] = {
+            epId: ep,
+            code: String(entry.code),
+            playerName: String(entry.playerName || explorerName || '믿음의용사'),
+            issuedAt: String(entry.issuedAt || formatAdventureCertDate()),
+            updatedAt: String(entry.updatedAt || entry.issuedAt || formatAdventureCertDate()),
+            clearedModes: normalizeClearedModesList(entry.clearedModes)
+          };
+        }
+      });
+    }
+  } catch (e) {}
+
+  // 기존 v19 이전 클리어 기록(playerProgressData[ep].certIssued)이 있는 대원의 인증서 자동 승계
+  let backfilled = false;
+  EPISODE_ORDER.forEach(ep => {
+    const prog = playerProgressData[ep];
+    if (prog && prog.certIssued && !adventureCertsData[ep]) {
+      const meta = getEpisodeCardMeta(ep);
+      const todayStr = formatAdventureCertDate();
+      adventureCertsData[ep] = {
+        epId: ep,
+        code: meta.prefix + Math.floor(100 + Math.random() * 900),
+        playerName: explorerName || explorerDisplayName || '믿음의용사',
+        issuedAt: todayStr,
+        updatedAt: todayStr,
+        clearedModes: normalizeClearedModesList([currentMode || 'junior'])
+      };
+      backfilled = true;
+    }
+  });
+  if (backfilled) {
+    saveAdventureCerts(pid);
+  }
+  if (typeof syncHudMenuInfo === 'function') syncHudMenuInfo();
+  return adventureCertsData;
+}
+
+// 에피소드당 인증서 1장만 발급·보존하고, 다른 레벨을 추가 클리어할 때 해당 레벨을 누적 표기
+function upsertEpisodeAdventureCert(epKey, modeKey = currentMode, preferredCode = null) {
+  if (!EPISODE_ORDER.includes(epKey)) return null;
+  const meta = getEpisodeCardMeta(epKey);
+  const validMode = MODE_META[modeKey] ? modeKey : (MODE_META[currentMode] ? currentMode : 'junior');
+  const todayStr = formatAdventureCertDate();
+  const displayName = explorerName || explorerDisplayName || '믿음의용사';
+
+  const existing = adventureCertsData[epKey];
+  if (!existing) {
+    const code = (preferredCode && preferredCode !== '-' && preferredCode.length >= 4)
+      ? String(preferredCode)
+      : (meta.prefix + Math.floor(100 + Math.random() * 900));
+    const cert = {
+      epId: epKey,
+      code,
+      playerName: displayName,
+      issuedAt: todayStr,
+      updatedAt: todayStr,
+      clearedModes: [validMode]
+    };
+    adventureCertsData[epKey] = cert;
+    saveAdventureCerts(explorerName);
+    if (typeof syncHudMenuInfo === 'function') syncHudMenuInfo();
+    return { cert, isNewCert: true, isNewLevel: true };
+  }
+
+  const prevModes = normalizeClearedModesList(existing.clearedModes);
+  const isNewLevel = !prevModes.includes(validMode);
+  existing.clearedModes = normalizeClearedModesList(prevModes.concat([validMode]));
+  existing.playerName = displayName;
+  existing.updatedAt = todayStr;
+  if ((!existing.code || existing.code === '-') && preferredCode && preferredCode !== '-') {
+    existing.code = String(preferredCode);
+  }
+  saveAdventureCerts(explorerName);
+  if (typeof syncHudMenuInfo === 'function') syncHudMenuInfo();
+  return { cert: existing, isNewCert: false, isNewLevel };
+}
+window.upsertEpisodeAdventureCert = upsertEpisodeAdventureCert;
+
+function renderClearedLevelPillsHTML(clearedModes) {
+  const list = normalizeClearedModesList(clearedModes);
+  const effective = list.length ? list : [MODE_META[currentMode] ? currentMode : 'junior'];
+  const pillStyleMap = {
+    kinder: 'bg-pink-100 text-pink-900 border-pink-300',
+    junior: 'bg-emerald-100 text-emerald-900 border-emerald-300',
+    senior: 'bg-indigo-100 text-indigo-900 border-indigo-300',
+    timeattack: 'bg-amber-100 text-amber-950 border-amber-400'
+  };
+  return effective.map(mk => {
+    const label = MODE_META[mk] ? MODE_META[mk].badge : mk;
+    const cls = pillStyleMap[mk] || 'bg-slate-100 text-slate-800 border-slate-300';
+    return `<span class="inline-flex items-center px-1.5 py-0.5 rounded-full border font-jua text-[9.5px] leading-none ${cls}">${label}</span>`;
+  }).join('');
+}
+
 let playerProgressData = {
   noah:    { maxClearedStage: 0, completed: false, certIssued: false, attempts: 0 },
   exodus:  { maxClearedStage: 0, completed: false, certIssued: false, attempts: 0 },
@@ -1585,6 +1944,7 @@ function loadLocalPlayerProgress(uniquePlayerId) {
       });
     }
   } catch (e) {}
+  loadAdventureCerts(uniquePlayerId);
 }
 
 function saveLocalPlayerProgress(uniquePlayerId) {
@@ -1605,17 +1965,28 @@ function recordPlayerStageClear(epKey, stageNum) {
   }
   if (stageNum >= 4) {
     playerProgressData[epKey].certIssued = true;
+    upsertEpisodeAdventureCert(epKey, currentMode);
   }
   saveLocalPlayerProgress(explorerName);
   updateWorldMapEpisodePinsUI();
 }
 
-// 현재 플레이에서 인증서 출력이 허용되는지 확인 (맵에서 엔딩 재선택이 아니고, 최초 1차 시도일 때만 true)
+// 현재 플레이에서 인증서 출력이 허용되는지 확인
+// (맵에서 엔딩 재선택이 아니고, 최초 완주이거나 아직 기록되지 않은 새 레벨로 추가 완주했을 때 true)
 function canShowCertificateForCurrentRun() {
   if (enteredFromMapStageSelect) return false;
+  if (!currentRunCanIssueCert) return false;
+  const existingCert = adventureCertsData[currentEpisode];
+  if (existingCert) {
+    const modes = normalizeClearedModesList(existingCert.clearedModes);
+    if (MODE_META[currentMode] && !modes.includes(currentMode)) {
+      return true;
+    }
+    return false;
+  }
   const prog = playerProgressData[currentEpisode];
   if (prog && prog.certIssued) return false;
-  return Boolean(currentRunCanIssueCert);
+  return true;
 }
 
 // [전체 에피소드 공통 요청사항] 2회차/재선택 엔딩에서 제단이나 왕좌에 다가가면 인증서 대신 열리는 [월드맵으로 가기] 선택창
@@ -1635,6 +2006,9 @@ function ensureEndingWorldMapChoiceModal() {
         <div class="flex flex-col gap-2">
           <button id="ending-choice-openworld-btn" type="button" onclick="closeEndingWorldMapChoiceModal(); if (typeof returnToMiracleOpenWorld === 'function') returnToMiracleOpenWorld();" class="hidden mc-btn w-full py-2.5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-white font-jua text-base">
             🌿 오픈월드로 돌아가기 (미션·수첩 채우기)
+          </button>
+          <button type="button" onclick="closeEndingWorldMapChoiceModal(); openAdventureBadgesModal();" class="mc-btn w-full py-2.5 rounded-2xl bg-gradient-to-r from-amber-300 via-yellow-300 to-amber-400 hover:brightness-105 text-amber-950 font-jua text-sm sm:text-base">
+            🏅 모험의 증표 카드첩 보기
           </button>
           <button type="button" onclick="closeEndingWorldMapChoiceModal(); openScreen('screen-map');" class="mc-btn w-full py-2.5 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-jua text-base">
             🗺️ 월드맵으로 이동하기
@@ -1682,6 +2056,7 @@ function showEndingWorldMapChoiceModal() {
   playSfx('switch');
   modal.classList.remove('hidden');
   modal.classList.add('flex');
+  syncOverlayModalBodyClass();
 }
 
 function closeEndingWorldMapChoiceModal(showLookAroundToast = false) {
@@ -1690,6 +2065,7 @@ function closeEndingWorldMapChoiceModal(showLookAroundToast = false) {
     modal.classList.add('hidden');
     modal.classList.remove('flex');
   }
+  syncOverlayModalBodyClass();
   if (showLookAroundToast) {
     const landmarkWord = (currentEpisode === 'exodus')
       ? '십계명으로'
@@ -1726,6 +2102,7 @@ async function syncPlayerProgressFromSheet() {
       const statusStr = String(row.status || '');
       const stNum = parseInt(row.stage || 0, 10);
       const certStr = String(row.certCode || '-').trim();
+      const rowModeKey = mapModeTextToKey(row.mode || row.dept || row.level || '');
 
       if (statusStr.includes('게임시작') || statusStr.includes('재도전') || statusStr.includes('바로진입')) {
         sheetAttemptCounts[ep] = (sheetAttemptCounts[ep] || 0) + 1;
@@ -1738,6 +2115,7 @@ async function syncPlayerProgressFromSheet() {
           playerProgressData[ep].certIssued = true;
           updated = true;
         }
+        upsertEpisodeAdventureCert(ep, rowModeKey || currentMode || 'junior', certStr);
       } else if (statusStr.includes('클리어') && stNum >= 1 && stNum <= 3) {
         if (stNum > playerProgressData[ep].maxClearedStage) {
           playerProgressData[ep].maxClearedStage = stNum;
@@ -2247,6 +2625,9 @@ function openScreen(screenId) {
   setHudMenuOpen(false);
   closeUiTutorial(false);
   hideMissionGuideBubbleImmediately();
+  if (typeof clearEndingCardFlipTimer === 'function') clearEndingCardFlipTimer();
+  const badgesModal = document.getElementById('adventure-badges-modal');
+  if (badgesModal) { badgesModal.classList.add('hidden'); badgesModal.classList.remove('flex'); }
 
   ['screen-opening', 'screen-class', 'screen-map'].forEach(id => {
     const el = document.getElementById(id);
@@ -2297,6 +2678,7 @@ function openScreen(screenId) {
       stopStageBgm();
     }
   }
+  syncOverlayModalBodyClass();
 }
 
 function goToClassSelect() {
@@ -4129,8 +4511,15 @@ function startVoxelGame(mode, targetStage = 1, fromMapSelect = false) {
   isMenuBgmActive = false;
   currentMode = mode; currentStage = targetStage; isPlaying = true;
   lastSpokenStageKey = '';
+  certShownInCurrentRun = false;
+  if (typeof clearEndingCardFlipTimer === 'function') clearEndingCardFlipTimer();
   delete document.getElementById('cert-code').dataset.generated;
+  ['ending-modal', 'adventure-badges-modal', 'stage-modal', 'retry-modal'].forEach(mid => {
+    const mel = document.getElementById(mid);
+    if (mel) { mel.classList.add('hidden'); mel.classList.remove('flex'); }
+  });
   closeEndingWorldMapChoiceModal();
+  syncOverlayModalBodyClass();
 
   if (!playerProgressData[currentEpisode]) {
     playerProgressData[currentEpisode] = { maxClearedStage: 0, completed: false, certIssued: false, attempts: 0 };
@@ -4147,12 +4536,22 @@ function startVoxelGame(mode, targetStage = 1, fromMapSelect = false) {
     (epProg.maxClearedStage || 0) === 0
   );
 
-  if (
+  const existingEpCert = adventureCertsData[currentEpisode];
+  const isNewLevelFullRun = Boolean(
     !enteredFromMapStageSelect &&
     targetStage === 1 &&
-    (epProg.attempts || 0) === 0 &&
-    !epProg.certIssued &&
-    !epProg.completed
+    existingEpCert &&
+    MODE_META[mode] &&
+    !normalizeClearedModesList(existingEpCert.clearedModes).includes(mode)
+  );
+
+  if (
+    (!enteredFromMapStageSelect &&
+      targetStage === 1 &&
+      (epProg.attempts || 0) === 0 &&
+      !epProg.certIssued &&
+      !epProg.completed) ||
+    isNewLevelFullRun
   ) {
     currentRunCanIssueCert = true;
   } else {
@@ -4282,6 +4681,7 @@ function openTimeAttackRetryModal() {
   document.getElementById('retry-modal-desc').innerHTML = '아쉽게도 제한 시간 안에 미션을 완료하지 못했어요.<br/>다시 한 번 힘을 내서 도전해 볼까요?';
   const rm = document.getElementById('retry-modal');
   rm.classList.remove('hidden'); rm.classList.add('flex');
+  syncOverlayModalBodyClass();
 }
 
 function openSoldierCaughtRetryModal() {
@@ -4294,11 +4694,13 @@ function openSoldierCaughtRetryModal() {
   document.getElementById('retry-modal-desc').innerHTML = '바위와 산호초는 점프(🦘)로 뛰어넘고,<br/>물구덩이는 좌우로 피해서 빠르게 달려보세요!';
   const rm = document.getElementById('retry-modal');
   rm.classList.remove('hidden'); rm.classList.add('flex');
+  syncOverlayModalBodyClass();
 }
 
 function retryCurrentStage() {
   const rm = document.getElementById('retry-modal');
   rm.classList.add('hidden'); rm.classList.remove('flex');
+  syncOverlayModalBodyClass();
   lastSpokenStageKey = '';
   MiracleGuideUI.lastAutoKey = '';
   hideMissionGuideBubbleImmediately();
@@ -4591,6 +4993,7 @@ function openStageClearModal(st) {
   }
   const modal = document.getElementById('stage-modal');
   modal.classList.remove('hidden'); modal.classList.add('flex');
+  syncOverlayModalBodyClass();
 
   sendGameLogToSheet(`🎉 스테이지${st} 클리어`, st, '-');
 }
@@ -4598,6 +5001,7 @@ function openStageClearModal(st) {
 function proceedNextStage() {
   const modal = document.getElementById('stage-modal');
   modal.classList.add('hidden'); modal.classList.remove('flex');
+  syncOverlayModalBodyClass();
   setHudMenuOpen(false);
   hideMissionGuideBubbleImmediately();
 
@@ -4773,61 +5177,764 @@ function triggerContextAction() {
   }
 }
 
+// =========================================================================
+// [공통: 모험의 증표] 인게임 3D 그래픽 활용 에피소드 카드 앞면 일러스트 렌더러
+// =========================================================================
+window.__certCardArtCache = window.__certCardArtCache || {};
+let _endingCardAutoFlipTimer = null;
+let _lastSentCertSheetKey = '';
+
+function clearEndingCardFlipTimer() {
+  if (_endingCardAutoFlipTimer) {
+    clearTimeout(_endingCardAutoFlipTimer);
+    _endingCardAutoFlipTimer = null;
+  }
+}
+
+function _buildEpisodeCardDioramaScene(epId) {
+  const cardScene = new THREE.Scene();
+  const cardCam = new THREE.PerspectiveCamera(42, 360 / 480, 0.1, 120);
+
+  const amb = new THREE.AmbientLight(0xffffff, 0.78);
+  const hemi = new THREE.HemisphereLight(0xfef9c3, 0x334155, 0.52);
+  const sun = new THREE.DirectionalLight(0xfff7ed, 1.05);
+  sun.position.set(6, 12, 9);
+  const rim = new THREE.DirectionalLight(0xfde047, 0.45);
+  rim.position.set(-7, 6, -6);
+  cardScene.add(amb, hemi, sun, rim);
+
+  if (epId === 'noah') {
+    cardScene.background = new THREE.Color(0x38bdf8);
+    // 푸른 언덕 & 맑은 물가
+    const hill = new THREE.Mesh(
+      new THREE.CylinderGeometry(8.5, 10.5, 2.2, 24),
+      new THREE.MeshLambertMaterial({ color: 0x4ade80 })
+    );
+    hill.position.set(0, -1.1, 0);
+    cardScene.add(hill);
+
+    // 배경 노아의 방주 선체
+    const arkGrp = new THREE.Group();
+    const hullDark = new THREE.MeshLambertMaterial({ color: 0x78350f });
+    const hullMid = new THREE.MeshLambertMaterial({ color: 0x92400e });
+    const roofMat = new THREE.MeshLambertMaterial({ color: 0xb45309 });
+    const winMat = new THREE.MeshBasicMaterial({ color: 0xfef08a });
+    const hullBase = new THREE.Mesh(new THREE.BoxGeometry(5.8, 1.65, 2.5), hullDark);
+    hullBase.position.set(0, 0.85, 0);
+    const hullUpper = new THREE.Mesh(new THREE.BoxGeometry(6.4, 0.9, 2.7), hullMid);
+    hullUpper.position.set(0, 2.0, 0);
+    const cabin = new THREE.Mesh(new THREE.BoxGeometry(3.8, 1.05, 1.85), roofMat);
+    cabin.position.set(0, 2.85, 0);
+    const roofRidge = new THREE.Mesh(new THREE.BoxGeometry(4.2, 0.25, 2.15), hullDark);
+    roofRidge.position.set(0, 3.45, 0);
+    const arkWin = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.45, 0.12), winMat);
+    arkWin.position.set(0, 2.9, 0.94);
+    arkGrp.add(hullBase, hullUpper, cabin, roofRidge, arkWin);
+    arkGrp.position.set(0.15, -0.05, -3.55);
+    arkGrp.rotation.y = 0.24;
+    cardScene.add(arkGrp);
+
+    // 7색 무지개 아치
+    const rainbowColors = [0xef4444, 0xf97316, 0xfacc15, 0x22c55e, 0x3b82f6, 0x6366f1, 0xa855f7];
+    rainbowColors.forEach((col, i) => {
+      const rMesh = new THREE.Mesh(
+        new THREE.TorusGeometry(4.95 - i * 0.18, 0.10, 8, 36, Math.PI),
+        new THREE.MeshBasicMaterial({ color: col })
+      );
+      rMesh.position.set(0, 1.15, -5.6);
+      cardScene.add(rMesh);
+    });
+
+    // 노아 캐릭터 (인게임 3D 모델)
+    const noah = createHeroMesh(false);
+    noah.position.set(-0.22, 0, 0.55);
+    noah.rotation.y = 0.12;
+    if (playerLimbs && playerLimbs.rArm) playerLimbs.rArm.rotation.x = -0.9;
+    cardScene.add(noah);
+
+    // 동물 친구들 (인게임 3D 모델: 기린·사자·양·코끼리)
+    if (typeof createSingleAnimal === 'function') {
+      const giraffe = createSingleAnimal('giraffe');
+      giraffe.position.set(-1.95, 0, -0.55);
+      giraffe.rotation.y = 0.55;
+      giraffe.scale.setScalar(0.88);
+      cardScene.add(giraffe);
+
+      const lion = createSingleAnimal('lion');
+      lion.position.set(1.52, 0, 0.42);
+      lion.rotation.y = -0.45;
+      lion.scale.setScalar(0.86);
+      cardScene.add(lion);
+
+      const sheep = createSingleAnimal('sheep');
+      sheep.position.set(-1.45, 0, 1.55);
+      sheep.rotation.y = 0.35;
+      sheep.scale.setScalar(0.84);
+      cardScene.add(sheep);
+
+      const elephant = createSingleAnimal('elephant');
+      elephant.position.set(1.92, 0, -1.05);
+      elephant.rotation.y = -0.55;
+      elephant.scale.setScalar(0.76);
+      cardScene.add(elephant);
+    }
+
+    // 올리브 잎을 문 비둘기
+    if (typeof createDoveMesh === 'function') {
+      const dove = createDoveMesh(true);
+      dove.position.set(1.25, 3.25, -0.5);
+      dove.rotation.y = -0.65;
+      dove.scale.setScalar(0.95);
+      cardScene.add(dove);
+    }
+
+    cardCam.position.set(0.1, 2.55, 7.2);
+    cardCam.lookAt(0, 1.85, -0.8);
+  } else if (epId === 'exodus') {
+    cardScene.background = new THREE.Color(0x1d4ed8);
+    // 홍해 바닥 황금 모래길
+    const path = new THREE.Mesh(
+      new THREE.BoxGeometry(5.6, 0.6, 16),
+      new THREE.MeshLambertMaterial({ color: 0xeab308 })
+    );
+    path.position.set(0, -0.3, -2.5);
+    cardScene.add(path);
+
+    // 양옆으로 높이 솟은 갈라진 홍해 물벽 & 하얀 파도 거품
+    const seaWallMat = new THREE.MeshLambertMaterial({ color: 0x0284c7, transparent: true, opacity: 0.88 });
+    const seaDeepMat = new THREE.MeshLambertMaterial({ color: 0x0369a1 });
+    const foamMat = new THREE.MeshBasicMaterial({ color: 0xe0f2fe });
+    [-1, 1].forEach(side => {
+      const wall = new THREE.Mesh(new THREE.BoxGeometry(3.2, 5.6, 15), seaWallMat);
+      wall.position.set(side * 3.7, 2.5, -2.8);
+      wall.rotation.z = side * -0.14;
+      cardScene.add(wall);
+
+      const innerWave = new THREE.Mesh(new THREE.CylinderGeometry(1.15, 1.35, 14.5, 10), seaDeepMat);
+      innerWave.rotation.x = Math.PI / 2;
+      innerWave.position.set(side * 2.55, 3.85, -2.8);
+      cardScene.add(innerWave);
+
+      for (let k = 0; k < 6; k++) {
+        const foam = new THREE.Mesh(new THREE.DodecahedronGeometry(0.52, 0), foamMat);
+        foam.position.set(side * (2.15 + (k % 2) * 0.28), 4.75 + (k % 3) * 0.2, 2.2 - k * 1.9);
+        cardScene.add(foam);
+      }
+    });
+
+    // 하나님의 영광 빛기둥
+    const beam = new THREE.Mesh(
+      new THREE.CylinderGeometry(1.35, 2.1, 11, 16, 1, true),
+      new THREE.MeshBasicMaterial({ color: 0xfef08a, transparent: true, opacity: 0.28, side: THREE.DoubleSide })
+    );
+    beam.position.set(0, 4.4, -2.4);
+    cardScene.add(beam);
+
+    // 십계명 두 돌판 (빛나는 황금 계명 각인)
+    const tabletMat = new THREE.MeshLambertMaterial({ color: 0x94a3b8 });
+    const runeMat = new THREE.MeshBasicMaterial({ color: 0xfde047 });
+    [-0.68, 0.68].forEach(tx => {
+      const tab = new THREE.Group();
+      const body = new THREE.Mesh(new THREE.BoxGeometry(1.05, 1.48, 0.22), tabletMat);
+      const arch = new THREE.Mesh(new THREE.CylinderGeometry(0.52, 0.52, 0.22, 14), tabletMat);
+      arch.rotation.x = Math.PI / 2;
+      arch.position.y = 0.72;
+      tab.add(body, arch);
+      for (let ln = 0; ln < 5; ln++) {
+        const line = new THREE.Mesh(new THREE.BoxGeometry(0.66, 0.08, 0.04), runeMat);
+        line.position.set(0, 0.45 - ln * 0.24, 0.12);
+        tab.add(line);
+      }
+      tab.position.set(tx, 3.35, -1.85);
+      tab.rotation.y = tx < 0 ? 0.14 : -0.14;
+      cardScene.add(tab);
+    });
+
+    // 지팡이를 높이 든 모세 (인게임 3D 모델)
+    const moses = createHeroMesh(true);
+    moses.position.set(0, 0, 0.95);
+    if (playerLimbs && playerLimbs.rArm) playerLimbs.rArm.rotation.x = -2.25;
+    if (playerLimbs && playerLimbs.lArm) playerLimbs.lArm.rotation.x = -0.35;
+    cardScene.add(moses);
+
+    cardCam.position.set(0, 2.45, 6.75);
+    cardCam.lookAt(0, 2.05, -0.8);
+  } else if (epId === 'david') {
+    cardScene.background = new THREE.Color(0xd97706);
+    // 엘라 골짜기 햇살 들판과 시냇물
+    const meadow = new THREE.Mesh(
+      new THREE.CylinderGeometry(8.8, 10.5, 2.0, 24),
+      new THREE.MeshLambertMaterial({ color: 0x65a30d })
+    );
+    meadow.position.set(0, -1.0, 0);
+    cardScene.add(meadow);
+
+    const brook = new THREE.Mesh(
+      new THREE.BoxGeometry(1.5, 0.08, 9.0),
+      new THREE.MeshBasicMaterial({ color: 0x38bdf8 })
+    );
+    brook.position.set(-0.2, 0.02, 0.5);
+    brook.rotation.y = 0.25;
+    cardScene.add(brook);
+
+    // 청동 비늘 갑옷과 놋투구 거인 골리앗 (인게임 3D 모델)
+    if (typeof createGiantGoliathMesh === 'function') {
+      const goliath = createGiantGoliathMesh();
+      goliath.scale.setScalar(0.37);
+      goliath.position.set(1.38, 0, -1.45);
+      goliath.rotation.y = -0.36;
+      cardScene.add(goliath);
+    }
+
+    // 믿음의 목동 다윗 (인게임 3D 모델)
+    if (typeof createDavidHeroMesh === 'function') {
+      currentStage = 2;
+      const david = createDavidHeroMesh();
+      david.position.set(-1.12, 0, 1.05);
+      david.rotation.y = 0.34;
+      if (playerLimbs && playerLimbs.rArm) playerLimbs.rArm.rotation.x = -1.65;
+      cardScene.add(david);
+    }
+
+    // 찬란한 황금 왕관 (다윗왕의 상징)
+    const crownGrp = new THREE.Group();
+    const goldMat = new THREE.MeshLambertMaterial({ color: 0xfacc15, emissive: 0x854d0e, emissiveIntensity: 0.35 });
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.66, 0.58, 0.34, 16), goldMat);
+    crownGrp.add(band);
+    for (let i = 0; i < 6; i++) {
+      const ang = (i / 6) * Math.PI * 2;
+      const prong = new THREE.Mesh(new THREE.ConeGeometry(0.17, 0.48, 4), goldMat);
+      prong.position.set(Math.cos(ang) * 0.58, 0.36, Math.sin(ang) * 0.58);
+      crownGrp.add(prong);
+      const jewel = new THREE.Mesh(
+        new THREE.OctahedronGeometry(0.11, 0),
+        new THREE.MeshBasicMaterial({ color: i % 2 === 0 ? 0xef4444 : 0x38bdf8 })
+      );
+      jewel.position.set(Math.cos(ang) * 0.66, 0.0, Math.sin(ang) * 0.66);
+      crownGrp.add(jewel);
+    }
+    const crownHalo = new THREE.Mesh(
+      new THREE.RingGeometry(0.72, 1.08, 24),
+      new THREE.MeshBasicMaterial({ color: 0xfef08a, transparent: true, opacity: 0.45, side: THREE.DoubleSide })
+    );
+    crownHalo.position.set(0, 0.12, -0.3);
+    crownGrp.add(crownHalo);
+    crownGrp.position.set(-0.75, 3.65, -0.2);
+    crownGrp.rotation.x = 0.24;
+    crownGrp.rotation.z = -0.1;
+    cardScene.add(crownGrp);
+
+    cardCam.position.set(0, 2.35, 6.65);
+    cardCam.lookAt(0.05, 1.85, -0.45);
+  } else {
+    // Ep4 ('miracle'): 예수님과 제자들 + 갈릴리 언덕·하늘 구름·황금 후광
+    cardScene.background = new THREE.Color(0x38bdf8);
+    const mount = new THREE.Mesh(
+      new THREE.CylinderGeometry(7.8, 9.8, 2.0, 20),
+      new THREE.MeshLambertMaterial({ color: 0x4ade80 })
+    );
+    mount.position.set(0, -1.0, 0);
+    cardScene.add(mount);
+
+    const seaBack = new THREE.Mesh(
+      new THREE.PlaneGeometry(36, 12),
+      new THREE.MeshBasicMaterial({ color: 0x0284c7 })
+    );
+    seaBack.rotation.x = -Math.PI / 2;
+    seaBack.position.set(0, -0.08, -8.5);
+    cardScene.add(seaBack);
+
+    // 하늘 위 포근한 저폴리곤 구름
+    if (typeof createLowPolyCloudGroup === 'function') {
+      const c1 = createLowPolyCloudGroup(0.75, false);
+      c1.position.set(-2.3, 4.3, -3.5);
+      const c2 = createLowPolyCloudGroup(0.85, false);
+      c2.position.set(2.2, 4.6, -4.2);
+      cardScene.add(c1, c2);
+    }
+
+    // 예수님 뒤편 따뜻한 황금 빛무리
+    const aura = new THREE.Mesh(
+      new THREE.CircleGeometry(1.75, 28),
+      new THREE.MeshBasicMaterial({ color: 0xfef08a, transparent: true, opacity: 0.45, side: THREE.DoubleSide })
+    );
+    aura.position.set(0, 1.65, -0.45);
+    cardScene.add(aura);
+
+    if (typeof window.createLowPolyPersonMesh === 'function') {
+      const jesus = window.createLowPolyPersonMesh('jesus', 0);
+      jesus.position.set(0, 0.16, 0.25);
+      jesus.scale.setScalar(1.08);
+      if (jesus.userData && jesus.userData.lArm && jesus.userData.rArm) {
+        jesus.userData.lArm.rotation.z = 0.42;
+        jesus.userData.rArm.rotation.z = -0.42;
+        jesus.userData.lArm.rotation.x = -0.35;
+        jesus.userData.rArm.rotation.x = -0.35;
+      }
+      cardScene.add(jesus);
+
+      const d1 = window.createLowPolyPersonMesh('disciple', 0);
+      d1.position.set(-1.55, 0, 0.72);
+      d1.rotation.y = 0.42;
+      cardScene.add(d1);
+
+      const d2 = window.createLowPolyPersonMesh('disciple', 1);
+      d2.position.set(1.55, 0, 0.65);
+      d2.rotation.y = -0.42;
+      cardScene.add(d2);
+
+      const d3 = window.createLowPolyPersonMesh('disciple', 2);
+      d3.position.set(-0.98, 0.05, -1.05);
+      d3.rotation.y = 0.22;
+      cardScene.add(d3);
+
+      const d4 = window.createLowPolyPersonMesh('disciple', 3);
+      d4.position.set(0.98, 0.05, -1.05);
+      d4.rotation.y = -0.22;
+      cardScene.add(d4);
+    }
+
+    cardCam.position.set(0, 2.25, 6.25);
+    cardCam.lookAt(0, 1.55, -0.1);
+  }
+
+  return { cardScene, cardCam };
+}
+
+function _drawCardFallbackIllustration(ctx, W, H, meta, epId) {
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, meta.gradTop || '#0ea5e9');
+  grad.addColorStop(1, meta.gradBot || '#0f172a');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+
+  // 따뜻한 빛무리
+  const rad = ctx.createRadialGradient(W * 0.5, H * 0.40, 16, W * 0.5, H * 0.40, W * 0.48);
+  rad.addColorStop(0, 'rgba(254, 240, 138, 0.62)');
+  rad.addColorStop(1, 'rgba(254, 240, 138, 0)');
+  ctx.fillStyle = rad;
+  ctx.fillRect(0, 0, W, H);
+
+  // 상징 이모지 조합 일러스트
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const motifs = {
+    noah: ['🌈', '🛶', '🦒🦁🐑'],
+    exodus: ['🌊', '📜', '⛰️✨'],
+    david: ['👑', '🪨', '🛡️⚔️'],
+    miracle: ['✨', '🕊️', '🍞🐟🌿']
+  }[epId] || ['✨', meta.icon || '🏅', '📖'];
+  ctx.font = '68px sans-serif';
+  ctx.fillText(motifs[0], W * 0.5, H * 0.26);
+  ctx.font = '94px sans-serif';
+  ctx.fillText(motifs[1], W * 0.5, H * 0.47);
+  ctx.font = '44px sans-serif';
+  ctx.fillText(motifs[2], W * 0.5, H * 0.65);
+}
+
+function _paintCardOverlayFrame(ctx, W, H, meta) {
+  // 하단 가독성 그라데이션 비네트
+  const botGrad = ctx.createLinearGradient(0, H * 0.62, 0, H);
+  botGrad.addColorStop(0, 'rgba(15, 23, 42, 0)');
+  botGrad.addColorStop(0.55, 'rgba(15, 23, 42, 0.68)');
+  botGrad.addColorStop(1, 'rgba(15, 23, 42, 0.94)');
+  ctx.fillStyle = botGrad;
+  ctx.fillRect(0, H * 0.62, W, H * 0.38);
+
+  // 상단 살짝 비네트
+  const topGrad = ctx.createLinearGradient(0, 0, 0, 76);
+  topGrad.addColorStop(0, 'rgba(15, 23, 42, 0.52)');
+  topGrad.addColorStop(1, 'rgba(15, 23, 42, 0)');
+  ctx.fillStyle = topGrad;
+  ctx.fillRect(0, 0, W, 76);
+
+  // 황금 이중 액자 테두리
+  ctx.strokeStyle = '#fbbf24';
+  ctx.lineWidth = 6;
+  ctx.strokeRect(10, 10, W - 20, H - 20);
+  ctx.strokeStyle = 'rgba(254, 243, 199, 0.8)';
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(17, 17, W - 34, H - 34);
+
+  // 상단 좌측 EPISODE 배지
+  ctx.fillStyle = 'rgba(15, 23, 42, 0.80)';
+  ctx.fillRect(24, 24, 126, 28);
+  ctx.strokeStyle = '#fbbf24';
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(24, 24, 126, 28);
+  ctx.fillStyle = '#fde68a';
+  ctx.font = 'bold 14px sans-serif';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(`★ ${meta.epLabel}`, 34, 38);
+
+  // 상단 우측 별 엠블럼
+  ctx.fillStyle = 'rgba(245, 158, 11, 0.92)';
+  ctx.beginPath();
+  ctx.arc(W - 40, 38, 15, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#fffbeb';
+  ctx.font = 'bold 17px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('★', W - 40, 39);
+
+  // 하단 에피소드 타이틀 배너
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#fde68a';
+  ctx.font = 'bold 13px sans-serif';
+  ctx.fillText('출발! 탐험대! · 모험의 증표', W * 0.5, H - 102);
+
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 28px "Jua", sans-serif';
+  ctx.fillText(`${meta.icon} ${meta.shortTitle}`, W * 0.5, H - 68);
+
+  ctx.fillStyle = '#fef3c7';
+  ctx.font = 'bold 14px sans-serif';
+  ctx.fillText(meta.subtitle || '', W * 0.5, H - 40);
+}
+
+function renderEpisodeCardFrontDataURL(epId) {
+  const key = EPISODE_ORDER.includes(epId) ? epId : 'noah';
+  if (window.__certCardArtCache[key]) return window.__certCardArtCache[key];
+
+  const meta = getEpisodeCardMeta(key);
+  const W = 360, H = 480;
+  let canvas = null;
+  try {
+    canvas = document.createElement('canvas');
+    canvas.width = W;
+    canvas.height = H;
+  } catch (e) {
+    return '';
+  }
+  const ctx = canvas && typeof canvas.getContext === 'function' ? canvas.getContext('2d') : null;
+  if (!ctx) return '';
+
+  let rendered3D = false;
+  if (typeof THREE !== 'undefined' && typeof renderer !== 'undefined' && renderer && typeof renderer.readRenderTargetPixels === 'function' && typeof THREE.WebGLRenderTarget === 'function') {
+    const savedCarried = carriedBlockGroup;
+    const savedLimbs = playerLimbs;
+    const savedStage = currentStage;
+    const savedRT = typeof renderer.getRenderTarget === 'function' ? renderer.getRenderTarget() : null;
+    const savedShadow = renderer.shadowMap ? renderer.shadowMap.enabled : false;
+    const savedClearCol = new THREE.Color();
+    if (typeof renderer.getClearColor === 'function') renderer.getClearColor(savedClearCol);
+    const savedClearAlpha = typeof renderer.getClearAlpha === 'function' ? renderer.getClearAlpha() : 1;
+
+    let rt = null;
+    try {
+      const { cardScene, cardCam } = _buildEpisodeCardDioramaScene(key);
+      rt = new THREE.WebGLRenderTarget(W, H, {
+        minFilter: THREE.LinearFilter,
+        magFilter: THREE.LinearFilter,
+        format: THREE.RGBAFormat
+      });
+      if (renderer.shadowMap) renderer.shadowMap.enabled = false;
+      renderer.setRenderTarget(rt);
+      renderer.clear(true, true, true);
+      renderer.render(cardScene, cardCam);
+
+      const pixels = new Uint8Array(W * H * 4);
+      renderer.readRenderTargetPixels(rt, 0, 0, W, H, pixels);
+
+      const imgData = ctx.createImageData(W, H);
+      for (let row = 0; row < H; row++) {
+        const srcRow = (H - 1 - row) * W * 4;
+        const dstRow = row * W * 4;
+        imgData.data.set(pixels.subarray(srcRow, srcRow + W * 4), dstRow);
+      }
+      ctx.putImageData(imgData, 0, 0);
+      rendered3D = true;
+    } catch (err) {
+      rendered3D = false;
+    } finally {
+      carriedBlockGroup = savedCarried;
+      playerLimbs = savedLimbs;
+      currentStage = savedStage;
+      try {
+        renderer.setRenderTarget(savedRT || null);
+        if (renderer.shadowMap) renderer.shadowMap.enabled = savedShadow;
+        if (typeof renderer.setClearColor === 'function') renderer.setClearColor(savedClearCol, savedClearAlpha);
+        if (rt && typeof rt.dispose === 'function') rt.dispose();
+      } catch (e) {}
+    }
+  }
+
+  if (!rendered3D) {
+    _drawCardFallbackIllustration(ctx, W, H, meta, key);
+  }
+  _paintCardOverlayFrame(ctx, W, H, meta);
+
+  try {
+    const dataUrl = canvas.toDataURL('image/png');
+    window.__certCardArtCache[key] = dataUrl;
+    return dataUrl;
+  } catch (e) {
+    return '';
+  }
+}
+window.renderEpisodeCardFrontDataURL = renderEpisodeCardFrontDataURL;
+
+function setEndingCertCardFlipped(flipped, withSfx = false) {
+  const card = document.getElementById('ending-cert-card');
+  const hint = document.getElementById('ending-card-flip-hint');
+  if (!card) return;
+  card.classList.toggle('is-flipped', Boolean(flipped));
+  if (hint) {
+    hint.textContent = flipped
+      ? '✨ 카드를 터치하면 앞면 그림을 다시 볼 수 있어요!'
+      : '✨ 카드를 터치하면 뒷면 공식 인증서를 볼 수 있어요!';
+  }
+  if (withSfx) playSfx('switch');
+}
+
+function toggleEndingCertCardFlip() {
+  clearEndingCardFlipTimer();
+  const card = document.getElementById('ending-cert-card');
+  if (!card) return;
+  const nextFlipped = !card.classList.contains('is-flipped');
+  setEndingCertCardFlipped(nextFlipped, true);
+}
+window.toggleEndingCertCardFlip = toggleEndingCertCardFlip;
+
 function showEndingCertificate(opts = {}) {
   setHudMenuOpen(false);
   hideMissionGuideBubbleImmediately();
-  const alreadyGenerated = document.getElementById('cert-code').dataset.generated;
+  clearEndingCardFlipTimer();
+
+  const epKey = (opts && opts.episode && EPISODE_ORDER.includes(opts.episode)) ? opts.episode : currentEpisode;
   const forceShow = Boolean(opts && opts.forceShow);
 
-  // [전체 에피소드 공통 요청사항] 2회차 이상의 시도나 맵 재선택으로 엔딩에 들어온 경우에는
-  // 인증서 대신 [월드맵으로 이동하기 / 엔딩 세상 계속 둘러보기] 선택창을 출력!
-  if (!forceShow && !alreadyGenerated && !canShowCertificateForCurrentRun()) {
+  // [전체 에피소드 공통 요청사항] 2회차 이상의 같은 레벨 재도전/맵 재선택으로 엔딩에 들어온 경우에는
+  // 인증서 대신 [월드맵으로 이동하기 / 모험의 증표 보기 / 엔딩 세상 계속 둘러보기] 선택창을 출력!
+  if (!forceShow && !certShownInCurrentRun && !canShowCertificateForCurrentRun()) {
     const certBtn = document.getElementById('cert-open-btn');
     if (certBtn) certBtn.classList.add('hidden');
     showEndingWorldMapChoiceModal();
     return;
   }
 
-  recordPlayerStageClear(currentEpisode, 4);
+  certShownInCurrentRun = true;
 
-  playSfx('clear');
-  document.getElementById('cert-name-display').textContent = explorerName || '믿음의용사';
-  document.getElementById('cert-dept').textContent = MODE_META[currentMode].dept;
+  // 에피소드당 1장의 인증서를 발급·보존하고, 이번 클리어 레벨을 누적 추가!
+  const upsertResult = upsertEpisodeAdventureCert(epKey, currentMode);
+  const cert = upsertResult ? upsertResult.cert : adventureCertsData[epKey];
+  recordPlayerStageClear(epKey, 4);
 
-  const epPlugin = getActiveEpisodePlugin();
-  const isExodus = (currentEpisode === 'exodus');
-  const certMeta = (epPlugin && epPlugin.certMeta) ? epPlugin.certMeta : null;
+  const meta = getEpisodeCardMeta(epKey);
+  const certNameEl = document.getElementById('cert-name-display');
+  const certDeptEl = document.getElementById('cert-dept');
+  const certLevelsEl = document.getElementById('cert-levels-display');
+  const certDateEl = document.getElementById('cert-date-display');
+  const certCodeEl = document.getElementById('cert-code');
+  const badgeEl = document.getElementById('ending-ep-badge');
+  const titleEl = document.getElementById('ending-main-title');
+  const verseEl = document.getElementById('ending-main-verse');
+  const missionEl = document.getElementById('cert-mission-display');
+  const frontImg = document.getElementById('ending-card-front-img');
 
-  document.getElementById('ending-ep-badge').textContent = certMeta
-    ? certMeta.badge
-    : (isExodus ? '🌊 에피소드 2 : 출애굽과 시내산 십계명 완주!' : '🌈 에피소드 1 : 노아의 방주 완주!');
-  document.getElementById('ending-main-title').textContent = certMeta
-    ? certMeta.title
-    : (isExodus ? '홍해를 건너 시내산 언약의 백성으로!' : '무지개 언약의 새 세상!');
-  document.getElementById('ending-main-verse').textContent = certMeta
-    ? certMeta.verse
-    : (isExodus ? '"너희가 내 말을 잘 듣고 내 언약을 지키면 너희는 모든 민족 중에서 내 소유가 되겠고" (출애굽기 19:5)' : '"내가 내 무지개를 구름 속에 두었나니 이것이 나와 세상 사이의 언약의 증거니라" (창세기 9:13)');
-  document.getElementById('cert-mission-display').textContent = certMeta
-    ? certMeta.mission
-    : (isExodus ? '홍해 도하 및 시내산 십계명 수직 등반 완주' : '노아의 방주 3단계 탐험 완주');
+  if (certNameEl) certNameEl.textContent = (cert && cert.playerName) || explorerName || '믿음의용사';
+  if (certDeptEl) certDeptEl.textContent = (MODE_META[currentMode] && MODE_META[currentMode].dept) || '🌱 유년반';
+  if (certLevelsEl) certLevelsEl.innerHTML = renderClearedLevelPillsHTML(cert ? cert.clearedModes : [currentMode]);
+  if (certDateEl) certDateEl.textContent = (cert && cert.updatedAt) || formatAdventureCertDate();
+  if (badgeEl) badgeEl.textContent = meta.badge;
+  if (titleEl) titleEl.textContent = meta.title;
+  if (verseEl) verseEl.textContent = meta.verse;
+  if (missionEl) missionEl.textContent = meta.mission;
 
-  if (!alreadyGenerated) {
-    const prefix = certMeta ? certMeta.prefix : (isExodus ? 'EXO-' : 'ARK-');
-    const newCode = prefix + Math.floor(100 + Math.random() * 900);
-    document.getElementById('cert-code').textContent = newCode;
-    document.getElementById('cert-code').dataset.generated = '1';
-    sendGameLogToSheet('🏆 완주성공', 4, newCode);
+  if (certCodeEl && cert) {
+    certCodeEl.textContent = cert.code;
+    certCodeEl.dataset.generated = '1';
+    const sheetKey = `${epKey}:${currentMode}:${cert.code}`;
+    if (_lastSentCertSheetKey !== sheetKey) {
+      _lastSentCertSheetKey = sheetKey;
+      sendGameLogToSheet('🏆 완주성공', 4, cert.code);
+    }
   }
+
+  // 앞면 인게임 3D 그래픽 카드 이미지 생성 및 장착
+  if (frontImg) {
+    const artUrl = renderEpisodeCardFrontDataURL(epKey);
+    if (artUrl) frontImg.src = artUrl;
+  }
+
   const em = document.getElementById('ending-modal');
   const owCertBtn = document.getElementById('ending-return-openworld-btn');
-  const alreadyInEp4OpenWorld = (currentEpisode === 'miracle' && typeof miracleSubMode !== 'undefined' && miracleSubMode === 'openworld');
+  const alreadyInEp4OpenWorld = (epKey === 'miracle' && typeof miracleSubMode !== 'undefined' && miracleSubMode === 'openworld');
   if (owCertBtn) {
-    owCertBtn.classList.toggle('hidden', currentEpisode !== 'miracle' || alreadyInEp4OpenWorld);
+    owCertBtn.classList.toggle('hidden', epKey !== 'miracle' || alreadyInEp4OpenWorld);
   }
+
+  // 카드 앞면으로 초기화 후 밝게 빛나며 등장 ("빠밤~!")
+  const cardScene = document.getElementById('ending-cert-scene');
+  const rays = document.getElementById('ending-reveal-rays');
+  setEndingCertCardFlipped(false, false);
+  if (cardScene) {
+    cardScene.classList.remove('reveal-flash');
+    void cardScene.offsetWidth;
+    cardScene.classList.add('reveal-flash');
+  }
+  if (rays) {
+    rays.classList.remove('active');
+    void rays.offsetWidth;
+    rays.classList.add('active');
+  }
+
   em.classList.remove('hidden'); em.classList.add('flex');
+  syncOverlayModalBodyClass();
+  playSfx('card_reveal');
+
+  // 앞면 카드 일러스트를 빛나며 감상한 뒤 자동으로 뒷면 인증서 내용으로 전환
+  _endingCardAutoFlipTimer = setTimeout(() => {
+    _endingCardAutoFlipTimer = null;
+    if (em && !em.classList.contains('hidden')) {
+      setEndingCertCardFlipped(true, true);
+    }
+  }, 2200);
 }
 
 window.openCertificateModal = showEndingCertificate;
+
+// =========================================================================
+// [공통] 모험의 증표 카드 수집함 (횡스크롤 · 미수집 ? 실루엣 · 터치 3D 플립)
+// =========================================================================
+function toggleBadgeGalleryCardFlip(epId) {
+  const card = document.getElementById(`badge-gallery-card-${epId}`);
+  if (!card) return;
+  card.classList.toggle('is-flipped');
+  playSfx('switch');
+}
+window.toggleBadgeGalleryCardFlip = toggleBadgeGalleryCardFlip;
+
+function renderAdventureBadgesGallery() {
+  const track = document.getElementById('adventure-badges-track');
+  const countBadge = document.getElementById('badges-modal-count');
+  const collectedCount = getCollectedAdventureCertCount();
+  if (countBadge) {
+    countBadge.textContent = `${collectedCount} / ${EPISODE_ORDER.length} 수집`;
+  }
+  if (!track) return;
+
+  track.innerHTML = EPISODE_ORDER.map(epId => {
+    const meta = getEpisodeCardMeta(epId);
+    const cert = adventureCertsData[epId];
+
+    if (!cert) {
+      return `
+        <div class="badge-gallery-slot" data-badge-ep="${epId}" data-collected="0">
+          <div class="badge-card-locked">
+            <div class="w-full flex items-center justify-between text-[10px] font-jua text-amber-300/75">
+              <span>${meta.epLabel}</span>
+              <span>🔒 미획득</span>
+            </div>
+            <div class="flex flex-col items-center justify-center gap-2 my-auto">
+              <div class="relative flex items-center justify-center">
+                <span class="text-6xl select-none" style="filter: brightness(0) opacity(0.32);">${meta.icon}</span>
+                <span class="badge-locked-q font-jua absolute">?</span>
+              </div>
+              <div class="font-jua text-base text-slate-200 tracking-wide mt-1">???</div>
+              <p class="text-[10.5px] text-slate-400 leading-snug px-1">${meta.silhouetteHint}</p>
+            </div>
+            <div class="w-full px-2 py-1.5 rounded-xl bg-slate-900/80 border border-slate-700/80 text-[10px] text-amber-200/85 font-jua">
+              에피소드 ${meta.epNum} 완주 시 획득!
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    const frontUrl = renderEpisodeCardFrontDataURL(epId);
+    const levelPills = renderClearedLevelPillsHTML(cert.clearedModes);
+    const modeCount = normalizeClearedModesList(cert.clearedModes).length;
+
+    return `
+      <div class="badge-gallery-slot" data-badge-ep="${epId}" data-collected="1">
+        <div class="cert-card-scene w-full h-full" style="width:100%;height:100%;">
+          <div id="badge-gallery-card-${epId}" class="cert-card-inner" role="button" tabindex="0"
+               onclick="toggleBadgeGalleryCardFlip('${epId}')"
+               onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleBadgeGalleryCardFlip('${epId}');}"
+               aria-label="${meta.shortTitle} 인증 카드 앞·뒷면 전환">
+            <div class="cert-card-face cert-card-front">
+              <img src="${frontUrl}" class="cert-card-front-img" alt="${meta.shortTitle} 모험의 증표 앞면" />
+              <div class="cert-card-sheen"></div>
+              <div class="absolute bottom-2 left-1/2 -translate-x-1/2 px-2.5 py-0.5 rounded-full bg-slate-950/78 border border-amber-300/80 text-amber-200 font-jua text-[10px] whitespace-nowrap pointer-events-none">
+                🏅 ${modeCount}개 레벨 클리어 · 터치 ↻
+              </div>
+            </div>
+            <div class="cert-card-face cert-card-back">
+              <div>
+                <div class="inline-block px-2 py-0.5 rounded-full bg-amber-300 text-amber-950 font-jua text-[9.5px] mb-1">
+                  ${meta.badge}
+                </div>
+                <h3 class="font-jua text-sm sm:text-base text-amber-900 leading-tight mb-0.5">${meta.title}</h3>
+                <p class="text-[9px] text-slate-600 leading-snug mb-1.5 line-clamp-2">${meta.verse}</p>
+              </div>
+              <div class="bg-white/95 border-2 border-amber-400 rounded-xl p-2 text-left text-[10px] space-y-1">
+                <div class="flex justify-between gap-1"><span class="text-slate-500 shrink-0">대원</span><span class="font-bold text-slate-900 truncate">${cert.playerName}</span></div>
+                <div class="pt-0.5 border-t border-amber-100">
+                  <div class="text-[9px] text-slate-500 mb-0.5">클리어 레벨 (누적)</div>
+                  <div class="flex flex-wrap gap-1">${levelPills}</div>
+                </div>
+                <div class="flex justify-between gap-1 pt-0.5 border-t border-amber-100"><span class="text-slate-500 shrink-0">인증코드</span><span class="font-jua text-xs text-rose-600">${cert.code}</span></div>
+                <div class="flex justify-between gap-1 text-[9px] text-slate-400"><span>획득/갱신</span><span>${cert.updatedAt}</span></div>
+              </div>
+              <div class="pt-1 flex items-center justify-between text-[9px] font-jua text-amber-900/80">
+                <span>광릉내 재림교회 어린이부</span>
+                <span class="text-amber-700">↻ 앞면</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+let _badgesModalPrevPlaying = false;
+function openAdventureBadgesModal() {
+  setHudMenuOpen(false);
+  closeUiTutorial(false);
+  hideMissionGuideBubbleImmediately();
+  const modal = document.getElementById('adventure-badges-modal');
+  if (!modal) return;
+
+  _badgesModalPrevPlaying = Boolean(isPlaying);
+  isPlaying = false;
+  joyX = 0; joyY = 0; keys = {}; currentMoveSpeed = 0;
+
+  renderAdventureBadgesGallery();
+  modal.classList.remove('hidden');
+  modal.classList.add('flex');
+  syncOverlayModalBodyClass();
+  playSfx('switch');
+}
+window.openAdventureBadgesModal = openAdventureBadgesModal;
+
+function openAdventureBadgesModalFromEnding() {
+  clearEndingCardFlipTimer();
+  const em = document.getElementById('ending-modal');
+  if (em) { em.classList.add('hidden'); em.classList.remove('flex'); }
+  openAdventureBadgesModal();
+}
+window.openAdventureBadgesModalFromEnding = openAdventureBadgesModalFromEnding;
+
+function closeAdventureBadgesModal() {
+  const modal = document.getElementById('adventure-badges-modal');
+  if (modal) {
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+  }
+  syncOverlayModalBodyClass();
+  const isMenuOpen = ['screen-opening', 'screen-class', 'screen-map'].some(id => {
+    const el = document.getElementById(id);
+    return el && !el.classList.contains('hidden');
+  });
+  if (!isMenuOpen && _badgesModalPrevPlaying) {
+    isPlaying = true;
+  }
+  _badgesModalPrevPlaying = false;
+}
+window.closeAdventureBadgesModal = closeAdventureBadgesModal;
 
 function showEp4PostCertificateNewMeetingMessage() {
   const msg = '새로운 만남을 찾아보세요!';
@@ -4844,8 +5951,10 @@ function showEp4PostCertificateNewMeetingMessage() {
 }
 
 function closeEndingToLookAround() {
+  clearEndingCardFlipTimer();
   const em = document.getElementById('ending-modal');
   em.classList.add('hidden'); em.classList.remove('flex');
+  syncOverlayModalBodyClass();
   if (currentEpisode === 'miracle') {
     if (window.__ep4ShowNewMeetingAfterCert) {
       window.__ep4ShowNewMeetingAfterCert = false;
@@ -4861,8 +5970,10 @@ function closeEndingToLookAround() {
 }
 
 function closeEndingToReturnMiracleOpenWorld() {
+  clearEndingCardFlipTimer();
   const em = document.getElementById('ending-modal');
   if (em) { em.classList.add('hidden'); em.classList.remove('flex'); }
+  syncOverlayModalBodyClass();
   const shouldShowNewMeeting = Boolean(window.__ep4ShowNewMeetingAfterCert);
   window.__ep4ShowNewMeetingAfterCert = false;
   if (typeof returnToMiracleOpenWorld === 'function' && (typeof miracleSubMode === 'undefined' || miracleSubMode !== 'openworld')) {

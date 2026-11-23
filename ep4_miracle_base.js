@@ -4,7 +4,7 @@
 // - 확장된 오픈월드 지형 고도 계산기(넓어진 골고다 언덕 포함) 및 소프트 로우 폴리곤 자연물 팩토리
 // =========================================================================
 window.__GAME_BUILD_VERSIONS__ = window.__GAME_BUILD_VERSIONS__ || {};
-window.__GAME_BUILD_VERSIONS__.ep4_base = '20261122_v19';
+window.__GAME_BUILD_VERSIONS__.ep4_base = '20261122_v20';
 
 // =========================================================================
 // 🎬 [에피소드 4 오프닝 · 엔딩 영상 주소 설정]
@@ -288,7 +288,11 @@ const MIRACLE_BGM_CANDIDATES = [
   'assets/music/Miracle01.ogg'
 ];
 
+let _miracleOggBackgroundPaused = false;
+let _miracleOggVisibilityBound = false;
+
 function canPlayMiracleOpenWorldOgg() {
+  if (typeof document !== 'undefined' && document.hidden) return false;
   if (window.__ep4OpeningVideoActive || window.__ep4EndingVideoActive) return false; // 영상 재생 중에는 터치해도 BGM 켜짐 원천 차단
   if (typeof currentEpisode !== 'undefined' && currentEpisode !== 'miracle') return false;
   if (miracleSubMode !== 'openworld') return false;
@@ -333,9 +337,49 @@ function getMiracleOpenWorldOgg() {
   return _miracleOpenWorldOgg;
 }
 
+function bindMiracleOggVisibilityHandlers() {
+  if (_miracleOggVisibilityBound) return;
+  _miracleOggVisibilityBound = true;
+
+  const pauseForBackground = () => {
+    if (_miracleOpenWorldOgg && !_miracleOpenWorldOgg.paused) {
+      _miracleOggBackgroundPaused = true;
+      _miracleOpenWorldOgg.pause();
+    } else if (canPlayMiracleOpenWorldOgg()) {
+      _miracleOggBackgroundPaused = true;
+    }
+  };
+
+  const resumeFromBackground = () => {
+    if (typeof document !== 'undefined' && document.hidden) return;
+    if (_miracleOggBackgroundPaused || canPlayMiracleOpenWorldOgg()) {
+      _miracleOggBackgroundPaused = false;
+      if (canPlayMiracleOpenWorldOgg()) {
+        playMiracleOpenWorldOgg();
+      }
+    }
+  };
+
+  if (typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) pauseForBackground();
+      else resumeFromBackground();
+    });
+  }
+  if (typeof window !== 'undefined') {
+    window.addEventListener('pagehide', pauseForBackground);
+    window.addEventListener('blur', () => {
+      if (typeof document !== 'undefined' && document.hidden) pauseForBackground();
+    });
+    window.addEventListener('pageshow', resumeFromBackground);
+    window.addEventListener('focus', resumeFromBackground);
+  }
+}
+
 function bindMiracleOggUserGestureUnlock() {
   if (_miracleOggUnlockBound) return;
   _miracleOggUnlockBound = true;
+  bindMiracleOggVisibilityHandlers();
 
   const unlockHandler = () => {
     if (canPlayMiracleOpenWorldOgg()) {
@@ -371,6 +415,7 @@ function playMiracleOpenWorldOgg() {
 }
 
 function stopMiracleOpenWorldOgg(resetTime = false) {
+  if (resetTime) _miracleOggBackgroundPaused = false;
   if (!_miracleOpenWorldOgg) return;
   if (!_miracleOpenWorldOgg.paused) {
     _miracleOpenWorldOgg.pause();
@@ -5413,7 +5458,7 @@ function ensureMiracleCustomUI() {
         </button>
       </div>
 
-      <div id="miracle-notebook-modal" style="z-index: 64;" class="hidden pointer-events-auto fixed inset-0 bg-slate-950/75 backdrop-blur-sm z-[64] flex items-center justify-center p-3">
+      <div id="miracle-notebook-modal" style="z-index: 140;" class="hidden pointer-events-auto fixed inset-0 bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-3">
         <div class="mc-card modal-scroll w-full max-w-2xl rounded-3xl p-4 sm:p-6 flex flex-col gap-3 max-h-[88dvh]">
           <div class="flex items-center justify-between border-b-2 border-amber-300 pb-2">
             <div class="flex items-center gap-2">
@@ -5444,8 +5489,8 @@ function ensureMiracleCustomUI() {
         </div>
       </div>
 
-      <!-- [최상위 레이어 대화창 & 퀴즈 모달: 퀴즈 시 z-[60] 정중앙 백드롭으로 인터페이스 가림 원천 차단!] -->
-      <div id="miracle-dialog-overlay" class="hidden fixed inset-0 z-[55] pointer-events-none flex flex-col items-center justify-end px-3 pb-24 sm:pb-28">
+      <!-- [최상위 레이어 대화창 & 퀴즈 모달: body 직속 최상단 z-index로 조이스틱·카메라 버튼 가림 원천 차단!] -->
+      <div id="miracle-dialog-overlay" style="z-index: 135;" class="hidden fixed inset-0 pointer-events-none flex flex-col items-center justify-end px-3 pb-24 sm:pb-28">
         <div id="miracle-dialog-modal" class="hidden modal-scroll pointer-events-auto mc-panel bg-amber-50/95 border-4 border-amber-700 rounded-3xl p-4 max-w-md w-[94%] text-slate-900 shadow-2xl flex flex-col gap-2">
           <div class="flex items-center justify-between gap-2">
             <span id="miracle-dialog-speaker" class="px-3 py-0.5 rounded-full bg-amber-800 text-amber-100 font-jua text-xs sm:text-sm">주민</span>
@@ -5469,6 +5514,12 @@ function ensureMiracleCustomUI() {
     `;
     document.body.appendChild(uiRoot);
   }
+  ['miracle-notebook-modal', 'miracle-dialog-overlay'].forEach(mid => {
+    const mel = document.getElementById(mid);
+    if (mel && mel.parentElement !== document.body) {
+      document.body.appendChild(mel);
+    }
+  });
   return uiRoot;
 }
 
@@ -5627,8 +5678,10 @@ window.openMiracleNotebookModal = function (tabKey = 'all') {
   if (!modal || !listEl) return;
 
   playSfx('switch');
-  modal.style.zIndex = '64';
+  if (modal.parentElement !== document.body) document.body.appendChild(modal);
+  modal.style.zIndex = '140';
   modal.classList.remove('hidden');
+  if (typeof window.syncOverlayModalBodyClass === 'function') window.syncOverlayModalBodyClass();
   const modalCountEl = document.getElementById('miracle-notebook-modal-count');
   if (modalCountEl) {
     modalCountEl.textContent = `${miracleCollectedIds.size} / ${getMiracleNotebookTotalCount()}`;
@@ -5688,13 +5741,18 @@ window.openMiracleNotebookModal = function (tabKey = 'all') {
 window.closeMiracleNotebookModal = function () {
   const modal = document.getElementById('miracle-notebook-modal');
   if (modal) modal.classList.add('hidden');
+  if (typeof window.syncOverlayModalBodyClass === 'function') window.syncOverlayModalBodyClass();
 };
 
 function _hideMiracleDialogOverlay() {
   const ov = document.getElementById('miracle-dialog-overlay');
   const modal = document.getElementById('miracle-dialog-modal');
-  if (ov) ov.classList.add('hidden');
+  if (ov) {
+    ov.classList.add('hidden');
+    ov.classList.remove('is-quiz-overlay');
+  }
   if (modal) modal.classList.add('hidden');
+  if (typeof window.syncOverlayModalBodyClass === 'function') window.syncOverlayModalBodyClass();
 }
 
 function openMiracleDialog(options) {
@@ -5714,9 +5772,11 @@ function openMiracleDialog(options) {
 
   const hasQuiz = Boolean(options.quiz && Array.isArray(options.quiz.opts));
   if (overlay) {
+    if (overlay.parentElement !== document.body) document.body.appendChild(overlay);
+    overlay.style.zIndex = hasQuiz ? '145' : '135';
     overlay.className = hasQuiz
-      ? 'fixed inset-0 z-[60] bg-slate-950/60 backdrop-blur-[2px] pointer-events-auto flex items-center justify-center p-2.5 sm:p-4'
-      : 'fixed inset-0 z-[55] pointer-events-none flex flex-col items-center justify-end px-3 pb-20 sm:pb-24';
+      ? 'is-quiz-overlay fixed inset-0 bg-slate-950/70 backdrop-blur-[2px] pointer-events-auto flex items-center justify-center p-2.5 sm:p-4'
+      : 'fixed inset-0 pointer-events-none flex flex-col items-center justify-end px-3 pb-24 sm:pb-28';
   }
 
   const catMeta = {
@@ -5801,6 +5861,7 @@ function openMiracleDialog(options) {
   confirmBtn.textContent = options.btnText || '확인 ▶';
   if (overlay) overlay.classList.remove('hidden');
   modal.classList.remove('hidden');
+  if (typeof window.syncOverlayModalBodyClass === 'function') window.syncOverlayModalBodyClass();
   playSfx('switch');
 }
 
@@ -5893,5 +5954,8 @@ function hideAllMiracleCustomUI() {
   miracleDialogState.active = false;
   if (typeof updateMiracleGuideButtonVisibility === 'function') {
     updateMiracleGuideButtonVisibility();
+  }
+  if (typeof window.syncOverlayModalBodyClass === 'function') {
+    window.syncOverlayModalBodyClass();
   }
 }
