@@ -4,7 +4,7 @@
 // - 스테이지 3(십자가 사건): 넓어진 골고다 언덕 정상 고원과 세 십자가 등장 연출 적용
 // =========================================================================
 window.__GAME_BUILD_VERSIONS__ = window.__GAME_BUILD_VERSIONS__ || {};
-window.__GAME_BUILD_VERSIONS__.ep4_stages = '20261122_v20';
+window.__GAME_BUILD_VERSIONS__.ep4_stages = '20261123_v28';
 
 // 스테이지 3: 십자가를 지고 힘겹게 오르시는 예수님 보행 속도(더 천천히) 및 플레이어 대신 짊어졌을 때의 보행 속도
 const MIRACLE_STAGE3_JESUS_WALK_SPEED = 1.05;
@@ -4007,24 +4007,24 @@ function buildMiracleEndingWorld() {
     footCloudGroup.position.set(0, 0, 0);
     footCloudGroup.visible = false;
     const puffSpecs = [
-      // 하단(발밑) 층: 가로로 넓게 뻗은 구름 띠
-      { x:  0.00, y: -0.14, z:  0.00, r: 1.08, sx: 2.15, sy: 0.56, sz: 1.38, col: 0xffffff, delay: 0.65, riseY: 0.25 },
-      { x: -1.65, y: -0.18, z:  0.25, r: 0.96, sx: 2.05, sy: 0.54, sz: 1.24, col: 0xf8fafc, delay: 0.85, riseY: 0.28 },
-      { x:  1.68, y: -0.16, z:  0.22, r: 0.98, sx: 2.08, sy: 0.54, sz: 1.24, col: 0xfef9c3, delay: 0.95, riseY: 0.28 },
-      { x: -3.25, y: -0.22, z: -0.18, r: 0.92, sx: 2.30, sy: 0.48, sz: 1.16, col: 0xf1f5f9, delay: 1.25, riseY: 0.34 },
-      { x:  3.30, y: -0.20, z: -0.15, r: 0.94, sx: 2.30, sy: 0.48, sz: 1.16, col: 0xffffff, delay: 1.35, riseY: 0.34 },
-      { x: -0.95, y: -0.22, z: -0.88, r: 0.96, sx: 1.95, sy: 0.55, sz: 1.22, col: 0xf1f5f9, delay: 1.15, riseY: 0.26 },
-      { x:  1.02, y: -0.20, z: -0.85, r: 0.94, sx: 1.95, sy: 0.55, sz: 1.22, col: 0xffffff, delay: 1.20, riseY: 0.26 },
-      { x:  0.05, y: -0.26, z:  1.05, r: 0.98, sx: 2.25, sy: 0.54, sz: 1.18, col: 0xfef3c7, delay: 1.45, riseY: 0.32 },
-      // 중단·상단(허리~전신 덮기) 층: 가로로 길고 두텁게 예수님을 완전히 덮으며 하늘로 사라짐!
-      { x:  0.00, y:  0.72, z:  0.58, r: 1.06, sx: 2.20, sy: 0.82, sz: 1.32, col: 0xffffff, delay: 1.95, riseY: 0.62 },
-      { x: -1.45, y:  0.84, z:  0.22, r: 1.02, sx: 2.15, sy: 0.78, sz: 1.25, col: 0xf8fafc, delay: 2.15, riseY: 0.68 },
-      { x:  1.48, y:  0.86, z:  0.18, r: 1.02, sx: 2.15, sy: 0.78, sz: 1.25, col: 0xfef9c3, delay: 2.25, riseY: 0.68 },
-      { x: -2.85, y:  0.66, z: -0.10, r: 0.96, sx: 2.35, sy: 0.68, sz: 1.18, col: 0xf1f5f9, delay: 2.40, riseY: 0.58 },
-      { x:  2.88, y:  0.68, z: -0.08, r: 0.96, sx: 2.35, sy: 0.68, sz: 1.18, col: 0xffffff, delay: 2.45, riseY: 0.58 },
-      { x:  0.00, y:  1.22, z: -0.45, r: 1.12, sx: 2.25, sy: 0.88, sz: 1.32, col: 0xf1f5f9, delay: 2.55, riseY: 0.74 },
-      { x:  0.00, y:  1.52, z:  0.16, r: 1.18, sx: 2.40, sy: 0.92, sz: 1.38, col: 0xffffff, delay: 2.80, riseY: 0.66 },
-      { x:  0.00, y: -0.48, z: -0.15, r: 1.35, sx: 2.65, sy: 0.52, sz: 1.45, col: 0xe0f2fe, delay: 1.65, riseY: 0.24 }
+      // 하단(발밑) 층: 가로로 넓고 완만하게 뻗은 구름 띠
+      { x:  0.00, y: -0.14, z:  0.00, r: 1.08, sx: 2.35, sy: 0.50, sz: 1.38, col: 0xffffff, delay: 0.65, riseY: 0.24 },
+      { x: -1.75, y: -0.18, z:  0.24, r: 0.96, sx: 2.35, sy: 0.48, sz: 1.24, col: 0xfef9c3, delay: 0.85, riseY: 0.26 },
+      { x:  1.78, y: -0.16, z:  0.22, r: 0.98, sx: 2.40, sy: 0.48, sz: 1.24, col: 0xfef9c3, delay: 0.95, riseY: 0.26 },
+      { x: -3.45, y: -0.22, z: -0.18, r: 0.92, sx: 2.55, sy: 0.44, sz: 1.18, col: 0xf1f5f9, delay: 1.25, riseY: 0.30 },
+      { x:  3.50, y: -0.20, z: -0.15, r: 0.94, sx: 2.55, sy: 0.44, sz: 1.18, col: 0xffffff, delay: 1.35, riseY: 0.30 },
+      { x: -1.05, y: -0.22, z: -0.88, r: 0.96, sx: 2.25, sy: 0.50, sz: 1.22, col: 0xf1f5f9, delay: 1.15, riseY: 0.25 },
+      { x:  1.10, y: -0.20, z: -0.85, r: 0.94, sx: 2.25, sy: 0.50, sz: 1.22, col: 0xffffff, delay: 1.20, riseY: 0.25 },
+      { x:  0.00, y: -0.24, z:  1.02, r: 0.98, sx: 2.65, sy: 0.44, sz: 1.22, col: 0xfef3c7, delay: 1.45, riseY: 0.28 },
+      // 중단·상단(허리~전신 덮기) 층: 가로로 넓고 포근하게 예수님을 덮으며 하늘로 사라짐
+      { x:  0.00, y:  0.68, z:  0.56, r: 1.06, sx: 2.50, sy: 0.64, sz: 1.30, col: 0xffffff, delay: 1.95, riseY: 0.58 },
+      { x: -1.65, y:  0.76, z:  0.22, r: 1.02, sx: 2.45, sy: 0.60, sz: 1.24, col: 0xf8fafc, delay: 2.15, riseY: 0.62 },
+      { x:  1.68, y:  0.78, z:  0.18, r: 1.02, sx: 2.50, sy: 0.58, sz: 1.24, col: 0xfef9c3, delay: 2.25, riseY: 0.62 },
+      { x: -3.15, y:  0.58, z: -0.10, r: 0.96, sx: 2.65, sy: 0.54, sz: 1.18, col: 0xf1f5f9, delay: 2.40, riseY: 0.52 },
+      { x:  3.18, y:  0.60, z: -0.08, r: 0.96, sx: 2.65, sy: 0.54, sz: 1.18, col: 0xffffff, delay: 2.45, riseY: 0.52 },
+      { x:  0.00, y:  1.18, z: -0.42, r: 1.12, sx: 2.55, sy: 0.68, sz: 1.32, col: 0xf1f5f9, delay: 2.55, riseY: 0.68 },
+      { x:  0.00, y:  1.50, z:  0.16, r: 1.16, sx: 2.65, sy: 0.72, sz: 1.36, col: 0xffffff, delay: 2.80, riseY: 0.64 },
+      { x:  0.00, y: -0.46, z: -0.15, r: 1.35, sx: 2.85, sy: 0.46, sz: 1.44, col: 0xe0f2fe, delay: 1.65, riseY: 0.22 }
     ];
     puffSpecs.forEach((p, idx) => {
       const pMat = new THREE.MeshLambertMaterial({
@@ -4034,10 +4034,13 @@ function buildMiracleEndingWorld() {
         opacity: 0.0,
         depthWrite: false
       });
-      const puff = new THREE.Mesh(new THREE.IcosahedronGeometry(p.r, 0), pMat);
+      const pGeo = new THREE.IcosahedronGeometry(p.r, 0);
+      pGeo.rotateX(idx * 0.25);
+      pGeo.rotateY(idx * 0.65);
+      const puff = new THREE.Mesh(pGeo, pMat);
       puff.position.set(p.x, p.y, p.z);
       puff.scale.set(0.01, 0.01, 0.01);
-      puff.rotation.set(idx * 0.25, idx * 0.65, 0);
+      puff.rotation.set(0, 0, 0);
       footCloudGroup.add(puff);
       footCloudPuffs.push({ mesh: puff, mat: pMat, spec: p, phase: idx * 0.85 });
     });
@@ -4048,16 +4051,16 @@ function buildMiracleEndingWorld() {
 
     // [높이 올라가면서 주변 하늘까지 함께 덮는 주변 구름 띠] 가로로 긴 구름 10덩이가 사방에서 모여 하늘을 포근히 덮음!
     const surroundSpecs = [
-      { bx: -9.5,  by: summitPadY +  8.8, bz: -11.5, dx:  3.2, dy: 1.6, sx: 3.1, sy: 0.72, sz: 1.65, col: 0xffffff, delay: 1.4 },
-      { bx:  9.5,  by: summitPadY +  9.2, bz: -11.0, dx: -3.2, dy: 1.5, sx: 3.1, sy: 0.72, sz: 1.65, col: 0xfef9c3, delay: 1.5 },
-      { bx: -14.5, by: summitPadY + 11.8, bz:  -6.5, dx:  4.5, dy: 2.0, sx: 3.6, sy: 0.78, sz: 1.85, col: 0xf8fafc, delay: 1.8 },
-      { bx:  14.5, by: summitPadY + 12.2, bz:  -6.0, dx: -4.5, dy: 1.9, sx: 3.6, sy: 0.78, sz: 1.85, col: 0xffffff, delay: 1.9 },
-      { bx:  0.0,  by: summitPadY + 13.8, bz: -17.5, dx:  0.0, dy: 2.2, sx: 4.4, sy: 0.86, sz: 2.00, col: 0xf1f5f9, delay: 2.1 },
-      { bx: -7.5,  by: summitPadY + 14.5, bz: -14.5, dx:  2.4, dy: 2.1, sx: 3.4, sy: 0.80, sz: 1.75, col: 0xffffff, delay: 2.2 },
-      { bx:  7.8,  by: summitPadY + 14.8, bz: -14.2, dx: -2.4, dy: 2.1, sx: 3.4, sy: 0.80, sz: 1.75, col: 0xfef3c7, delay: 2.3 },
-      { bx: -12.0, by: summitPadY + 16.6, bz:  -9.5, dx:  4.2, dy: 1.8, sx: 3.9, sy: 0.84, sz: 1.95, col: 0xffffff, delay: 2.5 },
-      { bx:  12.0, by: summitPadY + 16.8, bz:  -9.2, dx: -4.2, dy: 1.8, sx: 3.9, sy: 0.84, sz: 1.95, col: 0xf8fafc, delay: 2.6 },
-      { bx:  0.0,  by: summitPadY + 17.8, bz:  -5.5, dx:  0.0, dy: 1.5, sx: 4.6, sy: 0.78, sz: 2.10, col: 0xffffff, delay: 2.8 }
+      { bx: -9.5,  by: summitPadY +  8.8, bz: -11.5, dx:  3.2, dy: 1.6, sx: 3.4, sy: 0.60, sz: 1.65, col: 0xffffff, delay: 1.4 },
+      { bx:  9.5,  by: summitPadY +  9.2, bz: -11.0, dx: -3.2, dy: 1.5, sx: 3.5, sy: 0.60, sz: 1.65, col: 0xfef9c3, delay: 1.5 },
+      { bx: -14.5, by: summitPadY + 11.8, bz:  -6.5, dx:  4.5, dy: 2.0, sx: 3.9, sy: 0.64, sz: 1.85, col: 0xf8fafc, delay: 1.8 },
+      { bx:  14.5, by: summitPadY + 12.2, bz:  -6.0, dx: -4.5, dy: 1.9, sx: 3.9, sy: 0.64, sz: 1.85, col: 0xffffff, delay: 1.9 },
+      { bx:  0.0,  by: summitPadY + 13.8, bz: -17.5, dx:  0.0, dy: 2.2, sx: 4.7, sy: 0.70, sz: 2.00, col: 0xf1f5f9, delay: 2.1 },
+      { bx: -7.5,  by: summitPadY + 14.5, bz: -14.5, dx:  2.4, dy: 2.1, sx: 3.7, sy: 0.66, sz: 1.75, col: 0xffffff, delay: 2.2 },
+      { bx:  7.8,  by: summitPadY + 14.8, bz: -14.2, dx: -2.4, dy: 2.1, sx: 3.8, sy: 0.64, sz: 1.75, col: 0xfef3c7, delay: 2.3 },
+      { bx: -12.0, by: summitPadY + 16.6, bz:  -9.5, dx:  4.2, dy: 1.8, sx: 4.2, sy: 0.68, sz: 1.95, col: 0xffffff, delay: 2.5 },
+      { bx:  12.0, by: summitPadY + 16.8, bz:  -9.2, dx: -4.2, dy: 1.8, sx: 4.2, sy: 0.68, sz: 1.95, col: 0xf8fafc, delay: 2.6 },
+      { bx:  0.0,  by: summitPadY + 17.8, bz:  -5.5, dx:  0.0, dy: 1.5, sx: 4.9, sy: 0.66, sz: 2.10, col: 0xffffff, delay: 2.8 }
     ];
     surroundSpecs.forEach((scSpec, sIdx) => {
       const bankGrp = new THREE.Group();
@@ -4068,12 +4071,19 @@ function buildMiracleEndingWorld() {
         opacity: 0.0,
         depthWrite: false
       });
-      const mainPuff = new THREE.Mesh(new THREE.IcosahedronGeometry(1.55, 0), sMat);
+      const mainGeo = new THREE.IcosahedronGeometry(1.55, 0);
+      mainGeo.rotateX(sIdx * 0.18);
+      mainGeo.rotateY(sIdx * 0.52);
+      const mainPuff = new THREE.Mesh(mainGeo, sMat);
       mainPuff.scale.set(scSpec.sx, scSpec.sy, scSpec.sz);
-      const wingL = new THREE.Mesh(new THREE.IcosahedronGeometry(1.18, 0), sMat);
+      const wingLGeo = new THREE.IcosahedronGeometry(1.18, 0);
+      wingLGeo.rotateY(sIdx * 0.4 + 0.5);
+      const wingL = new THREE.Mesh(wingLGeo, sMat);
       wingL.position.set(-scSpec.sx * 0.72, -0.18, 0.25);
       wingL.scale.set(scSpec.sx * 0.78, scSpec.sy * 0.82, scSpec.sz * 0.85);
-      const wingR = new THREE.Mesh(new THREE.IcosahedronGeometry(1.18, 0), sMat);
+      const wingRGeo = new THREE.IcosahedronGeometry(1.18, 0);
+      wingRGeo.rotateY(sIdx * 0.4 + 1.1);
+      const wingR = new THREE.Mesh(wingRGeo, sMat);
       wingR.position.set( scSpec.sx * 0.72, -0.16, -0.20);
       wingR.scale.set(scSpec.sx * 0.78, scSpec.sy * 0.82, scSpec.sz * 0.85);
       bankGrp.add(mainPuff, wingL, wingR);
@@ -4516,7 +4526,7 @@ function updateMiracleEndingFrame(dt, now) {
     };
 
     if (bf) {
-      document.getElementById('black-fade-icon').textContent = '👼☁️';
+      document.getElementById('black-fade-icon').textContent = '☁️';
       document.getElementById('black-fade-title').textContent = `"${angelPromiseLine}"`;
       document.getElementById('black-fade-sub').textContent = '사도행전 1장 11절';
       bf.style.opacity = '1';

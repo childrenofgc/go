@@ -5,7 +5,7 @@
 // - 멀티플레이 미션 1: 반석 위의 집 확장형 (돌 20 + 나무 20, 도끼질 5회 / 돌 캐기 5회, 완료 시 말씀 출력)
 // =========================================================================
 window.__GAME_BUILD_VERSIONS__ = window.__GAME_BUILD_VERSIONS__ || {};
-window.__GAME_BUILD_VERSIONS__.ep4_mp = '20261122_v20';
+window.__GAME_BUILD_VERSIONS__.ep4_mp = '20261123_v28';
 
 // [선택적 온라인 릴레이 설정] 무료 Firebase Realtime Database URL을 넣으면 서로 다른 기기 간 실시간 온라인 접속!
 // 예: window.MP_FIREBASE_DB_URL = 'https://your-church-game-default-rtdb.asia-southeast1.firebasedatabase.app';
@@ -14,7 +14,7 @@ window.MP_FIREBASE_DB_URL = window.MP_FIREBASE_DB_URL || 'https://gwangneung-bib
 // 멀티플레이 선택 가능 캐릭터 10종 (온라인 전용 패스파인더·어드벤처러 대원 포함 · 예수님/천사 제외)
 const MP_FORBIDDEN_PRESETS = ['jesus', 'angel'];
 const MP_SELECTABLE_CHARACTERS = [
-  { id: 'hero',       preset: 'hero',       idx: 0, icon: '🧭', name: '갈릴리 탐험가',  desc: '청록 튜닉 · 황금 머리띠' },
+  { id: 'hero',       preset: 'hero',       idx: 0, icon: '🧭', name: '갈릴리 탐험가',  desc: '청록 망토 · 아이보리 튜닉' },
   { id: 'pathfinder', preset: 'pathfinder', idx: 0, icon: '🏕️', name: '패스파인더 대원', desc: '파란 반팔 티셔츠 어린이' },
   { id: 'adventurer', preset: 'adventurer', idx: 0, icon: '⭐', name: '어드벤처러 대원', desc: '노란 반팔 티셔츠 어린이' },
   { id: 'disciple_1', preset: 'disciple',   idx: 1, icon: '🎣', name: '어부 제자',      desc: '따뜻한 황토 로브' },

@@ -5,7 +5,7 @@
 // =========================================================================
 
 window.__GAME_BUILD_VERSIONS__ = window.__GAME_BUILD_VERSIONS__ || {};
-window.__GAME_BUILD_VERSIONS__.core = '20261122_v20';
+window.__GAME_BUILD_VERSIONS__.core = '20261123_v28';
 
 // 퀴즈 선택지 순서 무작위 셔플 공용 헬퍼 (정답이 항상 1번에 고정되지 않도록 보장)
 function shuffleQuizOptions(opts, ansIdx = 0) {
@@ -3684,6 +3684,11 @@ function clearWorld() {
   heldBlocks = 0; activeBuildTarget = null;
   targetObject = null; endingDovePivot = null;
   doveCutscene.active = false; pillarCutscene.active = false; seaPartingCutscene.active = false; sinaiCutscene.active = false;
+  if (typeof noahEndingCamCutscene !== 'undefined') noahEndingCamCutscene.active = false;
+  if (typeof noahEndingArkFadeMats !== 'undefined') noahEndingArkFadeMats = [];
+  if (typeof noahEndingArkIsFaded !== 'undefined') noahEndingArkIsFaded = false;
+  if (typeof noahEndingArkOpacity !== 'undefined') noahEndingArkOpacity = 1.0;
+  if (typeof noahEndingArkTransparentApplied !== 'undefined') noahEndingArkTransparentApplied = false;
 
   Object.values(EPISODE_REGISTRY).forEach(plugin => {
     if (plugin && typeof plugin.clearState === 'function') plugin.clearState();
@@ -4890,15 +4895,12 @@ function updateWallTransparency() {
   // 플레이어 주변 24m 이내 벽면만 레이캐스트 대상에 포함해 모바일 CPU 부하 대폭 절감
   const nearWalls = [];
   const px = playerPos.x, pz = playerPos.z;
-  const skipNoahEndingArkFade = (
-    currentEpisode === 'noah' && currentStage === 4 &&
-    (playerPos.y >= 4.8 || (playerPos.y >= 2.1 && px > -19.0 && px < 19.0 && pz > 12.5 && pz < 29.5))
-  );
+  const isNoahEndingStage = (currentEpisode === 'noah' && currentStage === 4);
   const _tmpWPos = new THREE.Vector3();
   for (let i = 0; i < wallMeshes.length; i++) {
     const wm = wallMeshes[i];
     if (!wm || !wm.visible || !wm.parent) continue;
-    if (skipNoahEndingArkFade && wm.userData && wm.userData.isNoahEndingArk) continue;
+    if (isNoahEndingStage && wm.userData && wm.userData.isNoahEndingArk) continue;
     wm.getWorldPosition(_tmpWPos);
     const dx = _tmpWPos.x - px, dz = _tmpWPos.z - pz;
     if (dx * dx + dz * dz < 625) nearWalls.push(wm);
@@ -6542,6 +6544,9 @@ function initEngine(skipInitialPreview = false) {
       playerGroup.position.copy(playerPos);
       applyCoreCameraByMode();
       updateWallTransparency();
+      if (currentEpisode === 'noah' && currentStage === 4 && typeof checkAndFadeEndingArkIfBlocking === 'function') {
+        checkAndFadeEndingArkIfBlocking(dt);
+      }
 
       // [전체 에피소드 공통 요청사항] 1차 시도일 때는 인증서를 띄우고, 2회차/재선택 엔딩일 때는 제단 접근 시 월드맵 이동 선택창 오픈!
       if (currentStage === 4 && targetObject && currentEpisode !== 'david') {

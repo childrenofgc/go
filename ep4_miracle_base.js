@@ -4,7 +4,7 @@
 // - 확장된 오픈월드 지형 고도 계산기(넓어진 골고다 언덕 포함) 및 소프트 로우 폴리곤 자연물 팩토리
 // =========================================================================
 window.__GAME_BUILD_VERSIONS__ = window.__GAME_BUILD_VERSIONS__ || {};
-window.__GAME_BUILD_VERSIONS__.ep4_base = '20261122_v20';
+window.__GAME_BUILD_VERSIONS__.ep4_base = '20261123_v28';
 
 // =========================================================================
 // 🎬 [에피소드 4 오프닝 · 엔딩 영상 주소 설정]
@@ -448,6 +448,12 @@ const MIRACLE_BASE_RHYTHM = [
 ];
 
 function scheduleMiracleBgmBeat(ctx, step, st, mode, playing, timeRem, toFreq) {
+  // [추가] 영상 재생 중에는 코드 기반 BGM 스케줄링 자체를 휴면 상태로 강제 전환하여 소리 겹침 방지
+  if (window.__ep4OpeningVideoActive || window.__ep4EndingVideoActive) {
+    stopMiracleOpenWorldOgg(false);
+    return 2500; // 2.5초 대기
+  }
+
   // ✅ [핵심] 오픈월드에서는 Web Audio 오실레이터를 전혀 생성하지 않고 .ogg 스트리밍만 유지!
   if (miracleSubMode === 'openworld') {
     if (!playing || !canPlayMiracleOpenWorldOgg()) {
@@ -5058,16 +5064,28 @@ window.playEp4OpeningVideoThen = function (onComplete) {
     return;
   }
 
+  // [핵심 해결] 모달창을 3D 라벨 밑에 갇히지 않도록 강제로 body 최상단으로 꺼내고, z-index를 CSS 최대치로 고정
+  if (modal.parentElement !== document.body) {
+    document.body.appendChild(modal);
+  }
+  modal.style.zIndex = '2147483647';
+
   window.__ep4OpeningVideoActive = true;
   if (typeof setInGameHudControlsVisible === 'function') setInGameHudControlsVisible(false);
   if (typeof stopStageBgm === 'function') stopStageBgm();
 
+  // [수정 1] 오프닝 영상 재생 시 말풍선 겹침 방지 (즉시 닫기 및 팝업 억제)
+  if (typeof hideMissionGuideBubbleImmediately === 'function') hideMissionGuideBubbleImmediately();
+  if (typeof MiracleGuideUI !== 'undefined' && MiracleGuideUI) MiracleGuideUI.suppressedDuringIntro = true;
+
   const watchedCount = window.getEp4OpeningVideoWatchCount();
-  const canSkipNow = watchedCount >= 1; // 1회차: 건너뛰기 숨김 · 2회차부터 건너뛰기 버튼 표시!
+  const canSkipNow = watchedCount >= 1; 
   let finished = false;
   const finishOnce = (markWatched = true) => {
     if (finished) return;
     finished = true;
+    // [수정 1] 영상 종료 후 말풍선 팝업 억제 해제
+    if (typeof MiracleGuideUI !== 'undefined' && MiracleGuideUI) MiracleGuideUI.suppressedDuringIntro = false;
     if (markWatched) window.markEp4OpeningVideoWatched();
     done();
   };
@@ -5077,22 +5095,27 @@ window.playEp4OpeningVideoThen = function (onComplete) {
     skipBtn.onclick = () => finishOnce(true);
   }
   if (playFallbackBtn) playFallbackBtn.classList.add('hidden');
+  
+  // [수정 2] "영상 재생중" 문구 삭제 및 상단 검은색 그라데이션 제거 (완벽한 전체화면)
   if (statusTxt) {
-    statusTxt.textContent = canSkipNow
-      ? '🎬 에피소드 4 오프닝 영상'
-      : '🎬 에피소드 4 오프닝 영상이 재생 중입니다...';
+    statusTxt.textContent = ''; 
+    statusTxt.style.display = 'none';
+    if (statusTxt.parentElement) {
+      // justify-between 속성을 같이 제거해야 버튼이 좌측으로 당겨지지 않습니다.
+      statusTxt.parentElement.classList.remove('bg-gradient-to-b', 'from-black/80', 'to-transparent', 'justify-between');
+      statusTxt.parentElement.classList.add('justify-end'); 
+    }
   }
 
   slot.innerHTML = '';
   const ytId = _parseEp4YouTubeId(url);
   if (ytId) {
     const iframe = document.createElement('iframe');
-    iframe.className = 'w-full h-full border-0 bg-black'; // rounded-2xl 제거하여 전체화면 핏 맞춤
+    iframe.className = 'w-full h-full border-0 bg-black';
     iframe.allow = 'autoplay; encrypted-media; fullscreen';
     iframe.allowFullscreen = true;
     iframe.src = `https://www.youtube.com/embed/${ytId}?autoplay=1&rel=0&playsinline=1&enablejsapi=1`;
     slot.appendChild(iframe);
-    // 유튜브 iframe은 브라우저 정책상 종료 이벤트를 못 받을 수 있어 1회차에도 하단 시청 완료 안내 버튼 제공
     if (playFallbackBtn) {
       playFallbackBtn.textContent = '🎬 영상 시청 완료 · 탐험 시작 ▶';
       playFallbackBtn.classList.remove('hidden');
@@ -5100,16 +5123,15 @@ window.playEp4OpeningVideoThen = function (onComplete) {
     }
   } else {
     const video = document.createElement('video');
-    video.className = 'w-full h-full object-contain bg-black'; // rounded-2xl 제거
+    video.className = 'w-full h-full object-contain bg-black'; 
     video.src = url;
-    video.volume = 0.3; // 영상 볼륨 30%로 고정
+    video.volume = 0.3;
     video.playsInline = true;
     video.autoplay = true;
     video.controls = false;
     video.preload = 'auto';
     video.onended = () => finishOnce(true);
     video.onerror = () => {
-      if (statusTxt) statusTxt.textContent = '⚠️ 영상을 불러오지 못해 바로 오픈월드로 이동합니다.';
       setTimeout(() => finishOnce(false), 900);
     };
     slot.appendChild(video);
@@ -5182,17 +5204,29 @@ window.playEp4EndingVideoThen = function (onComplete) {
     return;
   }
 
+  // [핵심 해결] 모달창을 3D 라벨 밑에 갇히지 않도록 강제로 body 최상단으로 꺼내고, z-index를 CSS 최대치로 고정
+  if (modal.parentElement !== document.body) {
+    document.body.appendChild(modal);
+  }
+  modal.style.zIndex = '2147483647';
+
   window.__ep4EndingVideoActive = true;
   if (typeof setInGameHudControlsVisible === 'function') setInGameHudControlsVisible(false);
   if (typeof stopStageBgm === 'function') stopStageBgm();
   if (typeof window.stopMiracleOpenWorldOgg === 'function') window.stopMiracleOpenWorldOgg(false);
 
+  // [수정 1] 엔딩 영상 재생 시 기존 말풍선 즉시 닫고, 새로운 말풍선 팝업 원천 차단
+  if (typeof hideMissionGuideBubbleImmediately === 'function') hideMissionGuideBubbleImmediately();
+  if (typeof MiracleGuideUI !== 'undefined' && MiracleGuideUI) MiracleGuideUI.suppressedDuringIntro = true;
+
   const watchedCount = window.getEp4EndingVideoWatchCount();
-  const canSkipNow = watchedCount >= 1; // 1회차: 건너뛰기 숨김 · 2회차부터 건너뛰기 버튼 표시!
+  const canSkipNow = watchedCount >= 1; 
   let finished = false;
   const finishOnce = (markWatched = true) => {
     if (finished) return;
     finished = true;
+    // [수정 1] 영상 종료 후 차단 해제
+    if (typeof MiracleGuideUI !== 'undefined' && MiracleGuideUI) MiracleGuideUI.suppressedDuringIntro = false;
     if (markWatched) window.markEp4EndingVideoWatched();
     done();
   };
@@ -5203,10 +5237,16 @@ window.playEp4EndingVideoThen = function (onComplete) {
     skipBtn.onclick = () => finishOnce(true);
   }
   if (playFallbackBtn) playFallbackBtn.classList.add('hidden');
+  
+  // [수정 2] "영상 재생중" 문구 삭제 및 상단 검은색 그라데이션 제거 (완벽한 전체화면)
   if (statusTxt) {
-    statusTxt.textContent = canSkipNow
-      ? '🎬 에피소드 4 엔딩 영상'
-      : '🎬 에피소드 4 엔딩 영상이 재생 중입니다...';
+    statusTxt.textContent = ''; 
+    statusTxt.style.display = 'none';
+    if (statusTxt.parentElement) {
+      // justify-between 속성을 같이 제거해야 버튼이 좌측으로 당겨지지 않습니다.
+      statusTxt.parentElement.classList.remove('bg-gradient-to-b', 'from-black/80', 'to-transparent', 'justify-between');
+      statusTxt.parentElement.classList.add('justify-end'); 
+    }
   }
 
   slot.innerHTML = '';
@@ -5234,7 +5274,6 @@ window.playEp4EndingVideoThen = function (onComplete) {
     video.preload = 'auto';
     video.onended = () => finishOnce(true);
     video.onerror = () => {
-      if (statusTxt) statusTxt.textContent = '✨ 엔딩 여정을 마치고 오픈월드로 돌아갑니다...';
       setTimeout(() => finishOnce(true), 900);
     };
     slot.appendChild(video);
@@ -5370,19 +5409,19 @@ function ensureMiracleCustomUI() {
       <!-- 오픈월드 하늘 조망 건너뛰기 버튼 -->
       <div id="ep4-flyover-skip-wrap" class="hidden fixed top-4 right-4 sm:top-6 sm:right-6 z-50 pointer-events-auto">
         <button type="button" onclick="if(window.skipMiracleOpenWorldFlyover) window.skipMiracleOpenWorldFlyover();"
-                class="mc-btn px-4 py-2 rounded-full bg-slate-900/80 border border-amber-300 text-amber-200 font-jua text-xs sm:text-sm shadow-lg backdrop-blur-sm">
+                class="mc-btn px-4 py-2 rounded-full bg-black/30 hover:bg-black/40 backdrop-blur-md border border-white/30 text-white font-jua text-xs sm:text-sm shadow-lg transition-all">
           ⏭️ 건너뛰기
         </button>
       </div>
 
       <!-- 에피소드 4 오프닝 영상 모달 (전체화면 꽉 채우기 + 건너뛰기 버튼 오버레이) -->
-      <div id="ep4-opening-video-modal" class="hidden pointer-events-auto fixed inset-0 z-50 bg-black flex-col items-center justify-center">
+      <div id="ep4-opening-video-modal" style="z-index: 9999;" class="hidden pointer-events-auto fixed inset-0 bg-black flex-col items-center justify-center">
         
         <!-- 상단 오버레이 UI (상태 텍스트 & 건너뛰기 버튼) -->
-        <div class="absolute top-0 inset-x-0 p-4 sm:p-6 flex items-center justify-between z-20 bg-gradient-to-b from-black/80 to-transparent">
+        <div class="absolute top-0 inset-x-0 p-4 sm:p-6 flex items-center justify-end z-20">
           <span id="ep4-opening-video-status" class="font-jua text-xs sm:text-sm text-amber-200 drop-shadow-md">🎬 에피소드 4 오프닝 영상</span>
           <button id="ep4-opening-video-skip-btn" type="button"
-                  class="hidden mc-btn px-5 py-2 rounded-full bg-amber-400 hover:bg-amber-300 text-slate-950 font-jua text-sm sm:text-base shadow-lg">
+                  class="hidden mc-btn px-4 py-2 rounded-full bg-black/30 hover:bg-black/40 backdrop-blur-md border border-white/30 text-white font-jua text-xs sm:text-sm shadow-lg transition-all">
             ⏭️ 건너뛰기
           </button>
         </div>
@@ -5543,6 +5582,7 @@ function isMiracleIntroHidingHud() {
     hudHidden ||
     window.__isBuildingOpeningPreview ||
     window.__ep4OpeningVideoActive ||
+    window.__ep4EndingVideoActive || // [추가] 엔딩 영상 중에도 HUD 숨김 완벽 적용
     (window.miracleOpenWorldIntroFlyover && window.miracleOpenWorldIntroFlyover.active) ||
     (typeof MiracleGuideUI !== 'undefined' && MiracleGuideUI && MiracleGuideUI.suppressedDuringIntro) ||
     (miracleSubMode === 'main2_loaves' && typeof miracleActiveMiniState !== 'undefined' && miracleActiveMiniState && miracleActiveMiniState.introFlyover && miracleActiveMiniState.introFlyover.active)
@@ -5600,6 +5640,13 @@ window.updateMiracleMissionStatusUI = function (info) {
 
   if (!info) {
     MiracleGuideUI.activeFieldInfo = null;
+    updateMiracleGuideButtonVisibility();
+    return;
+  }
+
+  // [추가] 영상 재생 중이거나 인트로 억제 상태일 때는 새로운 말풍선 팝업 원천 차단
+  if (window.__ep4OpeningVideoActive || window.__ep4EndingVideoActive || MiracleGuideUI.suppressedDuringIntro) {
+    MiracleGuideUI.activeFieldInfo = info; // 백그라운드 상태만 갱신
     updateMiracleGuideButtonVisibility();
     return;
   }
