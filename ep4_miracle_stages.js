@@ -4,7 +4,7 @@
 // - 스테이지 3(십자가 사건): 넓어진 골고다 언덕 정상 고원과 세 십자가 등장 연출 적용
 // =========================================================================
 window.__GAME_BUILD_VERSIONS__ = window.__GAME_BUILD_VERSIONS__ || {};
-window.__GAME_BUILD_VERSIONS__.ep4_stages = '20261123_v30';
+window.__GAME_BUILD_VERSIONS__.ep4_stages = '20261124_v31';
 
 // 스테이지 3: 십자가를 지고 힘겹게 오르시는 예수님 보행 속도(더 천천히) 및 플레이어 대신 짊어졌을 때의 보행 속도
 const MIRACLE_STAGE3_JESUS_WALK_SPEED = 1.05;
@@ -1174,6 +1174,9 @@ function updateMiracleMainStage1Frame(dt, now) {
       unlockMiracleNotebookEntry('mir_storm', true);
       unlockMiracleNotebookEntry('mir_fish', true);
       saveMiracleNotebookProgress();
+      if (typeof window.recordMiracleMissionCompleted === 'function') {
+        window.recordMiracleMissionCompleted('main_1', { deferPopup: true });
+      }
       openStageClearModal(1);
     }
     return;
@@ -1859,6 +1862,9 @@ function updateMiracleMainStage2Frame(dt, now) {
           miracleMainStagesCleared[2] = true;
           unlockMiracleNotebookEntry('mir_loaves', true);
           saveMiracleNotebookProgress();
+          if (typeof window.recordMiracleMissionCompleted === 'function') {
+            window.recordMiracleMissionCompleted('main_2', { deferPopup: true });
+          }
           openStageClearModal(2);
           return;
         } else {
@@ -3272,6 +3278,9 @@ function updateMiracleMainStage3Frame(dt, now) {
       st.phase = 'golgotha_arrived';
       miracleMainStagesCleared[3] = true;
       saveMiracleNotebookProgress();
+      if (typeof window.recordMiracleMissionCompleted === 'function') {
+        window.recordMiracleMissionCompleted('main_3', { deferPopup: true });
+      }
       openStageClearModal(3);
       return;
     }
@@ -3888,6 +3897,9 @@ function updateMiracleMainStage4Frame(dt, now) {
       miracleIsPostResurrection = true;
       unlockMiracleNotebookEntry('mir_resurrect', true);
       saveMiracleNotebookProgress();
+      if (typeof window.recordMiracleMissionCompleted === 'function') {
+        window.recordMiracleMissionCompleted('main_4', { deferPopup: true });
+      }
       openStageClearModal(4);
       return;
     }
@@ -4817,6 +4829,11 @@ REGISTER_EPISODE('miracle', {
       syncMiracleMainStageSequentialBeams();
     }
     startStageBgm(st);
+    setTimeout(() => {
+      if (typeof window.flushPendingFootstepsCardAward === 'function') {
+        window.flushPendingFootstepsCardAward();
+      }
+    }, 460);
   },
   updateStageFrame: function (dt, now, st) {
     if (miracleSubMode === 'openworld') updateMiracleOpenWorldFrame(dt, now);

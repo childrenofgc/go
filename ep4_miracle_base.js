@@ -4,7 +4,7 @@
 // - 확장된 오픈월드 지형 고도 계산기(넓어진 골고다 언덕 포함) 및 소프트 로우 폴리곤 자연물 팩토리
 // =========================================================================
 window.__GAME_BUILD_VERSIONS__ = window.__GAME_BUILD_VERSIONS__ || {};
-window.__GAME_BUILD_VERSIONS__.ep4_base = '20261123_v30';
+window.__GAME_BUILD_VERSIONS__.ep4_base = '20261124_v31';
 
 // =========================================================================
 // 🎬 [에피소드 4 오프닝 · 엔딩 영상 주소 설정]
@@ -156,6 +156,45 @@ const MIRACLE_NOTEBOOK_DB = {
 };
 
 let miracleCollectedIds = new Set();
+let miracleCompletedMissionIds = new Set();
+
+// 에피소드 4 누적 완료 집계 대상 (메인 스테이지 4종 + 오픈월드/비유/부활 후 미션 17종 = 현재 운영 총 21종)
+const MIRACLE_TRACKED_MISSION_IDS = [
+  'main_1', 'main_2', 'main_3', 'main_4',
+  'ev_cana', 'ev_paralytic', 'ev_children', 'ev_well', 'ev_zacchaeus',
+  'ev_samaritan', 'ev_lepers', 'ev_palm', 'ev_washfeet', 'ev_widow',
+  'par_sower', 'par_sheep', 'par_builder', 'par_mustard',
+  'post_emmaus', 'post_thomas', 'post_breakfast'
+];
+
+const MIRACLE_LEGACY_MISSION_NOTEBOOK_MAP = {
+  ev_cana: 'mir_cana',
+  ev_paralytic: 'mir_paralytic',
+  ev_children: 'wd_mark1014',
+  ev_well: 'wd_john414',
+  ev_zacchaeus: 'wd_luke1910',
+  ev_samaritan: 'wd_luke1037',
+  ev_lepers: 'mir_lepers',
+  ev_washfeet: 'wd_john1314',
+  ev_widow: 'wd_mark1243',
+  par_sower: 'par_sower',
+  par_sheep: 'par_sheep',
+  par_builder: 'par_builder',
+  par_mustard: 'par_mustard',
+  post_emmaus: 'test_emmaus',
+  post_thomas: 'test_thomas',
+  post_breakfast: 'test_breakfast'
+};
+
+function getMiracleTotalMissionCount() {
+  return MIRACLE_TRACKED_MISSION_IDS.length;
+}
+window.getMiracleTotalMissionCount = getMiracleTotalMissionCount;
+
+function getMiracleCompletedMissionCount() {
+  return miracleCompletedMissionIds.size;
+}
+window.getMiracleCompletedMissionCount = getMiracleCompletedMissionCount;
 
 function getMiracleNotebookStorageKey() {
   return 'bible_ep4_notebook_' + (explorerName || 'guest');
@@ -163,6 +202,7 @@ function getMiracleNotebookStorageKey() {
 
 function loadMiracleNotebookProgress() {
   miracleCollectedIds = new Set();
+  miracleCompletedMissionIds = new Set();
   miracleMainStagesCleared = { 1: false, 2: false, 3: false, 4: false };
   miracleIsPostResurrection = false;
   miracleAscensionSeen = false;
@@ -175,6 +215,13 @@ function loadMiracleNotebookProgress() {
       } else if (parsed && typeof parsed === 'object') {
         if (Array.isArray(parsed.collected)) {
           parsed.collected.forEach(id => miracleCollectedIds.add(id));
+        }
+        if (Array.isArray(parsed.completedMissions)) {
+          parsed.completedMissions.forEach(id => {
+            if (MIRACLE_TRACKED_MISSION_IDS.includes(id)) {
+              miracleCompletedMissionIds.add(id);
+            }
+          });
         }
         if (parsed.clearedStages && typeof parsed.clearedStages === 'object') {
           [1, 2, 3, 4].forEach(n => {
@@ -202,6 +249,19 @@ function loadMiracleNotebookProgress() {
     }
     if (mp.completed) miracleAscensionSeen = true;
   }
+  // 기존 기록 하위 호환 백필 (소문 NPC와 겹치는 ev_palm 제외)
+  [1, 2, 3, 4].forEach(n => {
+    if (miracleMainStagesCleared[n]) miracleCompletedMissionIds.add(`main_${n}`);
+  });
+  Object.keys(MIRACLE_LEGACY_MISSION_NOTEBOOK_MAP).forEach(evId => {
+    const nbId = MIRACLE_LEGACY_MISSION_NOTEBOOK_MAP[evId];
+    if (miracleCollectedIds.has(nbId)) {
+      miracleCompletedMissionIds.add(evId);
+    }
+  });
+  if (typeof window.syncFootstepsMilestonesFromCount === 'function') {
+    window.syncFootstepsMilestonesFromCount(miracleCompletedMissionIds.size, MIRACLE_TRACKED_MISSION_IDS.length, { silent: true });
+  }
   updateMiracleNotebookHudBadge();
 }
 
@@ -209,6 +269,7 @@ function saveMiracleNotebookProgress() {
   try {
     const payload = {
       collected: Array.from(miracleCollectedIds),
+      completedMissions: Array.from(miracleCompletedMissionIds),
       clearedStages: miracleMainStagesCleared,
       postResurrection: miracleIsPostResurrection,
       ascensionSeen: miracleAscensionSeen
@@ -217,6 +278,18 @@ function saveMiracleNotebookProgress() {
   } catch (e) {}
   updateMiracleNotebookHudBadge();
 }
+
+function recordMiracleMissionCompleted(missionId, opts = {}) {
+  if (!missionId || !MIRACLE_TRACKED_MISSION_IDS.includes(missionId)) return false;
+  const isNew = !miracleCompletedMissionIds.has(missionId);
+  miracleCompletedMissionIds.add(missionId);
+  saveMiracleNotebookProgress();
+  if (typeof window.checkAndQueueFootstepsAwards === 'function') {
+    window.checkAndQueueFootstepsAwards(miracleCompletedMissionIds.size, MIRACLE_TRACKED_MISSION_IDS.length, opts);
+  }
+  return isNew;
+}
+window.recordMiracleMissionCompleted = recordMiracleMissionCompleted;
 
 // 4개 메인 스테이지를 모두 해금(클리어)한 플레이어는 2회차부터 모든 스테이지에 자유 접근
 function isMiracleAllStagesUnlocked() {
@@ -5861,9 +5934,9 @@ function openMiracleDialog(options) {
     }
   }
 
-  // 신규 미션/스테이지 수락 창일 때 [거절 (나중에 하기)] 버튼 표시
+  // 신규 미션/스테이지 수락 창일 때 [거절 (나중에 하기)] 버튼 표시 (완료 다이얼로그는 hideCancel로 숨김)
   if (cancelBtn) {
-    if (typeof options.onConfirm === 'function' || options.showCancel) {
+    if ((typeof options.onConfirm === 'function' || options.showCancel) && !options.hideCancel) {
       cancelBtn.classList.remove('hidden');
       cancelBtn.textContent = options.cancelText || '거절 (나중에 하기) ✕';
     } else {
