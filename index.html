@@ -1252,7 +1252,7 @@
           <div class="flex items-center gap-1.5">
             <span class="text-base sm:text-lg leading-none">🌊</span>
             <div>
-              <span id="map-badge-exodus" class="inline-block px-1.5 py-0.2 rounded bg-amber-500 text-slate-950 font-jua text-[8px] sm:text-[9px] leading-tight">EP 2 · 🔒오픈예정</span>
+              <span id="map-badge-exodus" class="inline-block px-1.5 py-0.2 rounded bg-amber-600 text-white font-jua text-[8px] sm:text-[9px] leading-tight">EP 2 · 🔒이전단계필요</span>
               <h3 class="font-jua text-sky-950 text-[11px] sm:text-xs leading-tight">출애굽과 시내산</h3>
             </div>
           </div>
@@ -1470,22 +1470,22 @@
     </div>
   </div>
 
-<!-- 게임 스크립트 로드 (전체 스크립트 캐시 강제 갱신 ?v=28 및 버전 일관성 자동 검증 적용) -->
-  <script src="core.js?v=28"></script>
-  <script src="ep1_noah.js?v=28"></script>
-  <script src="ep2_exodus.js?v=28"></script>
-  <script src="ep3_david_base.js?v=28"></script>
-  <script src="ep3_david_st1_2.js?v=28"></script>
-  <script src="ep3_david_st3_end.js?v=28"></script>
-  <script src="ep4_miracle_base.js?v=28"></script>
-  <script src="ep4_miracle_assets.js?v=28"></script>
-  <script src="ep4_miracle_world.js?v=28"></script>
-  <script src="ep4_miracle_stages.js?v=28"></script>
-  <script src="ep4_multiplayer.js?v=28"></script>
+<!-- 게임 스크립트 로드 (전체 스크립트 캐시 강제 갱신 ?v=29 및 버전 일관성 자동 검증 적용) -->
+  <script src="core.js?v=29"></script>
+  <script src="ep1_noah.js?v=29"></script>
+  <script src="ep2_exodus.js?v=29"></script>
+  <script src="ep3_david_base.js?v=29"></script>
+  <script src="ep3_david_st1_2.js?v=29"></script>
+  <script src="ep3_david_st3_end.js?v=29"></script>
+  <script src="ep4_miracle_base.js?v=29"></script>
+  <script src="ep4_miracle_assets.js?v=29"></script>
+  <script src="ep4_miracle_world.js?v=29"></script>
+  <script src="ep4_miracle_stages.js?v=29"></script>
+  <script src="ep4_multiplayer.js?v=29"></script>
   <script>
     // GitHub Pages CDN·브라우저 부분 캐시로 신·구버전 스크립트가 뒤섞여 로드되는 현상을 자동 감지해 1회 강제 새로고침
     (function verifyScriptBuildConsistency() {
-      const EXPECTED = '20261123_v28';
+      const EXPECTED = '20261123_v29';
       const vers = window.__GAME_BUILD_VERSIONS__ || {};
       const keys = ['core', 'ep4_base', 'ep4_assets', 'ep4_world', 'ep4_stages', 'ep4_mp'];
       const mismatch = keys.some(k => vers[k] !== EXPECTED);

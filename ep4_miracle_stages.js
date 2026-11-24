@@ -4,7 +4,7 @@
 // - 스테이지 3(십자가 사건): 넓어진 골고다 언덕 정상 고원과 세 십자가 등장 연출 적용
 // =========================================================================
 window.__GAME_BUILD_VERSIONS__ = window.__GAME_BUILD_VERSIONS__ || {};
-window.__GAME_BUILD_VERSIONS__.ep4_stages = '20261123_v28';
+window.__GAME_BUILD_VERSIONS__.ep4_stages = '20261123_v29';
 
 // 스테이지 3: 십자가를 지고 힘겹게 오르시는 예수님 보행 속도(더 천천히) 및 플레이어 대신 짊어졌을 때의 보행 속도
 const MIRACLE_STAGE3_JESUS_WALK_SPEED = 1.05;
@@ -4460,7 +4460,7 @@ function updateMiracleEndingFrame(dt, now) {
     miracleMainStagesCleared[4] = true;
     miracleIsPostResurrection = true;
     if (typeof saveMiracleNotebookProgress === 'function') saveMiracleNotebookProgress();
-    if (typeof recordStageClearProgress === 'function') recordStageClearProgress('miracle', 4);
+    if (typeof recordPlayerStageClear === 'function') recordPlayerStageClear('miracle', 4);
 
     const angelPromiseLine = '하늘로 올라가신 예수께서는, 여러분이 지금 하늘로 올라가신 것을 본 것과 똑같은 방식으로 다시 내려오실 것입니다';
     const bf = document.getElementById('black-fade');
@@ -4567,10 +4567,8 @@ function updateMiracleEndingFrame(dt, now) {
 
 // -------------------------------------------------------------------------
 // 7. 에피소드 4 플러그인 등록 (REGISTER_EPISODE) - 시작부터 끝(});)까지 완전한 블록
+// (잠금 여부는 core.js의 EPISODE_MASTER_ADMIN_LOCK.miracle에서 일괄 제어)
 // -------------------------------------------------------------------------
-if (typeof EPISODE_MASTER_ADMIN_LOCK !== 'undefined') {
-  EPISODE_MASTER_ADMIN_LOCK.miracle = false;
-}
 
 if (typeof window.playMiracleOpenWorldOgg !== 'function') {
   let _fallbackOgg = null;

@@ -5,7 +5,7 @@
 // =========================================================================
 
 window.__GAME_BUILD_VERSIONS__ = window.__GAME_BUILD_VERSIONS__ || {};
-window.__GAME_BUILD_VERSIONS__.core = '20261123_v28';
+window.__GAME_BUILD_VERSIONS__.core = '20261123_v29';
 
 // 퀴즈 선택지 순서 무작위 셔플 공용 헬퍼 (정답이 항상 1번에 고정되지 않도록 보장)
 function shuffleQuizOptions(opts, ansIdx = 0) {
@@ -27,20 +27,21 @@ const EPISODE_SCRIPTURE = {};
 const EPISODE_REGISTRY = {};
 let lastSpokenStageKey = '';
 
-// 현재 진행 중인 플레이에서 엔딩 인증서를 출력할 수 있는지 여부 (1차 시도 정규 클리어 시에만 true)
+// 현재 진행 중인 플레이에서 엔딩 인증서를 출력할 수 있는지 여부 (정규 스테이지 클리어 시 true, 맵에서 엔딩 직접 재진입 시 false)
 let currentRunCanIssueCert = false;
 let certShownInCurrentRun = false;
 let enteredFromMapStageSelect = false;
+let enteredEndingDirectlyFromMap = false;
 
 // =========================================================================
 // [관리자 마스터 잠금 스위치]
-// - 현재 요청에 따라 에피소드 2(exodus), 3(david), 4(miracle)는 true(잠금) 상태입니다.
-// - 추후 오픈할 에피소드를 false로 변경하면, 구글 시트 개인 기록에 따라
-//   (에피소드1 클리어 -> 에피소드2 해금 -> 에피소드3 해금 -> 에피소드4 해금) 자동으로 열립니다!
+// - 에피소드 1(noah), 에피소드 2(exodus)는 잠금 해제 상태이며,
+//   에피소드 1을 클리어하면 에피소드 2가 자동으로 해금됩니다.
+// - 에피소드 3(david), 에피소드 4(miracle)는 추후 오픈 시 false로 변경하세요.
 // =========================================================================
 const EPISODE_MASTER_ADMIN_LOCK = {
   noah: false,    // 에피소드 1: 항상 오픈
-  exodus: true,   // 에피소드 2: 현재 잠금 (false로 변경 시 에피소드 1 클리어자에게 자동 오픈)
+  exodus: false,  // 에피소드 2: 잠금 해제 (에피소드 1 클리어 시 자동 해금)
   david: true,    // 에피소드 3: 현재 잠금 (false로 변경 시 에피소드 2 클리어자에게 자동 오픈)
   miracle: true   // 에피소드 4: 현재 잠금 (false로 변경 시 에피소드 3 클리어자에게 자동 오픈)
 };
@@ -1972,21 +1973,21 @@ function recordPlayerStageClear(epKey, stageNum) {
 }
 
 // 현재 플레이에서 인증서 출력이 허용되는지 확인
-// (맵에서 엔딩 재선택이 아니고, 최초 완주이거나 아직 기록되지 않은 새 레벨로 추가 완주했을 때 true)
+// - 월드맵에서 [🌈 엔딩 세상 둘러보기]로 바로 들어온 경우에만 false
+// - 아직 이 에피소드 인증서를 받은 적이 없다면 재도전/이어하기 여부와 무관하게 반드시 발급!
+// - 이미 인증서가 있더라도, 아직 기록되지 않은 새 레벨로 추가 완주했다면 누적 갱신 인증서를 출력!
 function canShowCertificateForCurrentRun() {
-  if (enteredFromMapStageSelect) return false;
+  if (enteredEndingDirectlyFromMap) return false;
   if (!currentRunCanIssueCert) return false;
   const existingCert = adventureCertsData[currentEpisode];
-  if (existingCert) {
-    const modes = normalizeClearedModesList(existingCert.clearedModes);
-    if (MODE_META[currentMode] && !modes.includes(currentMode)) {
-      return true;
-    }
-    return false;
+  if (!existingCert) {
+    return true;
   }
-  const prog = playerProgressData[currentEpisode];
-  if (prog && prog.certIssued) return false;
-  return true;
+  const modes = normalizeClearedModesList(existingCert.clearedModes);
+  if (MODE_META[currentMode] && !modes.includes(currentMode)) {
+    return true;
+  }
+  return false;
 }
 
 // [전체 에피소드 공통 요청사항] 2회차/재선택 엔딩에서 제단이나 왕좌에 다가가면 인증서 대신 열리는 [월드맵으로 가기] 선택창
@@ -4531,6 +4532,7 @@ function startVoxelGame(mode, targetStage = 1, fromMapSelect = false) {
   }
   const epProg = playerProgressData[currentEpisode];
   enteredFromMapStageSelect = Boolean(fromMapSelect || targetStage === 4);
+  enteredEndingDirectlyFromMap = Boolean(targetStage === 4 && fromMapSelect);
 
   // 최초 1회차 플레이어 여부 기록 (튜토리얼 자동 노출 판정용: 2회차부터는 자동 노출 안 함!)
   currentRunIsFirstEpEntry = Boolean(
@@ -4541,27 +4543,9 @@ function startVoxelGame(mode, targetStage = 1, fromMapSelect = false) {
     (epProg.maxClearedStage || 0) === 0
   );
 
-  const existingEpCert = adventureCertsData[currentEpisode];
-  const isNewLevelFullRun = Boolean(
-    !enteredFromMapStageSelect &&
-    targetStage === 1 &&
-    existingEpCert &&
-    MODE_META[mode] &&
-    !normalizeClearedModesList(existingEpCert.clearedModes).includes(mode)
-  );
-
-  if (
-    (!enteredFromMapStageSelect &&
-      targetStage === 1 &&
-      (epProg.attempts || 0) === 0 &&
-      !epProg.certIssued &&
-      !epProg.completed) ||
-    isNewLevelFullRun
-  ) {
-    currentRunCanIssueCert = true;
-  } else {
-    currentRunCanIssueCert = false;
-  }
+  // 월드맵에서 [엔딩 세상 둘러보기]로 직접 들어간 경우가 아니라면,
+  // 재도전·이어하기·새 레벨 도전을 통해 정상 클리어했을 때 항상 인증서를 발급/갱신할 수 있도록 허용!
+  currentRunCanIssueCert = !enteredEndingDirectlyFromMap;
 
   epProg.attempts = (epProg.attempts || 0) + 1;
   saveLocalPlayerProgress(explorerName);
@@ -4710,7 +4694,6 @@ function retryCurrentStage() {
   MiracleGuideUI.lastAutoKey = '';
   hideMissionGuideBubbleImmediately();
 
-  currentRunCanIssueCert = false;
   if (playerProgressData[currentEpisode]) {
     playerProgressData[currentEpisode].attempts = (playerProgressData[currentEpisode].attempts || 1) + 1;
     saveLocalPlayerProgress(explorerName);
@@ -5613,7 +5596,15 @@ function renderEpisodeCardFrontDataURL(epId) {
   if (!ctx) return '';
 
   let rendered3D = false;
-  if (typeof THREE !== 'undefined' && typeof renderer !== 'undefined' && renderer && typeof renderer.readRenderTargetPixels === 'function' && typeof THREE.WebGLRenderTarget === 'function') {
+  const canUseWebGL = (
+    typeof THREE !== 'undefined' &&
+    typeof renderer !== 'undefined' &&
+    renderer &&
+    !(typeof webglContextLostFlag !== 'undefined' && webglContextLostFlag) &&
+    typeof renderer.readRenderTargetPixels === 'function' &&
+    typeof THREE.WebGLRenderTarget === 'function'
+  );
+  if (canUseWebGL) {
     const savedCarried = carriedBlockGroup;
     const savedLimbs = playerLimbs;
     const savedStage = currentStage;
@@ -5639,14 +5630,24 @@ function renderEpisodeCardFrontDataURL(epId) {
       const pixels = new Uint8Array(W * H * 4);
       renderer.readRenderTargetPixels(rt, 0, 0, W, H, pixels);
 
-      const imgData = ctx.createImageData(W, H);
-      for (let row = 0; row < H; row++) {
-        const srcRow = (H - 1 - row) * W * 4;
-        const dstRow = row * W * 4;
-        imgData.data.set(pixels.subarray(srcRow, srcRow + W * 4), dstRow);
+      // 일부 모바일 GPU/컨텍스트에서 빈 검정 픽셀이 반환되는 경우 폴백 일러스트 사용
+      let hasVisiblePixel = false;
+      for (let i = 0; i < pixels.length; i += 64) {
+        if (pixels[i] > 4 || pixels[i + 1] > 4 || pixels[i + 2] > 4) {
+          hasVisiblePixel = true;
+          break;
+        }
       }
-      ctx.putImageData(imgData, 0, 0);
-      rendered3D = true;
+      if (hasVisiblePixel) {
+        const imgData = ctx.createImageData(W, H);
+        for (let row = 0; row < H; row++) {
+          const srcRow = (H - 1 - row) * W * 4;
+          const dstRow = row * W * 4;
+          imgData.data.set(pixels.subarray(srcRow, srcRow + W * 4), dstRow);
+        }
+        ctx.putImageData(imgData, 0, 0);
+        rendered3D = true;
+      }
     } catch (err) {
       rendered3D = false;
     } finally {
