@@ -5,7 +5,7 @@
 // =========================================================================
 
 window.__GAME_BUILD_VERSIONS__ = window.__GAME_BUILD_VERSIONS__ || {};
-window.__GAME_BUILD_VERSIONS__.core = '20261124_v31';
+window.__GAME_BUILD_VERSIONS__.core = '20261124_v32';
 
 // 퀴즈 선택지 순서 무작위 셔플 공용 헬퍼 (정답이 항상 1번에 고정되지 않도록 보장)
 function shuffleQuizOptions(opts, ansIdx = 0) {
@@ -2384,6 +2384,11 @@ async function syncPlayerProgressFromSheet() {
       saveLocalPlayerProgress(explorerName);
       updateWorldMapEpisodePinsUI();
     }
+    if (playerProgressData.miracle && (playerProgressData.miracle.completed || playerProgressData.miracle.certIssued)) {
+      if (typeof markEp4EndingCompletedForLogo === 'function') {
+        markEp4EndingCompletedForLogo(explorerName);
+      }
+    }
   } catch (e) {}
 }
 
@@ -2924,6 +2929,7 @@ function openScreen(screenId) {
     } else if (screenId === 'screen-opening') {
       isMenuBgmActive = false;
       stopStageBgm();
+      if (typeof updateOpeningLogoState === 'function') updateOpeningLogoState(false);
     }
   }
   syncOverlayModalBodyClass();
@@ -2966,6 +2972,145 @@ function isEpisode4CompletedForMultiplayer() {
   return false;
 }
 window.isEpisode4CompletedForMultiplayer = isEpisode4CompletedForMultiplayer;
+
+// =========================================================================
+// [오프닝 로고 자동 전환] 에피소드 4 완주 전 '출발! 성경 탐험대!' ↔ 완주 후 '약속의 여정' 스페셜 연출
+// =========================================================================
+const OPENING_LOGO_DEFAULT_SRC = 'assets/img/logo_bible_adventure.png?v=32';
+const OPENING_LOGO_PROMISE_SRC = 'assets/img/logo_promise_journey.png?v=32';
+const EP4_PROMISE_LOGO_DEVICE_KEY = 'bible_ep4_promise_logo_unlocked_v1';
+const EP4_ENDING_VIDEO_WATCHED_KEY = 'bible_ep4_ending_video_watched_v1';
+let _lastOpeningLogoCompletedState = null;
+
+function getPlayerPromiseLogoStorageKey(uniquePlayerId) {
+  return 'bible_ep4_promise_logo_player_v1_' + (uniquePlayerId || 'guest');
+}
+
+function hasStoredEp4CompletionForPlayer(playerId) {
+  const id = String(playerId || '').trim();
+  if (!id) return false;
+  try {
+    if (localStorage.getItem(getPlayerPromiseLogoStorageKey(id)) === '1') return true;
+    const progRaw = localStorage.getItem(getLocalProgressStorageKey(id));
+    if (progRaw) {
+      const parsed = JSON.parse(progRaw);
+      const mp = parsed && parsed.miracle;
+      if (mp && (mp.completed || mp.certIssued || (parseInt(mp.maxClearedStage || 0, 10) >= 4))) return true;
+    }
+    const certRaw = localStorage.getItem(getAdventureCertsStorageKey(id));
+    if (certRaw) {
+      const certs = JSON.parse(certRaw);
+      if (certs && certs.miracle && certs.miracle.code) return true;
+    }
+    const nbRaw = localStorage.getItem('bible_ep4_notebook_' + id);
+    if (nbRaw) {
+      const nb = JSON.parse(nbRaw);
+      if (nb && nb.ascensionSeen) return true;
+    }
+  } catch (e) {}
+  return false;
+}
+
+function hasAnyDeviceEp4Completion() {
+  if (isEpisode4CompletedForMultiplayer()) return true;
+  try {
+    if (localStorage.getItem(EP4_PROMISE_LOGO_DEVICE_KEY) === '1') return true;
+    if (Math.max(0, parseInt(localStorage.getItem(EP4_ENDING_VIDEO_WATCHED_KEY) || '0', 10) || 0) >= 1) return true;
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i) || '';
+      if (k.startsWith('bible_ep4_promise_logo_player_v1_') && localStorage.getItem(k) === '1') return true;
+      if (k.startsWith('bible_progress_v2_')) {
+        const parsed = JSON.parse(localStorage.getItem(k) || 'null');
+        const mp = parsed && parsed.miracle;
+        if (mp && (mp.completed || mp.certIssued || (parseInt(mp.maxClearedStage || 0, 10) >= 4))) return true;
+      } else if (k.startsWith('bible_adventure_certs_v1_')) {
+        const certs = JSON.parse(localStorage.getItem(k) || 'null');
+        if (certs && certs.miracle && certs.miracle.code) return true;
+      } else if (k.startsWith('bible_ep4_notebook_')) {
+        const nb = JSON.parse(localStorage.getItem(k) || 'null');
+        if (nb && nb.ascensionSeen) return true;
+      }
+    }
+  } catch (e) {}
+  return false;
+}
+
+function shouldShowPromiseJourneyLogo() {
+  const nameInput = document.getElementById('opening-name-input');
+  const birthInput = document.getElementById('opening-birth-input');
+  const rawName = nameInput ? nameInput.value.trim() : '';
+  const rawBirth = birthInput ? birthInput.value.replace(/[^0-9]/g, '').trim() : '';
+  if (rawName && rawBirth.length === 4) {
+    const typedId = `${rawName}(${rawBirth})`;
+    if (typedId === explorerName && isEpisode4CompletedForMultiplayer()) return true;
+    return hasStoredEp4CompletionForPlayer(typedId);
+  }
+  return hasAnyDeviceEp4Completion();
+}
+
+function markEp4EndingCompletedForLogo(playerId = '') {
+  const pid = String(playerId || (typeof explorerName !== 'undefined' ? explorerName : '') || '').trim();
+  try {
+    localStorage.setItem(EP4_PROMISE_LOGO_DEVICE_KEY, '1');
+    if (pid) {
+      localStorage.setItem(getPlayerPromiseLogoStorageKey(pid), '1');
+    }
+  } catch (e) {}
+  updateOpeningLogoState(false);
+}
+window.markEp4EndingCompletedForLogo = markEp4EndingCompletedForLogo;
+
+function updateOpeningLogoState(animateIfChanged = false) {
+  const screenEl = document.getElementById('screen-opening');
+  if (!screenEl) return false;
+  const isCompleted = shouldShowPromiseJourneyLogo();
+  screenEl.classList.toggle('opening-completed', isCompleted);
+
+  const auraEl = document.getElementById('opening-logo-aura');
+  if (auraEl) auraEl.classList.toggle('hidden', !isCompleted);
+  const sparklesEl = document.getElementById('opening-logo-sparkles');
+  if (sparklesEl) sparklesEl.classList.toggle('hidden', !isCompleted);
+
+  const imgEl = document.getElementById('opening-logo-img');
+  const fbEl = document.getElementById('opening-logo-fallback');
+  if (fbEl) {
+    fbEl.textContent = isCompleted ? '약속의 여정' : '출발! 성경 탐험대!';
+    fbEl.classList.add('hidden');
+  }
+  if (imgEl) {
+    const targetSrc = isCompleted ? OPENING_LOGO_PROMISE_SRC : OPENING_LOGO_DEFAULT_SRC;
+    const targetAlt = isCompleted ? '약속의 여정' : '출발! 성경 탐험대!';
+    imgEl.style.display = '';
+    if ((imgEl.getAttribute('src') || '') !== targetSrc) {
+      imgEl.src = targetSrc;
+      if (animateIfChanged && _lastOpeningLogoCompletedState !== null && _lastOpeningLogoCompletedState !== isCompleted) {
+        imgEl.classList.remove('opening-logo-swap-anim');
+        void imgEl.offsetWidth;
+        imgEl.classList.add('opening-logo-swap-anim');
+      }
+    }
+    imgEl.alt = targetAlt;
+  }
+
+  const badgeEl = document.getElementById('opening-badge');
+  if (badgeEl) {
+    badgeEl.textContent = isCompleted ? '👑 완주 기념 · 약속의 여정' : '✨ 3D 바이블 어드벤처';
+  }
+  const subEl = document.getElementById('opening-sub');
+  if (subEl) {
+    subEl.textContent = isCompleted
+      ? '말씀의 약속을 완주한 탐험가! 새로운 여정을 이어가요!'
+      : '말씀 속 주인공이 되어 믿음의 모험을 떠나요!';
+  }
+
+  _lastOpeningLogoCompletedState = isCompleted;
+  return isCompleted;
+}
+window.updateOpeningLogoState = updateOpeningLogoState;
+
+window.handleOpeningIdentityInput = function () {
+  updateOpeningLogoState(true);
+};
 
 function launchEpisode(ep) {
   const lockState = getEpisodeLockState(ep);
@@ -7875,6 +8020,14 @@ function applyAdminDirectJump(jump) {
 }
 
 window.addEventListener('DOMContentLoaded', () => {
+  if (typeof updateOpeningLogoState === 'function') {
+    updateOpeningLogoState(false);
+  }
+  try {
+    const _preloadPromiseLogo = new Image();
+    _preloadPromiseLogo.src = OPENING_LOGO_PROMISE_SRC;
+  } catch (e) {}
+
   const jump = parseAdminDirectJumpParams();
   const isDirectJump = Boolean(jump);
 

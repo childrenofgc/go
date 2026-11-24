@@ -103,38 +103,286 @@
       touch-action: pan-y;
     }
 
-    /* 오프닝 이름 입력 화면: 작은 화면 및 가로모드에서 스크롤 없이 한 화면에 들어오도록 비율 자동 조정 */
-    #screen-opening .opening-card {
-      max-height: 94dvh;
+    /* 오프닝 시작 화면: 타깃 레이아웃 + 모바일 가로 2단 분할 + 약속의 여정 완주 스페셜 연출 */
+    .opening-screen-backdrop {
+      background: radial-gradient(ellipse at center, rgba(15, 23, 42, 0.02) 38%, rgba(15, 23, 42, 0.22) 100%);
+      padding: max(0.5rem, env(safe-area-inset-top)) max(0.65rem, env(safe-area-inset-right)) max(0.5rem, env(safe-area-inset-bottom)) max(0.65rem, env(safe-area-inset-left));
       overflow: hidden;
+    }
+    .opening-stage {
+      width: 100%;
+      max-width: 680px;
+      max-height: 100%;
       display: flex;
       flex-direction: column;
-      justify-content: space-between;
+      align-items: center;
+      justify-content: center;
+      gap: clamp(0.45rem, 1.8dvh, 1rem);
     }
-    @media (max-height: 680px), (max-width: 380px) {
-      #screen-opening .opening-card { padding: 0.85rem 1rem !important; }
-      #screen-opening .opening-badge { font-size: 0.68rem !important; padding: 0.15rem 0.6rem !important; margin-bottom: 0.25rem !important; }
-      #screen-opening .opening-title { font-size: 1.55rem !important; margin-bottom: 0.1rem !important; }
-      #screen-opening .opening-sub { font-size: 0.7rem !important; margin-bottom: 0.35rem !important; }
-      #screen-opening .opening-rotate-hint { padding: 0.25rem 0.5rem !important; margin: 0.15rem 0 0.4rem 0 !important; font-size: 0.68rem !important; }
-      #screen-opening .opening-form-box { padding: 0.55rem 0.65rem !important; margin-bottom: 0.5rem !important; }
-      #screen-opening .opening-input { padding: 0.4rem 0.55rem !important; font-size: 0.8rem !important; }
-      #screen-opening .opening-start-btn { padding: 0.55rem !important; font-size: 0.95rem !important; }
-      #screen-opening .opening-footer { margin-top: 0.35rem !important; font-size: 0.68rem !important; }
+    .opening-logo-zone {
+      position: relative;
+      width: min(94vw, 560px);
+      max-height: 42dvh;
+      flex: 0 1 auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+      user-select: none;
     }
-    @media (max-height: 540px) and (orientation: landscape) {
-      #screen-opening .opening-card {
-        max-width: 34rem !important;
-        padding: 0.55rem 1rem !important;
+    .opening-logo-float-wrap {
+      position: relative;
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      animation: openingLogoFloat 4.2s ease-in-out infinite;
+      will-change: transform;
+    }
+    @keyframes openingLogoFloat {
+      0%, 100% { transform: translateY(0px); }
+      50% { transform: translateY(-5px); }
+    }
+    .opening-logo-img {
+      position: relative;
+      z-index: 2;
+      width: auto;
+      max-width: 100%;
+      max-height: min(39dvh, 265px);
+      height: auto;
+      object-fit: contain;
+      filter: drop-shadow(0 8px 16px rgba(15, 23, 42, 0.45)) drop-shadow(0 2px 4px rgba(69, 26, 3, 0.35));
+      transition: filter 0.35s ease;
+    }
+    .opening-logo-swap-anim {
+      animation: openingLogoSwap 0.45s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    }
+    @keyframes openingLogoSwap {
+      0% { opacity: 0; transform: scale(0.92) translateY(6px); }
+      100% { opacity: 1; transform: scale(1) translateY(0); }
+    }
+    .opening-logo-aura {
+      position: absolute;
+      inset: -16% -12%;
+      z-index: 0;
+      border-radius: 50%;
+      background: radial-gradient(ellipse at center, rgba(254, 240, 138, 0.78) 0%, rgba(251, 191, 36, 0.36) 40%, rgba(245, 158, 11, 0) 72%);
+      filter: blur(10px);
+      animation: promiseAuraPulse 3.2s ease-in-out infinite;
+      pointer-events: none;
+    }
+    @keyframes promiseAuraPulse {
+      0%, 100% { transform: scale(0.94); opacity: 0.74; }
+      50% { transform: scale(1.06); opacity: 1; }
+    }
+    .opening-logo-sparkles {
+      position: absolute;
+      inset: -6% -4%;
+      z-index: 3;
+      pointer-events: none;
+    }
+    .op-sparkle {
+      position: absolute;
+      color: #fef08a;
+      font-size: clamp(0.8rem, 2.2vw, 1.25rem);
+      line-height: 1;
+      text-shadow: 0 0 8px rgba(251, 191, 36, 0.95), 0 0 14px rgba(255, 255, 255, 0.85);
+      animation: promiseSparkleTwinkle 2.4s ease-in-out infinite;
+    }
+    .op-sparkle.sp-1 { top: 8%; left: 10%; animation-delay: 0s; }
+    .op-sparkle.sp-2 { top: 2%; left: 50%; animation-delay: 0.45s; font-size: clamp(0.95rem, 2.5vw, 1.4rem); }
+    .op-sparkle.sp-3 { top: 10%; right: 9%; animation-delay: 0.9s; }
+    .op-sparkle.sp-4 { bottom: 18%; left: 5%; animation-delay: 1.3s; }
+    .op-sparkle.sp-5 { bottom: 16%; right: 6%; animation-delay: 1.75s; }
+    .op-sparkle.sp-6 { top: 44%; right: 2%; animation-delay: 2.1s; font-size: clamp(0.7rem, 1.8vw, 1.05rem); }
+    @keyframes promiseSparkleTwinkle {
+      0%, 100% { opacity: 0.25; transform: scale(0.75) rotate(0deg); }
+      50% { opacity: 1; transform: scale(1.22) rotate(18deg); }
+    }
+
+    #screen-opening.opening-completed .opening-logo-img {
+      filter: drop-shadow(0 0 18px rgba(253, 224, 71, 0.65)) drop-shadow(0 8px 18px rgba(120, 53, 15, 0.48));
+    }
+    #screen-opening.opening-completed .opening-card {
+      border-color: #d97706;
+      box-shadow: 0 6px 0 rgba(146, 64, 14, 0.7), 0 0 26px rgba(251, 191, 36, 0.34), 0 14px 28px rgba(0, 0, 0, 0.38), inset 0 0 0 2px rgba(254, 240, 138, 0.7);
+    }
+    #screen-opening.opening-completed .opening-badge {
+      background: linear-gradient(135deg, #fef08a 0%, #fbbf24 52%, #f59e0b 100%);
+      border-color: #b45309;
+      color: #451a03;
+      box-shadow: 0 3px 0 rgba(146, 64, 14, 0.48), 0 0 14px rgba(253, 224, 71, 0.6);
+    }
+
+    #screen-opening .opening-card {
+      position: relative;
+      width: min(94vw, 500px);
+      margin-top: 0.55rem;
+      overflow: visible;
+      display: flex;
+      flex-direction: column;
+      background: #fff9e6;
+      border: 3.5px solid #b45309;
+      box-shadow: 0 6px 0 rgba(120, 53, 15, 0.65), 0 14px 28px rgba(0, 0, 0, 0.4), inset 0 0 0 2px rgba(254, 243, 199, 0.85);
+      padding: clamp(1.05rem, 2.5dvh, 1.35rem) clamp(0.85rem, 2.8vw, 1.35rem) clamp(0.55rem, 1.4dvh, 0.85rem);
+    }
+    .opening-badge-wrap {
+      position: absolute;
+      top: 0;
+      left: 50%;
+      transform: translate(-50%, -52%);
+      z-index: 5;
+      white-space: nowrap;
+    }
+    #screen-opening .opening-badge {
+      background: linear-gradient(180deg, #fffbeb 0%, #fde68a 100%);
+      border: 2px solid #d97706;
+      color: #78350f;
+      box-shadow: 0 2px 0 rgba(146, 64, 14, 0.35), 0 3px 8px rgba(0, 0, 0, 0.16);
+      padding: 0.18rem 0.95rem;
+      font-size: clamp(0.72rem, 1.8vw, 0.88rem);
+      line-height: 1.25;
+      transition: background 0.35s ease, box-shadow 0.35s ease;
+    }
+    #screen-opening .opening-sub {
+      font-size: clamp(0.72rem, 2vw, 0.9rem);
+      line-height: 1.3;
+      margin-bottom: clamp(0.45rem, 1.4dvh, 0.75rem);
+      color: #573616;
+    }
+    #screen-opening .opening-form-box {
+      margin-bottom: clamp(0.55rem, 1.6dvh, 0.85rem);
+      text-align: left;
+    }
+    .opening-input-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+      gap: clamp(0.4rem, 1.6vw, 0.7rem);
+    }
+    .opening-label {
+      display: block;
+      font-size: clamp(0.72rem, 1.9vw, 0.88rem);
+      margin-bottom: 0.22rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    #screen-opening .opening-input {
+      padding: clamp(0.4rem, 1.2dvh, 0.58rem) clamp(0.55rem, 1.8vw, 0.75rem);
+      font-size: clamp(0.8rem, 2.2vw, 0.95rem);
+      border-width: 2px;
+      border-color: #d97706;
+      box-shadow: inset 0 1px 3px rgba(120, 53, 15, 0.12);
+    }
+    #screen-opening .opening-start-btn {
+      padding: clamp(0.52rem, 1.5dvh, 0.72rem) 0.5rem;
+      font-size: clamp(0.84rem, 2.3vw, 1.02rem);
+      border-radius: 14px;
+    }
+    .opening-btn-primary {
+      background: linear-gradient(180deg, #fcd34d 0%, #f59e0b 55%, #d97706 100%);
+      border: 2px solid #92400e;
+      color: #3b1704;
+      text-shadow: 0 1px 0 rgba(255, 255, 255, 0.45);
+      box-shadow: 0 3.5px 0 #92400e, 0 6px 12px rgba(120, 53, 15, 0.28);
+    }
+    .opening-btn-primary:hover { filter: brightness(1.04); }
+    .opening-btn-primary:active {
+      transform: translateY(2px);
+      box-shadow: 0 1.5px 0 #92400e, 0 3px 6px rgba(120, 53, 15, 0.25);
+    }
+    .opening-btn-mp {
+      background: linear-gradient(180deg, #34d399 0%, #10b981 55%, #059669 100%);
+      border: 2px solid #065f46;
+      color: #ffffff;
+      text-shadow: 0 1px 2px rgba(6, 78, 59, 0.5);
+      box-shadow: 0 3.5px 0 #065f46, 0 6px 12px rgba(6, 78, 59, 0.25);
+    }
+    .opening-btn-mp:hover { filter: brightness(1.04); }
+    .opening-btn-mp:active {
+      transform: translateY(2px);
+      box-shadow: 0 1.5px 0 #065f46, 0 3px 6px rgba(6, 78, 59, 0.22);
+    }
+    .opening-footer-row {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-top: clamp(0.42rem, 1.2dvh, 0.65rem);
+      min-height: 1.2rem;
+    }
+    #screen-opening .opening-footer {
+      margin: 0;
+      font-size: clamp(0.68rem, 1.7vw, 0.78rem);
+    }
+
+    @media (max-height: 700px) and (orientation: portrait), (max-width: 390px) {
+      .opening-stage { gap: 0.4rem; }
+      .opening-logo-zone { width: min(94vw, 410px); max-height: 31dvh; }
+      .opening-logo-img { max-height: min(29dvh, 195px); }
+      #screen-opening .opening-card { padding: 0.95rem 0.8rem 0.55rem; border-width: 3px; }
+    }
+    @media (max-height: 520px) and (max-width: 499px) {
+      .opening-stage { gap: 0.28rem; }
+      .opening-logo-zone { max-height: 20dvh; }
+      .opening-logo-img { max-height: 18dvh; }
+      #screen-opening .opening-card { margin-top: 0.35rem; padding: 0.8rem 0.75rem 0.45rem; }
+      #screen-opening .opening-sub { margin-bottom: 0.3rem; font-size: 0.7rem; }
+      #screen-opening .opening-form-box { margin-bottom: 0.4rem; }
+      #screen-opening .opening-input { padding: 0.34rem 0.5rem; font-size: 0.78rem; }
+      #screen-opening .opening-start-btn { padding: 0.44rem 0.4rem; font-size: 0.82rem; }
+    }
+    @media (max-width: 350px) {
+      .opening-label { font-size: 0.66rem !important; }
+      #screen-opening .opening-start-btn { font-size: 0.78rem !important; }
+    }
+    /* 모바일 가로모드: [좌측 대형 로고 | 우측 입력 카드] 2단 분할 (높이 제약 완벽 대응) */
+    @media (max-height: 560px) and (min-width: 500px) and (orientation: landscape) {
+      .opening-stage {
+        flex-direction: row !important;
+        align-items: center !important;
+        justify-content: center !important;
+        max-width: min(96vw, 880px) !important;
+        gap: clamp(0.75rem, 2.6vw, 1.8rem) !important;
+        padding-top: 0.35rem;
       }
-      #screen-opening .opening-badge { font-size: 0.64rem !important; padding: 0.1rem 0.5rem !important; margin-bottom: 0.1rem !important; }
-      #screen-opening .opening-title { font-size: 1.3rem !important; margin-bottom: 0.05rem !important; }
-      #screen-opening .opening-sub { font-size: 0.65rem !important; margin-bottom: 0.2rem !important; }
-      #screen-opening .opening-rotate-hint { display: none !important; }
-      #screen-opening .opening-form-box { padding: 0.4rem 0.6rem !important; margin-bottom: 0.35rem !important; }
-      #screen-opening .opening-input { padding: 0.3rem 0.5rem !important; font-size: 0.78rem !important; }
-      #screen-opening .opening-start-btn { padding: 0.4rem !important; font-size: 0.88rem !important; }
-      #screen-opening .opening-footer { margin-top: 0.2rem !important; font-size: 0.64rem !important; }
+      .opening-logo-zone {
+        flex: 0 1 46% !important;
+        width: 46% !important;
+        max-width: 430px !important;
+        max-height: 84dvh !important;
+      }
+      .opening-logo-img {
+        width: 100% !important;
+        max-width: 100% !important;
+        max-height: min(76dvh, 270px) !important;
+      }
+      #screen-opening .opening-card {
+        flex: 1 1 50% !important;
+        width: auto !important;
+        max-width: min(52vw, 420px) !important;
+        margin-top: 0.35rem !important;
+        padding: 0.92rem 0.88rem 0.52rem !important;
+        border-width: 3px !important;
+      }
+      #screen-opening .opening-badge { font-size: 0.72rem !important; padding: 0.14rem 0.75rem !important; }
+      #screen-opening .opening-sub { font-size: 0.72rem !important; margin-bottom: 0.38rem !important; }
+      #screen-opening .opening-form-box { margin-bottom: 0.48rem !important; }
+      .opening-label { font-size: 0.72rem !important; margin-bottom: 0.15rem !important; }
+      #screen-opening .opening-input { padding: 0.34rem 0.5rem !important; font-size: 0.8rem !important; }
+      #screen-opening .opening-start-btn { padding: 0.48rem 0.4rem !important; font-size: 0.85rem !important; border-radius: 12px !important; }
+      .opening-footer-row { margin-top: 0.36rem !important; }
+      #screen-opening .opening-footer { font-size: 0.66rem !important; }
+    }
+    @media (max-height: 360px) and (min-width: 500px) and (orientation: landscape) {
+      .opening-logo-img { max-height: 68dvh !important; }
+      #screen-opening .opening-card { padding: 0.78rem 0.75rem 0.4rem !important; }
+      #screen-opening .opening-sub { font-size: 0.66rem !important; margin-bottom: 0.25rem !important; }
+      #screen-opening .opening-form-box { margin-bottom: 0.34rem !important; }
+      #screen-opening .opening-input { padding: 0.25rem 0.45rem !important; font-size: 0.75rem !important; }
+      #screen-opening .opening-start-btn { padding: 0.36rem 0.35rem !important; font-size: 0.78rem !important; }
+      .opening-footer-row { margin-top: 0.24rem !important; }
     }
 
     /* 휴대폰 가로모드(높이 540px 이하) 최적화 */
@@ -1282,70 +1530,99 @@
   </div>
 
   <!-- =================================================================== -->
-  <!-- 화면 1: 오프닝 화면 (가로·소형 화면 1화면 맞춤 & 이름·생일 4자리 필수 입력 검증) -->
+  <!-- 화면 1: 오프닝 화면 (실시간 3D 월드 + 대형 타이틀 로고 + 반응형 가로 2단 분할) -->
   <!-- =================================================================== -->
-  <div id="screen-opening" class="fixed inset-0 z-30 flex items-center justify-center p-2 sm:p-3 bg-slate-950/45 backdrop-blur-[2px]">
-    <div class="mc-card opening-card relative w-full max-w-md rounded-3xl p-4 sm:p-6 text-center">
-      <div>
-        <div class="opening-badge inline-block px-3 py-0.5 rounded-full bg-amber-200 text-amber-900 font-jua text-xs mb-1.5">
-          ✨ 3D 바이블 어드벤처
+  <div id="screen-opening" class="opening-screen-backdrop fixed inset-0 z-30 flex items-center justify-center">
+    <div id="opening-stage" class="opening-stage">
+      <!-- 상단/좌측 투명 PNG 타이틀 로고 (완주 시 황금 후광 + 별빛 + '약속의 여정' 스페셜 연출) -->
+      <div id="opening-logo-zone" class="opening-logo-zone">
+        <div id="opening-logo-aura" class="opening-logo-aura hidden" aria-hidden="true"></div>
+        <div id="opening-logo-sparkles" class="opening-logo-sparkles hidden" aria-hidden="true">
+          <span class="op-sparkle sp-1">✦</span>
+          <span class="op-sparkle sp-2">✨</span>
+          <span class="op-sparkle sp-3">✦</span>
+          <span class="op-sparkle sp-4">✧</span>
+          <span class="op-sparkle sp-5">✦</span>
+          <span class="op-sparkle sp-6">✧</span>
         </div>
-        <h1 class="opening-title font-jua text-2xl sm:text-4xl text-amber-900 mb-1">출발! 성경 탐험대!</h1>
-        <p class="opening-sub text-xs sm:text-sm text-slate-600 mb-2.5">말씀 속 주인공이 되어 믿음의 모험을 떠나요!</p>
-        <div class="opening-rotate-hint flex items-center justify-center gap-1.5 px-3 py-1 my-1.5 rounded-xl bg-sky-500/20 border border-sky-400/60 text-slate-900 text-xs font-jua shadow-inner animate-pulse">
-          <span>📱🔄</span>
-          <span>가로모드 가능해요! (화면을 가로로 돌리면 더 넓게 보여요)</span>
+        <div class="opening-logo-float-wrap">
+          <img id="opening-logo-img"
+               src="assets/img/logo_bible_adventure.png?v=32"
+               alt="출발! 성경 탐험대!"
+               decoding="async"
+               class="opening-logo-img"
+               onerror="this.style.display='none'; var fb=document.getElementById('opening-logo-fallback'); if(fb) fb.classList.remove('hidden');" />
+          <h1 id="opening-logo-fallback" class="hidden font-jua text-3xl sm:text-5xl text-amber-300 drop-shadow-[0_4px_6px_rgba(69,26,3,0.9)]">
+            출발! 성경 탐험대!
+          </h1>
         </div>
       </div>
 
-      <div class="opening-form-box bg-amber-100/80 border-2 border-amber-400 rounded-2xl p-3 mb-3 text-left">
-        <div class="grid grid-cols-3 gap-2">
-          <div class="col-span-2">
-            <label for="opening-name-input" class="block font-jua text-amber-900 text-xs sm:text-sm mb-1">🎖️ 탐험 대원 이름 <span class="text-rose-600">*</span></label>
-            <input id="opening-name-input" type="text" maxlength="10" placeholder="예: 김광릉내"
-                   onkeydown="if(event.key==='Enter'){event.preventDefault(); document.getElementById('opening-birth-input').focus();}"
-                   style="user-select: text; -webkit-user-select: text; touch-action: auto;"
-                   class="opening-input w-full px-3 py-2 rounded-xl border-2 border-amber-500 bg-white font-bold text-slate-900 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400" />
-          </div>
-          <div class="col-span-1">
-            <label for="opening-birth-input" class="block font-jua text-amber-900 text-xs sm:text-sm mb-1">🎂 생일(4자리) <span class="text-rose-600">*</span></label>
-            <input id="opening-birth-input" type="tel" inputmode="numeric" maxlength="4" placeholder="예: 0709"
-                   oninput="this.value = this.value.replace(/[^0-9]/g, '').slice(0, 4);"
-                   onkeydown="if(event.key==='Enter'){event.preventDefault(); safeGoToClassSelect();}"
-                   style="user-select: text; -webkit-user-select: text; touch-action: auto;"
-                   class="opening-input w-full px-2 py-2 rounded-xl border-2 border-amber-500 bg-white font-bold text-slate-900 text-sm text-center focus:outline-none focus:ring-2 focus:ring-amber-400" />
+      <!-- 하단/우측 파치먼트 입력 카드 -->
+      <div id="opening-card" class="mc-card opening-card rounded-3xl text-center">
+        <div class="opening-badge-wrap">
+          <div id="opening-badge" class="opening-badge inline-flex items-center gap-1 rounded-full font-jua">
+            ✨ 3D 바이블 어드벤처
           </div>
         </div>
-        <p id="opening-input-warn" class="hidden text-[11px] font-bold text-rose-600 mt-1.5 text-center">
-          ⚠️ 이름과 생일 4자리를 모두 입력해야 출발할 수 있어요!
+
+        <p id="opening-sub" class="opening-sub font-bold">
+          말씀 속 주인공이 되어 믿음의 모험을 떠나요!
         </p>
-      </div>
 
-      <div>
-        <div class="grid grid-cols-2 gap-2">
+        <div class="opening-form-box">
+          <div class="opening-input-grid">
+            <div>
+              <label for="opening-name-input" class="opening-label font-jua text-amber-950">
+                🎖️ 탐험 대원 이름 <span class="text-rose-600">*</span>
+              </label>
+              <input id="opening-name-input" type="text" maxlength="10" placeholder="예: 김광릉내"
+                     oninput="if(typeof handleOpeningIdentityInput==='function') handleOpeningIdentityInput();"
+                     onkeydown="if(event.key==='Enter'){event.preventDefault(); document.getElementById('opening-birth-input').focus();}"
+                     style="user-select: text; -webkit-user-select: text; touch-action: auto;"
+                     class="opening-input w-full rounded-xl bg-white font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-400" />
+            </div>
+            <div>
+              <label for="opening-birth-input" class="opening-label font-jua text-amber-950">
+                🎂 생일(4자리) <span class="text-rose-600">*</span>
+              </label>
+              <input id="opening-birth-input" type="tel" inputmode="numeric" maxlength="4" placeholder="예: 0709"
+                     oninput="this.value = this.value.replace(/[^0-9]/g, '').slice(0, 4); if(typeof handleOpeningIdentityInput==='function') handleOpeningIdentityInput();"
+                     onkeydown="if(event.key==='Enter'){event.preventDefault(); safeGoToClassSelect();}"
+                     style="user-select: text; -webkit-user-select: text; touch-action: auto;"
+                     class="opening-input w-full rounded-xl bg-white font-bold text-slate-900 text-center focus:outline-none focus:ring-2 focus:ring-amber-400" />
+            </div>
+          </div>
+          <p id="opening-input-warn" class="hidden text-[11px] font-bold text-rose-600 mt-1.5 text-center leading-snug">
+            ⚠️ 이름과 생일 4자리를 모두 입력해야 출발할 수 있어요!
+          </p>
+        </div>
+
+        <div class="opening-btn-row grid grid-cols-2 gap-2.5">
           <button id="btn-start-explore" type="button"
                   onclick="safeGoToClassSelect()"
                   onpointerup="safeGoToClassSelect()"
-                  class="opening-start-btn mc-btn w-full py-2.5 sm:py-3 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-jua text-sm sm:text-base leading-tight">
+                  class="opening-start-btn opening-btn-primary mc-btn w-full font-jua leading-tight">
             🚀 탐험 출발하기!
           </button>
           <button id="btn-open-multiplayer" type="button"
                   onclick="if(typeof safeOpenMultiplayerEntry==='function') safeOpenMultiplayerEntry();"
                   onpointerup="if(typeof safeOpenMultiplayerEntry==='function') safeOpenMultiplayerEntry();"
                   title="에피소드 4 완료 시 오픈월드 멀티플레이 해금"
-                  class="opening-start-btn mc-btn w-full py-2.5 sm:py-3 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-white font-jua text-sm sm:text-base leading-tight">
+                  class="opening-start-btn opening-btn-mp mc-btn w-full font-jua leading-tight">
             🌐 멀티 플레이
           </button>
         </div>
 
-        <p class="opening-footer mt-2.5 text-[11px] sm:text-xs font-jua text-amber-900/70 tracking-wide">
-          광릉내 재림교회 어린이부
-        </p>
+        <div class="opening-footer-row">
+          <p class="opening-footer font-jua text-amber-900/75 tracking-wide">
+            광릉내 재림교회 어린이부
+          </p>
+          <a href="admin.html" title="관리자 모드" class="admin-lock-link absolute right-0 top-1/2 -translate-y-1/2 text-xs opacity-35 hover:opacity-75 transition-opacity leading-none p-1">
+            🔒
+          </a>
+        </div>
       </div>
-
-      <a href="admin.html" title="관리자 모드" class="admin-lock-link absolute bottom-2 right-3 text-xs opacity-30 hover:opacity-70 transition-opacity leading-none p-1">
-        🔒
-      </a>
     </div>
   </div>
 
@@ -1709,22 +1986,22 @@
     </div>
   </div>
 
-<!-- 게임 스크립트 로드 (전체 스크립트 캐시 강제 갱신 ?v=31 및 버전 일관성 자동 검증 적용) -->
-  <script src="core.js?v=31"></script>
-  <script src="ep1_noah.js?v=31"></script>
-  <script src="ep2_exodus.js?v=31"></script>
-  <script src="ep3_david_base.js?v=31"></script>
-  <script src="ep3_david_st1_2.js?v=31"></script>
-  <script src="ep3_david_st3_end.js?v=31"></script>
-  <script src="ep4_miracle_base.js?v=31"></script>
-  <script src="ep4_miracle_assets.js?v=31"></script>
-  <script src="ep4_miracle_world.js?v=31"></script>
-  <script src="ep4_miracle_stages.js?v=31"></script>
-  <script src="ep4_multiplayer.js?v=31"></script>
+<!-- 게임 스크립트 로드 (전체 스크립트 캐시 강제 갱신 ?v=32 및 버전 일관성 자동 검증 적용) -->
+  <script src="core.js?v=32"></script>
+  <script src="ep1_noah.js?v=32"></script>
+  <script src="ep2_exodus.js?v=32"></script>
+  <script src="ep3_david_base.js?v=32"></script>
+  <script src="ep3_david_st1_2.js?v=32"></script>
+  <script src="ep3_david_st3_end.js?v=32"></script>
+  <script src="ep4_miracle_base.js?v=32"></script>
+  <script src="ep4_miracle_assets.js?v=32"></script>
+  <script src="ep4_miracle_world.js?v=32"></script>
+  <script src="ep4_miracle_stages.js?v=32"></script>
+  <script src="ep4_multiplayer.js?v=32"></script>
   <script>
     // GitHub Pages CDN·브라우저 부분 캐시로 신·구버전 스크립트가 뒤섞여 로드되는 현상을 자동 감지해 1회 강제 새로고침
     (function verifyScriptBuildConsistency() {
-      const EXPECTED = '20261124_v31';
+      const EXPECTED = '20261124_v32';
       const vers = window.__GAME_BUILD_VERSIONS__ || {};
       const keys = ['core', 'ep4_base', 'ep4_assets', 'ep4_world', 'ep4_stages', 'ep4_mp'];
       const mismatch = keys.some(k => vers[k] !== EXPECTED);

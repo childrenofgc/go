@@ -4,7 +4,7 @@
 // - 확장된 오픈월드 지형 고도 계산기(넓어진 골고다 언덕 포함) 및 소프트 로우 폴리곤 자연물 팩토리
 // =========================================================================
 window.__GAME_BUILD_VERSIONS__ = window.__GAME_BUILD_VERSIONS__ || {};
-window.__GAME_BUILD_VERSIONS__.ep4_base = '20261124_v31';
+window.__GAME_BUILD_VERSIONS__.ep4_base = '20261124_v32';
 
 // =========================================================================
 // 🎬 [에피소드 4 오프닝 · 엔딩 영상 주소 설정]
@@ -5245,6 +5245,9 @@ window.markEp4EndingVideoWatched = function () {
     const prev = window.getEp4EndingVideoWatchCount();
     localStorage.setItem(EP4_ENDING_WATCHED_STORAGE_KEY, String(prev + 1));
   } catch (e) {}
+  if (typeof window.markEp4EndingCompletedForLogo === 'function') {
+    window.markEp4EndingCompletedForLogo(typeof explorerName !== 'undefined' ? explorerName : '');
+  }
 };
 
 window.playEp4EndingVideoThen = function (onComplete) {
