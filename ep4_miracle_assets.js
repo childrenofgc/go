@@ -6,7 +6,7 @@
 // =========================================================================
 
 window.__GAME_BUILD_VERSIONS__ = window.__GAME_BUILD_VERSIONS__ || {};
-window.__GAME_BUILD_VERSIONS__.ep4_assets = '20261123_v29';
+window.__GAME_BUILD_VERSIONS__.ep4_assets = '20261123_v30';
 
 const _miracleDoubleSideMatCache = {};
 function matLowPolyDouble(hexColor) {
@@ -1841,6 +1841,7 @@ function createSeamlessPonchoArm(isLeft, shawlHex, stripe1Hex, stripe2Hex, inner
   const thumb = createLowPolyMesh(new THREE.BoxGeometry(0.045, 0.075, 0.055), skinHex, -side * 0.05, -0.23, 0.065, false);
   thumb.rotation.x = 0.3;
 
+  lowerArmGrp.name = 'elbowPivot';
   lowerArmGrp.add(palm, fingers, thumb);
   sleevePivot.add(lowerArmGrp);
   armGrp.add(sleevePivot);
@@ -2074,6 +2075,7 @@ function createKidShortSleeveArm(isLeft, shirtHex, cuffHex, skinHex, clubLogoKey
   const thumb = createLowPolyMesh(new THREE.BoxGeometry(0.042, 0.07, 0.05), skinHex, -side * 0.048, -0.35, 0.06, false);
   thumb.rotation.x = 0.28;
 
+  lowerArmGrp.name = 'elbowPivot';
   lowerArmGrp.add(bareArm, palm, fingers, thumb);
   sleevePivot.add(lowerArmGrp);
   armGrp.add(sleevePivot);
@@ -3085,6 +3087,7 @@ function createHeroBoyArm(isLeft) {
   thumb.rotation.x = 0.26;
   thumb.rotation.z = side * 0.14;
 
+  lowerArmGrp.name = 'elbowPivot';
   lowerArmGrp.add(bareArm, bracer, palm, fingers, thumb);
   pivot.add(lowerArmGrp);
   armGrp.add(pivot);
@@ -3119,28 +3122,36 @@ function createHeroBoyLeg(isLeft) {
   const strapOpt = { roughness: 0.80, metalness: 0.05 };
   const soleOpt  = { roughness: 0.88, metalness: 0.04 };
 
-  // 1) 다리 기둥 (치마 속으로 연결되는 허벅지~종아리~발목)
-  const leg = createHeroClayMesh(new THREE.CylinderGeometry(0.078, 0.060, 0.61, 8), HERO_CLAY_PALETTE.skin, 0, -0.305, 0, skinOpt);
+  // 1) 윗다리(허벅지) — 무릎 피벗 상단까지 0.02m 겹쳐 굽혀도 틈이 생기지 않도록 설계
+  const thigh = createHeroClayMesh(new THREE.CylinderGeometry(0.078, 0.068, 0.34, 8), HERO_CLAY_PALETTE.skin, 0, -0.17, 0, skinOpt);
 
-  // 2) 발목 가죽 스트랩 (#7A4E2D) & 앞정강이 연결 가죽끈
-  const ankleStrap = createHeroClayMesh(new THREE.CylinderGeometry(0.073, 0.071, 0.076, 8), HERO_CLAY_PALETTE.beltLeather, 0, -0.425, 0, strapOpt);
-  const shinTie = createHeroClayMesh(new THREE.BoxGeometry(0.036, 0.175, 0.024), HERO_CLAY_PALETTE.beltLeather, 0, -0.515, 0.060, { ...strapOpt, castShadow: false });
+  // 2) 무릎 피벗(kneePivot) & 아랫다리/발목/샌들 일체 그룹
+  const kneePivot = new THREE.Group();
+  kneePivot.name = 'kneePivot';
+  kneePivot.position.set(0, -0.32, 0);
+
+  const shin = createHeroClayMesh(new THREE.CylinderGeometry(0.068, 0.060, 0.31, 8), HERO_CLAY_PALETTE.skin, 0, -0.135, 0, skinOpt);
+
+  // 발목 가죽 스트랩 (#7A4E2D) & 앞정강이 연결 가죽끈
+  const ankleStrap = createHeroClayMesh(new THREE.CylinderGeometry(0.073, 0.071, 0.076, 8), HERO_CLAY_PALETTE.beltLeather, 0, -0.105, 0, strapOpt);
+  const shinTie = createHeroClayMesh(new THREE.BoxGeometry(0.036, 0.175, 0.024), HERO_CLAY_PALETTE.beltLeather, 0, -0.195, 0.060, { ...strapOpt, castShadow: false });
   shinTie.rotation.x = -0.09;
 
-  // 3) 발 (깔끔히 깎인 앞코 볼륨)
-  const foot = createHeroClayMesh(getHeroFootGeo(), HERO_CLAY_PALETTE.skin, 0, -0.630, 0.048, skinOpt);
+  // 발 (깔끔히 깎인 앞코 볼륨)
+  const foot = createHeroClayMesh(getHeroFootGeo(), HERO_CLAY_PALETTE.skin, 0, -0.310, 0.048, skinOpt);
 
-  // 4) 어두운 밑창 (#4E311B) — 하단 바닥이 정확히 world y = 0.000 에 안착!
-  const sole = createHeroClayMesh(new THREE.BoxGeometry(0.188, 0.048, 0.342), HERO_CLAY_PALETTE.soleLeather, 0, -0.696, 0.046, soleOpt);
+  // 어두운 밑창 (#4E311B) — 하단 바닥이 정확히 world y = 0.000 에 안착! (0.72 - 0.32 - 0.376 - 0.024 = 0.000)
+  const sole = createHeroClayMesh(new THREE.BoxGeometry(0.188, 0.048, 0.342), HERO_CLAY_PALETTE.soleLeather, 0, -0.376, 0.046, soleOpt);
 
-  // 5) 고대풍 샌들 가죽 스트랩 (#7A4E2D)
-  const foreStrap  = createHeroClayMesh(new THREE.BoxGeometry(0.174, 0.056, 0.056), HERO_CLAY_PALETTE.beltLeather, 0, -0.646,  0.126, { ...strapOpt, castShadow: false });
-  const midStrap   = createHeroClayMesh(new THREE.BoxGeometry(0.172, 0.066, 0.054), HERO_CLAY_PALETTE.beltLeather, 0, -0.632,  0.030, { ...strapOpt, castShadow: false });
-  const tBridge    = createHeroClayMesh(new THREE.BoxGeometry(0.042, 0.046, 0.140), HERO_CLAY_PALETTE.beltLeather, 0, -0.610,  0.082, { ...strapOpt, castShadow: false });
+  // 고대풍 샌들 가죽 스트랩 (#7A4E2D)
+  const foreStrap  = createHeroClayMesh(new THREE.BoxGeometry(0.174, 0.056, 0.056), HERO_CLAY_PALETTE.beltLeather, 0, -0.326,  0.126, { ...strapOpt, castShadow: false });
+  const midStrap   = createHeroClayMesh(new THREE.BoxGeometry(0.172, 0.066, 0.054), HERO_CLAY_PALETTE.beltLeather, 0, -0.312,  0.030, { ...strapOpt, castShadow: false });
+  const tBridge    = createHeroClayMesh(new THREE.BoxGeometry(0.042, 0.046, 0.140), HERO_CLAY_PALETTE.beltLeather, 0, -0.290,  0.082, { ...strapOpt, castShadow: false });
   tBridge.rotation.x = 0.24;
-  const heelStrap  = createHeroClayMesh(new THREE.BoxGeometry(0.172, 0.074, 0.054), HERO_CLAY_PALETTE.beltLeather, 0, -0.636, -0.074, { ...strapOpt, castShadow: false });
+  const heelStrap  = createHeroClayMesh(new THREE.BoxGeometry(0.172, 0.074, 0.054), HERO_CLAY_PALETTE.beltLeather, 0, -0.316, -0.074, { ...strapOpt, castShadow: false });
 
-  legGrp.add(leg, ankleStrap, shinTie, foot, sole, foreStrap, midStrap, tBridge, heelStrap);
+  kneePivot.add(shin, ankleStrap, shinTie, foot, sole, foreStrap, midStrap, tBridge, heelStrap);
+  legGrp.add(thigh, kneePivot);
   return legGrp;
 }
 
@@ -3315,12 +3326,20 @@ window.createLowPolyPersonMesh = function (preset = 'disciple', idx = 0) {
       const legGrp = new THREE.Group();
       legGrp.position.set(isLeft ? -0.14 : 0.14, 0.68, 0);
       const shortLeg = createLowPolyMesh(new THREE.CylinderGeometry(0.112, 0.105, 0.22, 6), cfg.shorts, 0, -0.06, 0);
-      const calf = createLowPolyMesh(new THREE.CylinderGeometry(0.080, 0.072, 0.30, 6), cfg.skin, 0, -0.30, 0);
-      const sock = createLowPolyMesh(new THREE.CylinderGeometry(0.078, 0.076, 0.11, 6), cfg.sock, 0, -0.48, 0, false);
-      const shoeBody = createLowPolyMesh(new THREE.BoxGeometry(0.19, 0.13, 0.34), cfg.shoe, 0, -0.58, 0.05);
-      const shoeSole = createLowPolyMesh(new THREE.BoxGeometry(0.20, 0.05, 0.36), cfg.shoeTrim, 0, -0.64, 0.05, false);
-      const shoeToe  = createLowPolyMesh(new THREE.BoxGeometry(0.16, 0.08, 0.10), cfg.shoeTrim, 0, -0.58, 0.20, false);
-      legGrp.add(shortLeg, calf, sock, shoeBody, shoeSole, shoeToe);
+      const thighSkin = createLowPolyMesh(new THREE.CylinderGeometry(0.082, 0.078, 0.13, 6), cfg.skin, 0, -0.215, 0);
+
+      const kneePivot = new THREE.Group();
+      kneePivot.name = 'kneePivot';
+      kneePivot.position.set(0, -0.26, 0);
+
+      const calf = createLowPolyMesh(new THREE.CylinderGeometry(0.078, 0.072, 0.22, 6), cfg.skin, 0, -0.08, 0);
+      const sock = createLowPolyMesh(new THREE.CylinderGeometry(0.078, 0.076, 0.11, 6), cfg.sock, 0, -0.22, 0, false);
+      const shoeBody = createLowPolyMesh(new THREE.BoxGeometry(0.19, 0.13, 0.34), cfg.shoe, 0, -0.32, 0.05);
+      const shoeSole = createLowPolyMesh(new THREE.BoxGeometry(0.20, 0.05, 0.36), cfg.shoeTrim, 0, -0.38, 0.05, false);
+      const shoeToe  = createLowPolyMesh(new THREE.BoxGeometry(0.16, 0.08, 0.10), cfg.shoeTrim, 0, -0.32, 0.20, false);
+      kneePivot.add(calf, sock, shoeBody, shoeSole, shoeToe);
+
+      legGrp.add(shortLeg, thighSkin, kneePivot);
       return legGrp;
     };
     const lLeg = buildKidLeg(true);
@@ -3617,12 +3636,21 @@ window.createLowPolyPersonMesh = function (preset = 'disciple', idx = 0) {
   lodGroup.scale.set(sc, sc, sc);
 
   // High Mesh 기준으로 관절 제어 포인터 맵핑 (업데이트 함수용)
+  const uLLeg = gHigh.children[0];
+  const uRLeg = gHigh.children[1];
+  const uLArm = preset === 'jesus' ? gHigh.children[8] : gHigh.children[7];
+  const uRArm = preset === 'jesus' ? gHigh.children[9] : gHigh.children[8];
+  const uHead = preset === 'jesus' ? gHigh.children[10] : gHigh.children[9];
   lodGroup.userData = {
-    lLeg: preset === 'jesus' ? gHigh.children[0] : gHigh.children[0],
-    rLeg: preset === 'jesus' ? gHigh.children[1] : gHigh.children[1],
-    lArm: preset === 'jesus' ? gHigh.children[8] : gHigh.children[7],
-    rArm: preset === 'jesus' ? gHigh.children[9] : gHigh.children[8],
-    head: preset === 'jesus' ? gHigh.children[10] : gHigh.children[9],
+    lLeg: uLLeg,
+    rLeg: uRLeg,
+    lArm: uLArm,
+    rArm: uRArm,
+    lKnee: uLLeg ? (uLLeg.getObjectByName('kneePivot') || null) : null,
+    rKnee: uRLeg ? (uRLeg.getObjectByName('kneePivot') || null) : null,
+    lElbow: uLArm ? (uLArm.getObjectByName('elbowPivot') || null) : null,
+    rElbow: uRArm ? (uRArm.getObjectByName('elbowPivot') || null) : null,
+    head: uHead,
     walkPhase: idx * 0.9
   };
   return lodGroup;
@@ -3800,16 +3828,272 @@ window.createMiracleHeroMesh = function () {
     lLeg: heroGrp.children[0], rLeg: heroGrp.children[1],
     lArm: heroGrp.children[7], rArm: heroGrp.children[8], head: heroGrp.children[9]
   };
+  // Object3D.clone()은 userData를 얕은 복사하므로 반드시 복제된 계층에서 이름으로 무릎·팔꿈치 피벗을 다시 탐색!
+  const lKnee = u.lLeg ? (u.lLeg.getObjectByName('kneePivot') || null) : null;
+  const rKnee = u.rLeg ? (u.rLeg.getObjectByName('kneePivot') || null) : null;
+  const lElbow = u.lArm ? (u.lArm.getObjectByName('elbowPivot') || null) : null;
+  const rElbow = u.rArm ? (u.rArm.getObjectByName('elbowPivot') || null) : null;
+  u.lKnee = lKnee; u.rKnee = rKnee; u.lElbow = lElbow; u.rElbow = rElbow;
+  u.baseScale = g.scale.clone();
+
   const toolGrp = createLowPolyHarvestAxeMesh();
   toolGrp.visible = false;
   u.lArm.add(toolGrp);
   carriedBlockGroup = new THREE.Group();
   carriedBlockGroup.position.set(0, 1.22, -0.36);
   heroGrp.add(carriedBlockGroup);
-  playerLimbs = { lLeg: u.lLeg, rLeg: u.rLeg, lArm: u.lArm, rArm: u.rArm, axeTool: toolGrp };
+  playerLimbs = {
+    lLeg: u.lLeg, rLeg: u.rLeg,
+    lArm: u.lArm, rArm: u.rArm,
+    lKnee, rKnee, lElbow, rElbow,
+    head: u.head,
+    axeTool: toolGrp,
+    baseScale: g.scale.clone()
+  };
   heroGrp.userData = u;
+  if (window.ep4CharacterAnimator) window.ep4CharacterAnimator.reset();
   return heroGrp;
 };
+
+// -------------------------------------------------------------------------
+// 3-2. 에피소드 4 플레이어 부드러운 상태 머신 애니메이터 (CharacterAnimator)
+//      - Idle(대기) / Walk(걷기) / Jump(상승·하강) / Land(0.2초 스쿼시 착지 반동) 가중치 지수 감쇠(damp) 블렌딩
+//      - 탭 전환 등에서 dt 급등 시 관절 꺾임 방지를 위해 Math.min(dt, 0.05) 클램핑 강제
+//      - 스테이지/오픈월드 고유 팔·다리·스케일 연출과 충돌하지 않도록 skipArms/skipLegs/skipBodyScale 지원
+// -------------------------------------------------------------------------
+function _ep4Damp(a, b, lambda, dt) {
+  if (typeof THREE !== 'undefined' && THREE.MathUtils && typeof THREE.MathUtils.damp === 'function') {
+    return THREE.MathUtils.damp(a, b, lambda, dt);
+  }
+  return a + (b - a) * (1 - Math.exp(-lambda * dt));
+}
+function _ep4Clamp(val, min, max) {
+  return Math.max(min, Math.min(max, val));
+}
+function _ep4Lerp(a, b, t) {
+  return a + (b - a) * t;
+}
+
+class CharacterAnimator {
+  constructor() {
+    this.reset();
+  }
+
+  reset() {
+    this.weights = { idle: 1, walk: 0, jump: 0, land: 0 };
+    this.idlePhase = 0;
+    this.walkPhase = 0;
+    this.landTimer = 0;
+    this.landDuration = 0.20;
+    this.pose = {
+      lLegX: 0, rLegX: 0,
+      lKneeX: 0, rKneeX: 0,
+      lArmX: 0, rArmX: 0,
+      lArmZ: 0, rArmZ: 0,
+      lElbowX: 0, rElbowX: 0,
+      headX: 0,
+      scaleY: 1, scaleXZ: 1
+    };
+    this.debugState = { activeState: 'idle', weights: this.weights, scaleY: 1, landTimer: 0 };
+  }
+
+  update(rawDt, now, state) {
+    if (!state || !state.limbs) return;
+    const limbs = state.limbs;
+    if (!limbs.lLeg || !limbs.rLeg || !limbs.lArm || !limbs.rArm) return;
+
+    // 탭 전환/프레임 드롭 시에도 관절 각도가 튀지 않도록 최대 0.05초로 클램핑
+    const dt = Math.min(Math.max(rawDt || 0, 0), 0.05);
+    const isGrounded = Boolean(state.isGrounded);
+    const prevGrounded = (state.prevGrounded !== undefined) ? Boolean(state.prevGrounded) : isGrounded;
+    const velY = Number(state.velY) || 0;
+    const prevVelY = Number(state.prevVelY !== undefined ? state.prevVelY : velY) || 0;
+    const moveSpeed = Math.max(0, Number(state.moveSpeed) || 0);
+    const maxSpeed = Math.max(1, Number(state.maxSpeed) || 9.0);
+    const isMoving = Boolean(state.isMoving && moveSpeed > 0.15);
+
+    // 1) 착지 반동 트리거 (공중에서 낙하 후 지면 접촉 순간 0.20초 Land 상태 활성화)
+    if (!prevGrounded && isGrounded && prevVelY < -2.2) {
+      this.landTimer = this.landDuration;
+    }
+    if (this.landTimer > 0) {
+      this.landTimer = Math.max(0, this.landTimer - dt);
+    }
+
+    // 2) 목표 가중치 결정 (Idle / Walk / Jump / Land)
+    const speedRatio = isMoving ? Math.min(1, moveSpeed / maxSpeed) : 0;
+    const targetJump = isGrounded ? 0 : 1;
+    const targetLand = (isGrounded && this.landTimer > 0) ? Math.min(1, (this.landTimer / this.landDuration) * 1.15) : 0;
+    const targetWalk = isGrounded ? (isMoving ? Math.max(0.25, speedRatio) * (1 - targetLand * 0.45) : 0) : 0;
+    const targetIdle = isGrounded ? Math.max(0, 1 - targetWalk - targetLand * 0.65) : 0;
+
+    // 3) 지수 감쇠(damp)를 이용한 4개 상태 가중치 실시간 보간
+    this.weights.jump = _ep4Damp(this.weights.jump, targetJump, isGrounded ? 15 : 18, dt);
+    this.weights.land = _ep4Damp(this.weights.land, targetLand, targetLand > this.weights.land ? 24 : 14, dt);
+    this.weights.walk = _ep4Damp(this.weights.walk, targetWalk, targetWalk > this.weights.walk ? 13 : 11, dt);
+    this.weights.idle = _ep4Damp(this.weights.idle, targetIdle, 10, dt);
+
+    const wSum = (this.weights.idle + this.weights.walk + this.weights.jump + this.weights.land) || 1;
+    const wIdle = this.weights.idle / wSum;
+    const wWalk = this.weights.walk / wSum;
+    const wJump = this.weights.jump / wSum;
+    const wLand = this.weights.land / wSum;
+
+    // 4) 위상 진행 (Idle 호흡 & Walk 보폭)
+    this.idlePhase += dt * 2.3;
+    if (isMoving || wWalk > 0.04) {
+      const strideSpeed = isMoving ? Math.max(moveSpeed, 1.5) : 3.2 * wWalk;
+      this.walkPhase += dt * (strideSpeed * 1.45);
+    }
+
+    // --- 상태별 목표 관절/스케일 포즈 ---
+    // [Idle] 차분한 호흡 리듬 & 자연스러운 팔 내림
+    const breath = Math.sin(this.idlePhase);
+    const idlePose = {
+      lLegX: 0,
+      rLegX: 0,
+      lKneeX: 0.02 + Math.max(0, breath) * 0.02,
+      rKneeX: 0.02 + Math.max(0, breath) * 0.02,
+      lArmX: breath * 0.04,
+      rArmX: -breath * 0.04,
+      lArmZ: -0.02,
+      rArmZ: 0.02,
+      lElbowX: -0.10,
+      rElbowX: -0.10,
+      headX: breath * 0.025,
+      scaleY: 1.0 + breath * 0.012,
+      scaleXZ: 1.0 - breath * 0.006
+    };
+
+    // [Walk] 경쾌한 보행 + 무릎/팔꿈치 굴곡
+    const s = Math.sin(this.walkPhase);
+    const amp = 0.35 + 0.65 * Math.max(speedRatio, 0.45);
+    const walkPose = {
+      lLegX: s * 0.64 * amp,
+      rLegX: -s * 0.64 * amp,
+      lKneeX: Math.max(0, Math.sin(this.walkPhase + 0.72)) * 0.56 * amp,
+      rKneeX: Math.max(0, -Math.sin(this.walkPhase + 0.72)) * 0.56 * amp,
+      lArmX: -s * 0.56 * amp,
+      rArmX: s * 0.56 * amp,
+      lArmZ: -0.04,
+      rArmZ: 0.04,
+      lElbowX: -0.18 - Math.max(0, s) * 0.24 * amp,
+      rElbowX: -0.18 - Math.max(0, -s) * 0.24 * amp,
+      headX: 0.03 + Math.abs(s) * 0.03,
+      scaleY: 1.0 + Math.abs(Math.cos(this.walkPhase)) * 0.02,
+      scaleXZ: 1.0 - Math.abs(Math.cos(this.walkPhase)) * 0.01
+    };
+
+    // [Jump] 상승 시 만세 자세 + 무릎 굽힘 + Y 스트레치(Stretch), 하강 시 팔 벌림 + 부드러운 착지 대비
+    const ascendFactor = _ep4Clamp((velY + 1.5) / 6.5, 0, 1);
+    const jumpPose = {
+      lLegX: _ep4Lerp(-0.14, -0.36, ascendFactor),
+      rLegX: _ep4Lerp(-0.22, -0.44, ascendFactor),
+      lKneeX: _ep4Lerp(0.32, 0.68, ascendFactor),
+      rKneeX: _ep4Lerp(0.38, 0.74, ascendFactor),
+      lArmX: _ep4Lerp(-0.56, -1.42, ascendFactor),
+      rArmX: _ep4Lerp(-0.56, -1.42, ascendFactor),
+      lArmZ: _ep4Lerp(-0.46, -0.26, ascendFactor),
+      rArmZ: _ep4Lerp(0.46, 0.26, ascendFactor),
+      lElbowX: _ep4Lerp(-0.22, -0.46, ascendFactor),
+      rElbowX: _ep4Lerp(-0.22, -0.46, ascendFactor),
+      headX: _ep4Lerp(0.08, -0.08, ascendFactor),
+      scaleY: _ep4Lerp(1.03, 1.12, ascendFactor),
+      scaleXZ: _ep4Lerp(0.985, 0.94, ascendFactor)
+    };
+
+    // [Land] 0.2초간 무릎을 굽히며 Y축을 살짝 눌렀다 복원하는 스쿼시(Squash) 반동
+    const landProgress = this.landDuration > 0 ? Math.max(0, Math.min(1, 1 - this.landTimer / this.landDuration)) : 1;
+    const squashPulse = Math.sin(landProgress * Math.PI);
+    const landPose = {
+      lLegX: -0.42 * squashPulse,
+      rLegX: -0.42 * squashPulse,
+      lKneeX: 0.78 * squashPulse,
+      rKneeX: 0.78 * squashPulse,
+      lArmX: 0.16 * squashPulse,
+      rArmX: 0.16 * squashPulse,
+      lArmZ: -0.38 * squashPulse,
+      rArmZ: 0.38 * squashPulse,
+      lElbowX: -0.32 * squashPulse,
+      rElbowX: -0.32 * squashPulse,
+      headX: 0.10 * squashPulse,
+      scaleY: 1.0 - 0.15 * squashPulse,
+      scaleXZ: 1.0 + 0.09 * squashPulse
+    };
+
+    const blend = k => (
+      idlePose[k] * wIdle +
+      walkPose[k] * wWalk +
+      jumpPose[k] * wJump +
+      landPose[k] * wLand
+    );
+
+    const rotDamp = 16;
+    const scaleDamp = 18;
+    const p = this.pose;
+    p.lLegX = _ep4Damp(p.lLegX, blend('lLegX'), rotDamp, dt);
+    p.rLegX = _ep4Damp(p.rLegX, blend('rLegX'), rotDamp, dt);
+    p.lKneeX = _ep4Damp(p.lKneeX, blend('lKneeX'), rotDamp, dt);
+    p.rKneeX = _ep4Damp(p.rKneeX, blend('rKneeX'), rotDamp, dt);
+    p.lArmX = _ep4Damp(p.lArmX, blend('lArmX'), rotDamp, dt);
+    p.rArmX = _ep4Damp(p.rArmX, blend('rArmX'), rotDamp, dt);
+    p.lArmZ = _ep4Damp(p.lArmZ, blend('lArmZ'), rotDamp, dt);
+    p.rArmZ = _ep4Damp(p.rArmZ, blend('rArmZ'), rotDamp, dt);
+    p.lElbowX = _ep4Damp(p.lElbowX, blend('lElbowX'), rotDamp, dt);
+    p.rElbowX = _ep4Damp(p.rElbowX, blend('rElbowX'), rotDamp, dt);
+    p.headX = _ep4Damp(p.headX, blend('headX'), 12, dt);
+    p.scaleY = _ep4Damp(p.scaleY, blend('scaleY'), scaleDamp, dt);
+    p.scaleXZ = _ep4Damp(p.scaleXZ, blend('scaleXZ'), scaleDamp, dt);
+
+    // 관절 적용 (스테이지/오픈월드 고유 팔·다리·스케일 동작 및 도끼 모션과 충돌하지 않도록 선택적 스킵 지원)
+    if (!state.skipLegs) {
+      limbs.lLeg.rotation.x = p.lLegX;
+      limbs.rLeg.rotation.x = p.rLegX;
+      if (limbs.lKnee) limbs.lKnee.rotation.x = p.lKneeX;
+      if (limbs.rKnee) limbs.rKnee.rotation.x = p.rKneeX;
+    }
+
+    if (!state.skipArms) {
+      if (!state.isChopping) {
+        limbs.lArm.rotation.x = p.lArmX;
+        limbs.lArm.rotation.z = p.lArmZ;
+        if (limbs.lElbow) limbs.lElbow.rotation.x = p.lElbowX;
+      }
+      limbs.rArm.rotation.x = p.rArmX;
+      limbs.rArm.rotation.z = p.rArmZ;
+      if (limbs.rElbow) limbs.rElbow.rotation.x = p.rElbowX;
+    }
+
+    if (limbs.head) {
+      limbs.head.rotation.x = p.headX;
+    }
+
+    if (state.playerGroup && state.playerGroup.scale && !state.skipBodyScale) {
+      const bs = limbs.baseScale || (state.playerGroup.userData && state.playerGroup.userData.baseScale);
+      const bx = bs ? bs.x : 1;
+      const by = bs ? bs.y : 1;
+      const bz = bs ? bs.z : 1;
+      state.playerGroup.scale.set(bx * p.scaleXZ, by * p.scaleY, bz * p.scaleXZ);
+    }
+
+    let dominant = 'idle';
+    let bestW = wIdle;
+    if (wWalk > bestW) { bestW = wWalk; dominant = 'walk'; }
+    if (wJump > bestW) { bestW = wJump; dominant = 'jump'; }
+    if (wLand > bestW) { bestW = wLand; dominant = 'land'; }
+    this.debugState = {
+      activeState: dominant,
+      weights: { idle: +wIdle.toFixed(3), walk: +wWalk.toFixed(3), jump: +wJump.toFixed(3), land: +wLand.toFixed(3) },
+      scaleY: +p.scaleY.toFixed(3),
+      scaleXZ: +p.scaleXZ.toFixed(3),
+      landTimer: +this.landTimer.toFixed(3),
+      lKneeX: +p.lKneeX.toFixed(3),
+      lElbowX: +p.lElbowX.toFixed(3)
+    };
+  }
+}
+window.CharacterAnimator = CharacterAnimator;
+window.ep4CharacterAnimator = new CharacterAnimator();
 
 // =========================================================================
 // [ep4_miracle_assets.js - 파트 3/3] 에피소드 4 전용 소프트 로우 폴리곤 에셋

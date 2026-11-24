@@ -5,7 +5,7 @@
 // =========================================================================
 
 window.__GAME_BUILD_VERSIONS__ = window.__GAME_BUILD_VERSIONS__ || {};
-window.__GAME_BUILD_VERSIONS__.core = '20261123_v29';
+window.__GAME_BUILD_VERSIONS__.core = '20261123_v30';
 
 // 퀴즈 선택지 순서 무작위 셔플 공용 헬퍼 (정답이 항상 1번에 고정되지 않도록 보장)
 function shuffleQuizOptions(opts, ansIdx = 0) {
@@ -6449,6 +6449,8 @@ function initEngine(skipInitialPreview = false) {
 
     if (isPlaying) {
       cameraYaw = lerpAngle(cameraYaw, cameraTargetYaw, dt * 12);
+      const prevGrounded = isGrounded;
+      const prevVelY = playerVelY;
       if (keys['Space'] && isGrounded) playerJump();
       playerVelY -= 24 * dt;
       playerPos.y += playerVelY * dt;
@@ -6513,12 +6515,16 @@ function initEngine(skipInitialPreview = false) {
 
         playerFacing = lerpAngle(playerFacing, Math.atan2(worldDirX, worldDirZ), dt * 14);
         walkCycle += dt * (currentMoveSpeed * 1.45);
-        playerLimbs.lLeg.rotation.x = Math.sin(walkCycle) * 0.65; playerLimbs.rLeg.rotation.x = -Math.sin(walkCycle) * 0.65;
-        playerLimbs.lArm.rotation.x = -Math.sin(walkCycle) * 0.58; playerLimbs.rArm.rotation.x = Math.sin(walkCycle) * 0.58;
+        if (!(currentEpisode === 'miracle' && window.ep4CharacterAnimator)) {
+          playerLimbs.lLeg.rotation.x = Math.sin(walkCycle) * 0.65; playerLimbs.rLeg.rotation.x = -Math.sin(walkCycle) * 0.65;
+          playerLimbs.lArm.rotation.x = -Math.sin(walkCycle) * 0.58; playerLimbs.rArm.rotation.x = Math.sin(walkCycle) * 0.58;
+        }
       } else {
         currentMoveSpeed = 0;
-        playerLimbs.lLeg.rotation.x = 0; playerLimbs.rLeg.rotation.x = 0;
-        playerLimbs.lArm.rotation.x = 0; playerLimbs.rArm.rotation.x = 0;
+        if (!(currentEpisode === 'miracle' && window.ep4CharacterAnimator)) {
+          playerLimbs.lLeg.rotation.x = 0; playerLimbs.rLeg.rotation.x = 0;
+          playerLimbs.lArm.rotation.x = 0; playerLimbs.rArm.rotation.x = 0;
+        }
       }
       resolvePlayerAntiStuckPushOut();
 
@@ -6540,6 +6546,28 @@ function initEngine(skipInitialPreview = false) {
         updateNoahStageFrame(dt, now);
       } else if (currentEpisode === 'exodus' && typeof updateExodusStageFrame === 'function') {
         updateExodusStageFrame(dt, now);
+      }
+
+      // [에피소드 4 전용] updateStageFrame 이후에 애니메이터를 실행해 스테이지/오픈월드 고유 포즈 스킵 플래그를 당 프레임에 즉시 반영
+      if (currentEpisode === 'miracle' && window.ep4CharacterAnimator) {
+        window.ep4CharacterAnimator.update(dt, now, {
+          isGrounded,
+          prevGrounded,
+          velY: playerVelY,
+          prevVelY,
+          moveSpeed: currentMoveSpeed,
+          maxSpeed: baseSpeed,
+          isMoving: (inputMag > 0.08 && currentMoveSpeed > 0.15),
+          playerGroup,
+          limbs: playerLimbs,
+          skipArms: Boolean(window.__ep4SkipArmAnimThisFrame),
+          skipLegs: Boolean(window.__ep4SkipLegAnimThisFrame),
+          skipBodyScale: Boolean(window.__ep4SkipBodyScaleThisFrame),
+          isChopping: playerChopAnimTimer > 0
+        });
+        window.__ep4SkipArmAnimThisFrame = false;
+        window.__ep4SkipLegAnimThisFrame = false;
+        window.__ep4SkipBodyScaleThisFrame = false;
       }
 
       playerGroup.position.copy(playerPos);

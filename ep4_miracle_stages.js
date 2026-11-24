@@ -4,7 +4,7 @@
 // - 스테이지 3(십자가 사건): 넓어진 골고다 언덕 정상 고원과 세 십자가 등장 연출 적용
 // =========================================================================
 window.__GAME_BUILD_VERSIONS__ = window.__GAME_BUILD_VERSIONS__ || {};
-window.__GAME_BUILD_VERSIONS__.ep4_stages = '20261123_v29';
+window.__GAME_BUILD_VERSIONS__.ep4_stages = '20261123_v30';
 
 // 스테이지 3: 십자가를 지고 힘겹게 오르시는 예수님 보행 속도(더 천천히) 및 플레이어 대신 짊어졌을 때의 보행 속도
 const MIRACLE_STAGE3_JESUS_WALK_SPEED = 1.05;
@@ -1195,6 +1195,7 @@ function updateMiracleMainStage1Frame(dt, now) {
       st.chargeVal += st.chargeDir * chargeSpeed * dt;
       if (st.chargeVal >= 1.0) { st.chargeVal = 1.0; st.chargeDir = -1; }
       else if (st.chargeVal <= 0.0) { st.chargeVal = 0.0; st.chargeDir = 1; }
+      window.__ep4SkipArmAnimThisFrame = true;
       if (playerLimbs && playerLimbs.rArm && playerLimbs.lArm) {
         playerLimbs.rArm.rotation.x = -1.6 - st.chargeVal * 0.9;
         playerLimbs.lArm.rotation.x = -0.9 - st.chargeVal * 0.5;
@@ -1292,7 +1293,8 @@ function updateMiracleMainStage1Frame(dt, now) {
     if (playerGroup) {
       playerGroup.rotation.z = rollAngle;
     }
-    // 플레이어 양팔 균형잡기 포즈
+    // 플레이어 양팔 균형잡기 포즈 (CharacterAnimator와 겹치지 않도록 플래그 설정)
+    window.__ep4SkipArmAnimThisFrame = true;
     if (playerLimbs && playerLimbs.lArm && playerLimbs.rArm) {
       playerLimbs.lArm.rotation.z = 0.75 - st.boatTilt * 0.45;
       playerLimbs.rArm.rotation.z = -0.75 - st.boatTilt * 0.45;
@@ -2847,17 +2849,22 @@ function updateMiracleMainStage3Frame(dt, now) {
       lastGroundedY = playerPos.y;
       playerFacing = lerpAngle(st.pickupStartFacing || playerFacing, Math.PI, t1);
 
+      window.__ep4SkipArmAnimThisFrame = true;
+      window.__ep4SkipLegAnimThisFrame = true;
+      window.__ep4SkipBodyScaleThisFrame = true;
       if (playerGroup) {
         playerGroup.position.copy(playerPos);
         playerGroup.rotation.y = playerFacing;
         playerGroup.rotation.x = 0.46 * t1;
-        playerGroup.scale.set(1, 1.0 - 0.14 * t1, 1);
+        setEp4PlayerScaledPose(1.0 - 0.14 * t1, 1.0);
       }
       if (playerLimbs) {
         if (playerLimbs.lLeg && playerLimbs.rLeg) {
           playerLimbs.lLeg.rotation.x = 0.30 * t1;
           playerLimbs.rLeg.rotation.x = -0.22 * t1;
         }
+        if (playerLimbs.lKnee) playerLimbs.lKnee.rotation.x = 0.42 * t1;
+        if (playerLimbs.rKnee) playerLimbs.rKnee.rotation.x = 0.36 * t1;
         if (playerLimbs.lArm && playerLimbs.rArm) {
           playerLimbs.lArm.rotation.x = 1.35 * t1;
           playerLimbs.rArm.rotation.x = 1.35 * t1;
@@ -2899,17 +2906,22 @@ function updateMiracleMainStage3Frame(dt, now) {
       lastGroundedY = playerPos.y;
       playerFacing = Math.PI;
 
+      window.__ep4SkipArmAnimThisFrame = true;
+      window.__ep4SkipLegAnimThisFrame = true;
+      window.__ep4SkipBodyScaleThisFrame = true;
       if (playerGroup) {
         playerGroup.position.copy(playerPos);
         playerGroup.rotation.y = playerFacing;
         playerGroup.rotation.x = THREE.MathUtils.lerp(0.46, 0.14, t2);
-        playerGroup.scale.set(1, THREE.MathUtils.lerp(0.86, 1.0, t2), 1);
+        setEp4PlayerScaledPose(THREE.MathUtils.lerp(0.86, 1.0, t2), 1.0);
       }
       if (playerLimbs) {
         if (playerLimbs.lLeg && playerLimbs.rLeg) {
           playerLimbs.lLeg.rotation.x = 0.30 * (1 - t2);
           playerLimbs.rLeg.rotation.x = -0.22 * (1 - t2);
         }
+        if (playerLimbs.lKnee) playerLimbs.lKnee.rotation.x = 0.42 * (1 - t2);
+        if (playerLimbs.rKnee) playerLimbs.rKnee.rotation.x = 0.36 * (1 - t2);
         if (playerLimbs.lArm && playerLimbs.rArm) {
           playerLimbs.lArm.rotation.x = THREE.MathUtils.lerp(1.35, 2.40, t2);
           playerLimbs.rArm.rotation.x = THREE.MathUtils.lerp(1.35, 2.40, t2);
@@ -3037,14 +3049,19 @@ function updateMiracleMainStage3Frame(dt, now) {
       }
 
       if (st.stumbleState !== 'none') {
+        window.__ep4SkipArmAnimThisFrame = true;
+        window.__ep4SkipLegAnimThisFrame = true;
+        window.__ep4SkipBodyScaleThisFrame = true;
         if (playerGroup) {
           playerGroup.rotation.x = fallAmt * 0.74;
-          playerGroup.scale.set(1, 1.0 - fallAmt * 0.28, 1);
+          setEp4PlayerScaledPose(1.0 - fallAmt * 0.28, 1.0);
         }
         if (playerLimbs && playerLimbs.lLeg && playerLimbs.rLeg) {
           playerLimbs.lLeg.rotation.x = fallAmt * 1.1;
           playerLimbs.rLeg.rotation.x = -fallAmt * 0.65;
         }
+        if (playerLimbs && playerLimbs.lKnee) playerLimbs.lKnee.rotation.x = fallAmt * 0.72;
+        if (playerLimbs && playerLimbs.rKnee) playerLimbs.rKnee.rotation.x = fallAmt * 0.85;
         if (playerLimbs && playerLimbs.lArm && playerLimbs.rArm) {
           playerLimbs.lArm.rotation.x = THREE.MathUtils.lerp(2.40, -1.15, Math.min(1, fallAmt));
           playerLimbs.rArm.rotation.x = THREE.MathUtils.lerp(2.40, -1.15, Math.min(1, fallAmt));
@@ -3054,14 +3071,26 @@ function updateMiracleMainStage3Frame(dt, now) {
         if (st.jesusPersonMesh && st.jesusPersonMesh.userData && st.jesusPersonMesh.userData.lArm) {
           st.jesusPersonMesh.userData.lArm.rotation.x = -1.1;
         }
-      } else if (playerGroup) {
-        playerGroup.rotation.x = 0.14;
-        playerGroup.scale.set(1, 1, 1);
+      } else {
+        window.__ep4SkipArmAnimThisFrame = true;
+        window.__ep4SkipBodyScaleThisFrame = true;
+        if (playerGroup) {
+          playerGroup.rotation.x = 0.14;
+          setEp4PlayerScaledPose(1, 1);
+        }
+        if (playerLimbs && playerLimbs.lArm && playerLimbs.rArm) {
+          playerLimbs.lArm.rotation.x = 2.40;
+          playerLimbs.rArm.rotation.x = 2.40;
+          playerLimbs.lArm.rotation.z =  0.22;
+          playerLimbs.rArm.rotation.z = -0.22;
+        }
       }
     } else {
+      window.__ep4SkipArmAnimThisFrame = true;
+      window.__ep4SkipBodyScaleThisFrame = true;
       if (playerGroup) {
         playerGroup.rotation.x = 0.14;
-        playerGroup.scale.set(1, 1, 1);
+        setEp4PlayerScaledPose(1, 1);
       }
       if (playerLimbs && playerLimbs.lArm && playerLimbs.rArm) {
         playerLimbs.lArm.rotation.x = 2.40;
@@ -3151,7 +3180,7 @@ function updateMiracleMainStage3Frame(dt, now) {
       st.stumbleTimer = 0;
       if (playerGroup) {
         playerGroup.rotation.x = 0;
-        playerGroup.scale.set(1, 1, 1);
+        setEp4PlayerScaledPose(1, 1);
       }
       if (playerLimbs && playerLimbs.lArm && playerLimbs.rArm) {
         playerLimbs.lArm.rotation.x = 0;
@@ -3202,7 +3231,6 @@ function updateMiracleMainStage3Frame(dt, now) {
     if (playerGroup) {
       playerGroup.rotation.y = playerFacing;
       playerGroup.rotation.x = 0;
-      playerGroup.scale.set(1, 1, 1);
     }
     if (st.jesusMesh) {
       const jAng = Math.atan2(cPos.x - st.jesusMesh.position.x, cPos.z - st.jesusMesh.position.z);
@@ -4589,6 +4617,16 @@ if (typeof window.playMiracleOpenWorldOgg !== 'function') {
   };
 }
 
+function setEp4PlayerScaledPose(scaleYMult = 1.0, scaleXZMult = 1.0) {
+  if (typeof playerGroup === 'undefined' || !playerGroup || !playerGroup.scale) return;
+  const bs = (playerGroup.userData && playerGroup.userData.baseScale)
+    || (typeof playerLimbs !== 'undefined' && playerLimbs && playerLimbs.baseScale);
+  const bx = bs ? bs.x : 1;
+  const by = bs ? bs.y : 1;
+  const bz = bs ? bs.z : 1;
+  playerGroup.scale.set(bx * scaleXZMult, by * scaleYMult, bz * scaleXZMult);
+}
+
 REGISTER_EPISODE('miracle', {
   locked: false,
   avatarIcon: '🕊️',
@@ -4649,9 +4687,13 @@ REGISTER_EPISODE('miracle', {
       if (miracleAscensionState._endPollTimer) { clearInterval(miracleAscensionState._endPollTimer); miracleAscensionState._endPollTimer = null; }
     }
     _isEnteringMiracleStage = false;
+    window.__ep4SkipArmAnimThisFrame = false;
+    window.__ep4SkipLegAnimThisFrame = false;
+    window.__ep4SkipBodyScaleThisFrame = false;
+    if (window.ep4CharacterAnimator) window.ep4CharacterAnimator.reset();
     if (typeof playerGroup !== 'undefined' && playerGroup) {
       playerGroup.rotation.x = 0;
-      playerGroup.scale.set(1, 1, 1);
+      setEp4PlayerScaledPose(1, 1);
     }
     if (typeof miracleSunSystem !== 'undefined') {
       miracleSunSystem.sunVisualGroup = null;

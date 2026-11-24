@@ -5,7 +5,7 @@
 // - 멀티플레이 미션 1: 반석 위의 집 확장형 (돌 20 + 나무 20, 도끼질 5회 / 돌 캐기 5회, 완료 시 말씀 출력)
 // =========================================================================
 window.__GAME_BUILD_VERSIONS__ = window.__GAME_BUILD_VERSIONS__ || {};
-window.__GAME_BUILD_VERSIONS__.ep4_mp = '20261123_v29';
+window.__GAME_BUILD_VERSIONS__.ep4_mp = '20261123_v30';
 
 // [선택적 온라인 릴레이 설정] 무료 Firebase Realtime Database URL을 넣으면 서로 다른 기기 간 실시간 온라인 접속!
 // 예: window.MP_FIREBASE_DB_URL = 'https://your-church-game-default-rtdb.asia-southeast1.firebasedatabase.app';
@@ -1171,11 +1171,22 @@ const MiracleMultiplayer = {
         rp.mesh.rotation.y = (typeof lerpAngle === 'function') ? lerpAngle(rp.mesh.rotation.y, rp.rotY, dt * 10.0) : rp.rotY;
         const spd = Math.hypot(rp.mesh.position.x - prevX, rp.mesh.position.z - prevZ) / Math.max(0.001, dt);
         const u = rp.mesh.userData || {};
-        const sw = spd > 0.4 ? Math.sin(now * 0.015) * 0.6 : 0;
+        const ph = now * 0.015;
+        const moving = spd > 0.4;
+        const sw = moving ? Math.sin(ph) * 0.6 : 0;
         if (u.lLeg && u.rLeg) { u.lLeg.rotation.x = sw; u.rLeg.rotation.x = -sw; }
+        if (u.lKnee && u.rKnee) {
+          u.lKnee.rotation.x = moving ? Math.max(0, Math.sin(ph + 0.72)) * 0.50 : 0.02;
+          u.rKnee.rotation.x = moving ? Math.max(0, -Math.sin(ph + 0.72)) * 0.50 : 0.02;
+        }
         if (u.lArm && u.rArm) {
           u.lArm.rotation.x = rp.chopping ? (-1.6 + Math.sin(now * 0.045) * 0.9) : (-sw * 0.55);
           u.rArm.rotation.x = sw * 0.55;
+        }
+        if (u.lElbow && u.rElbow) {
+          const sWalk = moving ? Math.sin(ph) : 0;
+          u.lElbow.rotation.x = rp.chopping ? -0.35 : (-0.12 - Math.max(0, sWalk) * 0.22);
+          u.rElbow.rotation.x = -0.12 - Math.max(0, -sWalk) * 0.22;
         }
         if (rp.emoteTimer > 0) {
           rp.emoteTimer -= dt;

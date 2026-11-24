@@ -4,7 +4,7 @@
 // - 계단으로 건물 2층 등반 후 인접한 옆 건물 옥상·2층으로 점프 이동할 수 있는 근접 마을 배치
 // =========================================================================
 window.__GAME_BUILD_VERSIONS__ = window.__GAME_BUILD_VERSIONS__ || {};
-window.__GAME_BUILD_VERSIONS__.ep4_world = '20261123_v29';
+window.__GAME_BUILD_VERSIONS__.ep4_world = '20261123_v30';
 
 window.miracleOpenWorldIntroFlyover = {
   active: false,
@@ -3798,9 +3798,14 @@ function clearMiracleFieldEventObjects() {
     if (playerLimbs) {
       if (playerLimbs.lLeg) playerLimbs.lLeg.rotation.x = 0;
       if (playerLimbs.rLeg) playerLimbs.rLeg.rotation.x = 0;
-      if (playerLimbs.lArm) playerLimbs.lArm.rotation.x = 0;
-      if (playerLimbs.rArm) playerLimbs.rArm.rotation.x = 0;
+      if (playerLimbs.lKnee) playerLimbs.lKnee.rotation.x = 0;
+      if (playerLimbs.rKnee) playerLimbs.rKnee.rotation.x = 0;
+      if (playerLimbs.lArm) { playerLimbs.lArm.rotation.x = 0; playerLimbs.lArm.rotation.z = 0; }
+      if (playerLimbs.rArm) { playerLimbs.rArm.rotation.x = 0; playerLimbs.rArm.rotation.z = 0; }
+      if (playerLimbs.lElbow) playerLimbs.lElbow.rotation.x = 0;
+      if (playerLimbs.rElbow) playerLimbs.rElbow.rotation.x = 0;
     }
+    if (window.ep4CharacterAnimator) window.ep4CharacterAnimator.reset();
     if (bs.returnPos) {
       playerPos.copy(bs.returnPos);
       playerPos.y = getMiracleOpenWorldGroundHeight(playerPos.x, playerPos.z);
@@ -5149,6 +5154,7 @@ function updateMiracleFieldEventFrame(dt, now) {
       }
 
       if (typeof playerChopAnimTimer !== 'undefined') playerChopAnimTimer = 0.2;
+      window.__ep4SkipArmAnimThisFrame = true;
       if (playerLimbs && playerLimbs.lArm) {
         playerLimbs.lArm.rotation.x = -1.25 + Math.sin(now * 0.042) * 0.9;
       }
@@ -6064,6 +6070,7 @@ function updateMiracleFieldEventFrame(dt, now) {
     );
 
     if (isFishingPhase) {
+      window.__ep4SkipArmAnimThisFrame = true;
       // 바닷가 낚시 시네마틱 카메라 (플레이어 + 낚싯대 + 이어진 낚시줄 + 갈릴리 바다 + 찌가 한눈에 담김)
       const camTargetPos = new THREE.Vector3(bs.standPos.x + 6.8, bs.standPos.y + 5.6, bs.standPos.z + 7.2);
       const lookX = bs.phase === 'waiting_bite' || bs.phase === 'bite_timing'
@@ -6186,6 +6193,7 @@ function updateMiracleFieldEventFrame(dt, now) {
           if (bs.caughtCount >= bs.reqFish) {
             // 낚시 목표 달성 → 예수님과 모닥불 옆에 나란히 착석!
             bs.phase = 'cook_ready';
+            window.__ep4SkipLegAnimThisFrame = true;
             if (bs.rodMesh) bs.rodMesh.visible = false;
             const seatWorldX = bs.firePos.x - 1.55;
             const seatWorldZ = bs.firePos.z + 0.75;
@@ -6198,6 +6206,8 @@ function updateMiracleFieldEventFrame(dt, now) {
             if (playerLimbs) {
               if (playerLimbs.lLeg) playerLimbs.lLeg.rotation.x = -1.20;
               if (playerLimbs.rLeg) playerLimbs.rLeg.rotation.x = -1.20;
+              if (playerLimbs.lKnee) playerLimbs.lKnee.rotation.x = 1.15;
+              if (playerLimbs.rKnee) playerLimbs.rKnee.rotation.x = 1.15;
               if (playerLimbs.rArm) playerLimbs.rArm.rotation.x = -0.35;
             }
             playSfx('rescue');
@@ -6210,6 +6220,8 @@ function updateMiracleFieldEventFrame(dt, now) {
         }
       }
     } else {
+      window.__ep4SkipArmAnimThisFrame = true;
+      window.__ep4SkipLegAnimThisFrame = true;
       // 3) 모닥불 굽기 & 예수님과 아침식사 시네마틱 카메라
       const camFirePos = new THREE.Vector3(bs.firePos.x + 0.2, bs.firePos.y + 3.4, bs.firePos.z + 5.8);
       camera.position.lerp(camFirePos, Math.min(1, dt * 4.2));
