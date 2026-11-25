@@ -6,7 +6,7 @@
 // =========================================================================
 
 window.__GAME_BUILD_VERSIONS__ = window.__GAME_BUILD_VERSIONS__ || {};
-window.__GAME_BUILD_VERSIONS__.ep4_assets = '20261124_v32';
+window.__GAME_BUILD_VERSIONS__.ep4_assets = '20261125_v41';
 
 const _miracleDoubleSideMatCache = {};
 function matLowPolyDouble(hexColor) {
@@ -1841,8 +1841,12 @@ function createSeamlessPonchoArm(isLeft, shawlHex, stripe1Hex, stripe2Hex, inner
   const thumb = createLowPolyMesh(new THREE.BoxGeometry(0.045, 0.075, 0.055), skinHex, -side * 0.05, -0.23, 0.065, false);
   thumb.rotation.x = 0.3;
 
+  const handGrip = new THREE.Object3D();
+  handGrip.name = isLeft ? 'handGripL' : 'handGripR';
+  handGrip.position.set(0, -0.24, 0.03);
+
   lowerArmGrp.name = 'elbowPivot';
-  lowerArmGrp.add(palm, fingers, thumb);
+  lowerArmGrp.add(palm, fingers, thumb, handGrip);
   sleevePivot.add(lowerArmGrp);
   armGrp.add(sleevePivot);
   return armGrp;
@@ -2126,7 +2130,44 @@ const HERO_CLAY_EMISSIVE = {
   '#7A4E2D': 0.24,
   '#855632': 0.24,
   '#633E24': 0.22,
-  '#4E311B': 0.20
+  '#4E311B': 0.20,
+  '#EFC09F': 0.34,
+  '#6E4226': 0.24,
+  '#5D361E': 0.22,
+  '#4D2C18': 0.18,
+  '#221712': 0.06,
+  '#B86B58': 0.28,
+  '#ECE3CD': 0.34,
+  '#DFD4B8': 0.32,
+  '#C9A45C': 0.28,
+  '#7C4D2D': 0.24,
+  '#87522D': 0.24,
+  '#6D3F20': 0.22,
+  '#6E4124': 0.22,
+  '#59341C': 0.20,
+  '#734427': 0.22,
+  '#A6774E': 0.24
+};
+
+// [턴어라운드 레퍼런스 기반] 세리장 삭개오 전용 소프트 로우폴리 클레이 팔레트
+const ZACCHAEUS_CLAY_PALETTE = {
+  skin: '#EFC09F',
+  hair: '#6E4226',
+  beard: '#5D361E',
+  brow: '#4D2C18',
+  eye: '#221712',
+  mouth: '#B86B58',
+  tunic: '#ECE3CD',
+  tunicTrim: '#DFD4B8',
+  tunicHem: '#C9A45C',
+  belt: '#7C4D2D',
+  pouch: '#87522D',
+  pouchFlap: '#6D3F20',
+  pouchStud: '#D4A843',
+  bracer: '#6E4124',
+  bracerTrim: '#59341C',
+  sandalStrap: '#734427',
+  sandalSole: '#A6774E'
 };
 
 const _heroSoftClayMatCache = {};
@@ -3155,6 +3196,445 @@ function createHeroBoyLeg(isLeft) {
   return legGrp;
 }
 
+// =========================================================================
+// [턴어라운드 레퍼런스 기반] 세리장 삭개오 전용 다면체 클레이 조형 빌더
+// =========================================================================
+let _zacBeardGeo = null;
+function getZacchaeusBeardGeo() {
+  if (_zacBeardGeo) return _zacBeardGeo;
+  const rows = 4;
+  const segs = 12;
+  const maxPhi = Math.PI * 0.56;
+  const outerGrid = [];
+  const innerGrid = [];
+
+  for (let r = 0; r < rows; r++) {
+    const oRow = [];
+    const iRow = [];
+    for (let c = 0; c <= segs; c++) {
+      const u = (c / segs) * 2 - 1;
+      const absU = Math.abs(u);
+      const phi = u * maxPhi;
+      const centerW = Math.cos(u * Math.PI * 0.5);
+
+      let y, rx, rz, zBoost;
+      if (r === 0) {
+        y = -0.158 + absU * absU * 0.148;
+        rx = 0.278;
+        rz = 0.252;
+        zBoost = 0.018 * centerW;
+      } else if (r === 1) {
+        y = -0.208 + absU * absU * 0.068;
+        rx = 0.256;
+        rz = 0.238;
+        zBoost = 0.028 * centerW;
+      } else if (r === 2) {
+        y = -0.274 + absU * absU * 0.088;
+        rx = 0.172;
+        rz = 0.194;
+        zBoost = 0.030 * centerW;
+      } else {
+        y = -0.232 + absU * absU * 0.042;
+        rx = 0.100;
+        rz = 0.120;
+        zBoost = -0.015;
+      }
+
+      const ox = Math.sin(phi) * rx;
+      const oz = Math.cos(phi) * rz + zBoost;
+      const ix = ox * 0.78;
+      const iz = oz * 0.78 - 0.014;
+      oRow.push([ox, y, oz]);
+      iRow.push([ix, y + 0.008, iz]);
+    }
+    outerGrid.push(oRow);
+    innerGrid.push(iRow);
+  }
+
+  const v = [];
+  for (let r = 0; r < rows - 1; r++) {
+    for (let c = 0; c < segs; c++) {
+      pushQuad(v, outerGrid[r][c], outerGrid[r + 1][c], outerGrid[r + 1][c + 1], outerGrid[r][c + 1]);
+      pushQuad(v, innerGrid[r][c], innerGrid[r][c + 1], innerGrid[r + 1][c + 1], innerGrid[r + 1][c]);
+    }
+  }
+  for (let c = 0; c < segs; c++) {
+    pushQuad(v, innerGrid[0][c], outerGrid[0][c], outerGrid[0][c + 1], innerGrid[0][c + 1]);
+  }
+  for (let r = 0; r < rows - 1; r++) {
+    pushQuad(v, innerGrid[r][0], innerGrid[r + 1][0], outerGrid[r + 1][0], outerGrid[r][0]);
+    pushQuad(v, outerGrid[r][segs], outerGrid[r + 1][segs], innerGrid[r + 1][segs], innerGrid[r][segs]);
+  }
+
+  _zacBeardGeo = markCachedGeo(buildBufferGeoFromTriangles(v));
+  return _zacBeardGeo;
+}
+
+function createZacchaeusBeardGroup() {
+  const zp = ZACCHAEUS_CLAY_PALETTE;
+  const grp = new THREE.Group();
+  grp.name = 'zacBeard';
+  const jawMesh = createHeroClayMesh(getZacchaeusBeardGeo(), zp.beard, 0, 0, 0, { roughness: 0.88, metalness: 0.02 });
+  const stL = createHeroClayMesh(getSoftStacheWingGeo(true),  zp.beard, -0.048, -0.102, 0.248, { roughness: 0.88, metalness: 0.02, castShadow: false });
+  const stR = createHeroClayMesh(getSoftStacheWingGeo(false), zp.beard,  0.048, -0.102, 0.248, { roughness: 0.88, metalness: 0.02, castShadow: false });
+  const underLip = createHeroClayMesh(new THREE.OctahedronGeometry(0.026, 0), zp.beard, 0, -0.168, 0.244, { roughness: 0.88, metalness: 0.02, castShadow: false });
+  underLip.scale.set(1.15, 0.85, 0.72);
+  grp.add(jawMesh, stL, stR, underLip);
+  return grp;
+}
+
+function createZacchaeusHairGroup() {
+  const zp = ZACCHAEUS_CLAY_PALETTE;
+  const hairGrp = new THREE.Group();
+  hairGrp.name = 'zacHair';
+  const hOpt = { roughness: 0.88, metalness: 0.03 };
+  hairGrp.add(createHeroClayMesh(getHeroBoyHairCapGeo(), zp.hair, 0, 0, 0, hOpt));
+
+  const spikeGeo = getHeroHairSpikeGeo();
+  const bangGeo  = getHeroBangChunkGeo();
+  const sideGeo  = getHeroSideburnGeo();
+  const addMesh = (geo, x, y, z, sx, sy, sz, rx, ry, rz, shadow = true) => {
+    const m = createHeroClayMesh(geo, zp.hair, x, y, z, { roughness: 0.88, metalness: 0.03, castShadow: shadow });
+    m.scale.set(sx, sy, sz);
+    m.rotation.set(rx, ry, rz);
+    hairGrp.add(m);
+  };
+
+  addMesh(bangGeo, -0.220, 0.265, 0.195, 0.135, 0.185, 0.088, -0.24,  0.42, -0.16);
+  addMesh(bangGeo, -0.115, 0.295, 0.214, 0.160, 0.190, 0.092, -0.32,  0.18,  0.28);
+  addMesh(bangGeo,  0.005, 0.304, 0.218, 0.178, 0.202, 0.098, -0.34, -0.02,  0.22);
+  addMesh(bangGeo,  0.128, 0.292, 0.212, 0.168, 0.192, 0.096, -0.30, -0.24,  0.18);
+  addMesh(bangGeo,  0.218, 0.270, 0.185, 0.145, 0.195, 0.096, -0.24, -0.44,  0.14);
+
+  addMesh(spikeGeo, -0.072, 0.312,  0.020, 0.240, 0.105, 0.210,  0.08,  0.24,  0.26);
+  addMesh(spikeGeo,  0.078, 0.310, -0.020, 0.235, 0.105, 0.205, -0.12, -0.22, -0.24);
+  addMesh(spikeGeo,  0.000, 0.302, -0.125, 0.245, 0.105, 0.195, -0.50,  0.00,  0.00);
+
+  addMesh(bangGeo, -0.135, 0.245, -0.275, 0.185, 0.215, 0.095,  0.22,  0.38, -0.10);
+  addMesh(bangGeo,  0.000, 0.255, -0.292, 0.205, 0.225, 0.100,  0.22,  0.00,  0.00);
+  addMesh(bangGeo,  0.135, 0.245, -0.275, 0.185, 0.215, 0.095,  0.22, -0.38,  0.10);
+  addMesh(bangGeo, -0.165, 0.055, -0.288, 0.148, 0.190, 0.084, -0.44,  0.42, -0.08, false);
+  addMesh(bangGeo, -0.058, 0.048, -0.314, 0.160, 0.198, 0.088, -0.46,  0.14, -0.03, false);
+  addMesh(bangGeo,  0.058, 0.048, -0.314, 0.160, 0.198, 0.088, -0.46, -0.14,  0.03, false);
+  addMesh(bangGeo,  0.165, 0.055, -0.288, 0.148, 0.190, 0.084, -0.44, -0.42,  0.08, false);
+
+  addMesh(sideGeo, -0.280, 0.035, 0.056, 1.00, 1.04, 1.00, 0.02, 0.0,  0.03, false);
+  addMesh(sideGeo,  0.280, 0.035, 0.056, 1.00, 1.04, 1.00, 0.02, 0.0, -0.03, false);
+  return hairGrp;
+}
+
+let _zacBeltTailGeoLong = null;
+let _zacBeltTailGeoShort = null;
+function getZacchaeusBeltTailGeo(len = 0.31, topW = 0.044, botW = 0.058, thick = 0.024) {
+  const isLong = len > 0.26;
+  if (isLong && _zacBeltTailGeoLong) return _zacBeltTailGeoLong;
+  if (!isLong && _zacBeltTailGeoShort) return _zacBeltTailGeoShort;
+
+  const hT = thick * 0.5;
+  const rows = [
+    { y:  0.00,      w: topW * 0.45, zOff: 0.000 },
+    { y: -len * 0.42, w: (topW + botW) * 0.25, zOff: 0.012 },
+    { y: -len * 0.86, w: botW * 0.52, zOff: 0.024 }
+  ];
+  const rings = rows.map(r => [
+    [-r.w, r.y,  hT + r.zOff],
+    [-r.w, r.y, -hT + r.zOff],
+    [ r.w, r.y, -hT + r.zOff],
+    [ r.w, r.y,  hT + r.zOff]
+  ]);
+  const tip = [0.006, -len, 0.026];
+  const topC = [0, 0.01, 0];
+  const v = [];
+  for (let c = 0; c < 4; c++) {
+    const cn = (c + 1) % 4;
+    pushTriangle(v, topC, rings[0][c], rings[0][cn]);
+    pushQuad(v, rings[0][c], rings[1][c], rings[1][cn], rings[0][cn]);
+    pushQuad(v, rings[1][c], rings[2][c], rings[2][cn], rings[1][cn]);
+    pushTriangle(v, rings[2][c], tip, rings[2][cn]);
+  }
+  const geo = markCachedGeo(buildBufferGeoFromTriangles(v));
+  if (isLong) _zacBeltTailGeoLong = geo;
+  else _zacBeltTailGeoShort = geo;
+  return geo;
+}
+
+function createZacchaeusGearGroup() {
+  const zp = ZACCHAEUS_CLAY_PALETTE;
+  const gearGrp = new THREE.Group();
+  gearGrp.name = 'zacGear';
+
+  gearGrp.add(createHeroClayMesh(getHeroBeltGeo(), zp.belt, 0, 0, 0, { roughness: 0.80, metalness: 0.05 }));
+
+  const knot = createHeroClayMesh(new THREE.DodecahedronGeometry(0.054, 0), zp.belt, 0.105, 1.048, 0.212, { roughness: 0.80, metalness: 0.05, castShadow: false });
+  knot.scale.set(1.08, 1.16, 0.86);
+  const tailLong = createHeroClayMesh(getZacchaeusBeltTailGeo(0.32, 0.044, 0.058, 0.022), zp.belt, 0.094, 1.032, 0.212, { roughness: 0.82, metalness: 0.04, castShadow: false });
+  tailLong.rotation.set(-0.15, 0.16, -0.05);
+  const tailShort = createHeroClayMesh(getZacchaeusBeltTailGeo(0.22, 0.040, 0.052, 0.020), zp.pouchFlap, 0.136, 1.035, 0.204, { roughness: 0.82, metalness: 0.04, castShadow: false });
+  tailShort.rotation.set(-0.16, 0.34, 0.14);
+  gearGrp.add(knot, tailLong, tailShort);
+
+  const pouchGrp = new THREE.Group();
+  pouchGrp.position.set(0.305, 0.892, 0.055);
+  pouchGrp.rotation.set(0.04, 0.24, 0.12);
+  const lOpt = { roughness: 0.80, metalness: 0.05 };
+  const flapCap = createHeroClayMesh(new THREE.CylinderGeometry(0.088, 0.094, 0.128, 7), zp.pouchFlap, 0.016, 0.068, 0, lOpt);
+  flapCap.scale.set(0.95, 0.85, 1.15);
+  const pouchBtn = createHeroClayMesh(new THREE.CylinderGeometry(0.022, 0.024, 0.022, 6), zp.pouchStud, 0.088, -0.008, 0, { roughness: 0.45, metalness: 0.22, castShadow: false });
+  pouchBtn.rotation.z = Math.PI / 2;
+  pouchGrp.add(
+    createHeroClayMesh(new THREE.CylinderGeometry(0.024, 0.024, 0.118, 5), zp.bracer, -0.028, 0.130, -0.040, lOpt),
+    createHeroClayMesh(new THREE.CylinderGeometry(0.024, 0.024, 0.118, 5), zp.bracer, -0.028, 0.130,  0.040, lOpt),
+    createHeroClayMesh(getHeroPouchBagGeo(), zp.pouch, 0, 0, 0, lOpt),
+    flapCap,
+    pouchBtn
+  );
+  gearGrp.add(pouchGrp);
+  return gearGrp;
+}
+
+let _zacFingersGeoL = null;
+let _zacFingersGeoR = null;
+function getZacchaeusFingersGeo(isLeft) {
+  if (isLeft && _zacFingersGeoL) return _zacFingersGeoL;
+  if (!isLeft && _zacFingersGeoR) return _zacFingersGeoR;
+
+  const side = isLeft ? -1 : 1;
+  const rows = [
+    { y:  0.000, rx: 0.042, rz: 0.050, cx: 0.000,         cz: 0.000 },
+    { y: -0.042, rx: 0.036, rz: 0.042, cx: -side * 0.006, cz: 0.005 },
+    { y: -0.078, rx: 0.024, rz: 0.028, cx: -side * 0.012, cz: 0.008 }
+  ];
+  const cols = 6;
+  const rings = rows.map(r => {
+    const arr = [];
+    for (let c = 0; c < cols; c++) {
+      const phi = (c / cols) * Math.PI * 2;
+      arr.push([r.cx + Math.sin(phi) * r.rx, r.y, r.cz + Math.cos(phi) * r.rz]);
+    }
+    return arr;
+  });
+  const topC = [0, 0.008, 0];
+  const botC = [-side * 0.014, -0.090, 0.009];
+  const v = [];
+  for (let c = 0; c < cols; c++) {
+    const cn = (c + 1) % cols;
+    pushTriangle(v, topC, rings[0][c], rings[0][cn]);
+    pushQuad(v, rings[0][c], rings[1][c], rings[1][cn], rings[0][cn]);
+    pushQuad(v, rings[1][c], rings[2][c], rings[2][cn], rings[1][cn]);
+    pushTriangle(v, rings[2][c], botC, rings[2][cn]);
+  }
+  const geo = markCachedGeo(buildBufferGeoFromTriangles(v));
+  if (isLeft) _zacFingersGeoL = geo;
+  else _zacFingersGeoR = geo;
+  return geo;
+}
+
+function createZacchaeusArm(isLeft) {
+  const zp = ZACCHAEUS_CLAY_PALETTE;
+  const side = isLeft ? -1 : 1;
+  const armGrp = new THREE.Group();
+  armGrp.position.set(side * 0.285, 1.375, 0.0);
+
+  const pivot = new THREE.Group();
+  pivot.rotation.z = side * 0.16;
+
+  const shCap = createHeroClayMesh(new THREE.DodecahedronGeometry(0.068, 0), zp.tunic, -side * 0.018, -0.032, 0);
+  shCap.scale.set(0.88, 0.78, 0.88);
+  const sleeve = createHeroClayMesh(new THREE.CylinderGeometry(0.074, 0.098, 0.220, 8), zp.tunic, 0, -0.132, 0);
+  const cuffTrim = createHeroClayMesh(new THREE.CylinderGeometry(0.095, 0.100, 0.022, 8), zp.tunicTrim, 0, -0.232, 0, { roughness: 0.86, metalness: 0.02, castShadow: false });
+  pivot.add(shCap, sleeve, cuffTrim);
+
+  const lowerArmGrp = new THREE.Group();
+  lowerArmGrp.name = 'elbowPivot';
+  lowerArmGrp.position.set(0, -0.232, 0);
+  lowerArmGrp.rotation.z = -side * 0.08;
+
+  const bareArm = createHeroClayMesh(new THREE.CylinderGeometry(0.072, 0.058, 0.27, 8), zp.skin, 0, -0.135, 0, { roughness: 0.84, metalness: 0.02 });
+  const bracer  = createHeroClayMesh(new THREE.CylinderGeometry(0.074, 0.068, 0.088, 8), zp.bracer, 0, -0.195, 0, { roughness: 0.82, metalness: 0.05 });
+  const brTop   = createHeroClayMesh(new THREE.CylinderGeometry(0.076, 0.075, 0.016, 8), zp.bracerTrim, 0, -0.152, 0, { roughness: 0.82, metalness: 0.05, castShadow: false });
+  const brBot   = createHeroClayMesh(new THREE.CylinderGeometry(0.070, 0.069, 0.016, 8), zp.bracerTrim, 0, -0.236, 0, { roughness: 0.82, metalness: 0.05, castShadow: false });
+
+  const palm    = createHeroClayMesh(new THREE.CylinderGeometry(0.060, 0.054, 0.092, 6), zp.skin, 0, -0.292, 0.008, { roughness: 0.84, metalness: 0.02 });
+  palm.scale.set(0.84, 1.0, 1.04);
+  const fingers = createHeroClayMesh(getZacchaeusFingersGeo(isLeft), zp.skin, 0, -0.326, 0.010, { roughness: 0.84, metalness: 0.02 });
+  const thumb   = createHeroClayMesh(new THREE.CylinderGeometry(0.018, 0.024, 0.068, 6), zp.skin, -side * 0.046, -0.304, 0.050, { roughness: 0.84, metalness: 0.02, castShadow: false });
+  thumb.rotation.x = 0.28;
+  thumb.rotation.z = side * 0.16;
+
+  lowerArmGrp.add(bareArm, bracer, brTop, brBot, palm, fingers, thumb);
+  pivot.add(lowerArmGrp);
+  armGrp.add(pivot);
+  return armGrp;
+}
+
+// =========================================================================
+// [소프트 로우폴리 발 & 샌들 조형]
+// - 발등에서 발가락으로 자연스럽게 경사지며 좁아지는 다면체 발 + 윤곽 맞춤 밑창·아치형 가죽 끈
+// =========================================================================
+let _zacFootGeo = null;
+function getZacchaeusFootGeo() {
+  if (_zacFootGeo) return _zacFootGeo;
+
+  const sections = [
+    { z: -0.095, rx: 0.056, yBot: -0.044, yTop:  0.036 },
+    { z: -0.015, rx: 0.066, yBot: -0.044, yTop:  0.056 },
+    { z:  0.052, rx: 0.072, yBot: -0.044, yTop:  0.040 },
+    { z:  0.114, rx: 0.076, yBot: -0.044, yTop:  0.015 },
+    { z:  0.168, rx: 0.050, yBot: -0.038, yTop: -0.012 }
+  ];
+  const cols = 8;
+  const rings = sections.map(sp => {
+    const arr = [];
+    for (let c = 0; c < cols; c++) {
+      const th = (c / cols) * Math.PI * 2;
+      const sT = Math.sin(th);
+      const cT = Math.cos(th);
+      const x = -sT * sp.rx;
+      const y = (cT >= 0)
+        ? ((sp.yBot + sp.yTop) * 0.5 + cT * (sp.yTop - sp.yBot) * 0.52)
+        : (sp.yBot + (1 + cT) * 0.008);
+      arr.push([x, y, sp.z]);
+    }
+    return arr;
+  });
+
+  const apexBack  = [0, -0.006, -0.108];
+  const apexFront = [0, -0.026,  0.184];
+  const v = [];
+
+  for (let c = 0; c < cols; c++) {
+    const cn = (c + 1) % cols;
+    pushTriangle(v, rings[0][cn], rings[0][c], apexBack);
+    pushTriangle(v, rings[sections.length - 1][c], rings[sections.length - 1][cn], apexFront);
+  }
+  for (let r = 0; r < sections.length - 1; r++) {
+    for (let c = 0; c < cols; c++) {
+      const cn = (c + 1) % cols;
+      pushQuad(v, rings[r][c], rings[r][cn], rings[r + 1][cn], rings[r + 1][c]);
+    }
+  }
+
+  _zacFootGeo = markCachedGeo(buildBufferGeoFromTriangles(v));
+  return _zacFootGeo;
+}
+
+let _zacSandalSoleGeo = null;
+function getZacchaeusSandalSoleGeo() {
+  if (_zacSandalSoleGeo) return _zacSandalSoleGeo;
+
+  const sections = [
+    { z: -0.116, rx: 0.068, yBot: -0.022, yTop: 0.018 },
+    { z: -0.018, rx: 0.065, yBot: -0.022, yTop: 0.018 },
+    { z:  0.088, rx: 0.090, yBot: -0.022, yTop: 0.018 },
+    { z:  0.156, rx: 0.072, yBot: -0.019, yTop: 0.013 },
+    { z:  0.194, rx: 0.042, yBot: -0.012, yTop: 0.006 }
+  ];
+  const cols = 8;
+  const rings = sections.map(sp => {
+    const arr = [];
+    for (let c = 0; c < cols; c++) {
+      const th = (c / cols) * Math.PI * 2;
+      const x = -Math.sin(th) * sp.rx;
+      const y = (Math.cos(th) >= 0) ? sp.yTop : sp.yBot;
+      arr.push([x, y, sp.z]);
+    }
+    return arr;
+  });
+
+  const apexBack  = [0, 0.000, -0.128];
+  const apexFront = [0, -0.002, 0.204];
+  const v = [];
+
+  for (let c = 0; c < cols; c++) {
+    const cn = (c + 1) % cols;
+    pushTriangle(v, rings[0][cn], rings[0][c], apexBack);
+    pushTriangle(v, rings[sections.length - 1][c], rings[sections.length - 1][cn], apexFront);
+  }
+  for (let r = 0; r < sections.length - 1; r++) {
+    for (let c = 0; c < cols; c++) {
+      const cn = (c + 1) % cols;
+      pushQuad(v, rings[r][c], rings[r][cn], rings[r + 1][cn], rings[r + 1][c]);
+    }
+  }
+
+  _zacSandalSoleGeo = markCachedGeo(buildBufferGeoFromTriangles(v));
+  return _zacSandalSoleGeo;
+}
+
+const _zacArchStrapGeoCache = {};
+function getZacchaeusArchStrapGeo(halfW = 0.080, archH = 0.036, sideDrop = -0.024, depthZ = 0.046, thick = 0.014) {
+  const key = `${halfW}_${archH}_${sideDrop}_${depthZ}_${thick}`;
+  if (_zacArchStrapGeoCache[key]) return _zacArchStrapGeoCache[key];
+
+  const xs = [-halfW, -halfW * 0.54, 0, halfW * 0.54, halfW];
+  const ys = [sideDrop, archH * 0.68, archH, archH * 0.68, sideDrop];
+  const hZ = depthZ * 0.5;
+  const outF = [], outB = [], inF = [], inB = [];
+
+  for (let i = 0; i < xs.length; i++) {
+    const t = i / (xs.length - 1);
+    const nx = (t - 0.5) * 0.72;
+    const ny = 1.0 - Math.abs(t - 0.5) * 0.55;
+    const nLen = Math.hypot(nx, ny) || 1;
+    const ox = (nx / nLen) * thick;
+    const oy = (ny / nLen) * thick;
+    outF.push([xs[i] + ox, ys[i] + oy,  hZ]);
+    outB.push([xs[i] + ox, ys[i] + oy, -hZ]);
+    inF.push( [xs[i],      ys[i],       hZ]);
+    inB.push( [xs[i],      ys[i],      -hZ]);
+  }
+
+  const v = [];
+  for (let i = 0; i < xs.length - 1; i++) {
+    pushQuad(v, outB[i], outF[i], outF[i + 1], outB[i + 1]);
+    pushQuad(v, inF[i],  inB[i],  inB[i + 1],  inF[i + 1]);
+    pushQuad(v, outF[i], inF[i],  inF[i + 1],  outF[i + 1]);
+    pushQuad(v, inB[i],  outB[i], outB[i + 1], inB[i + 1]);
+  }
+  pushQuad(v, outB[0], inB[0], inF[0], outF[0]);
+  const last = xs.length - 1;
+  pushQuad(v, outF[last], inF[last], inB[last], outB[last]);
+
+  const geo = markCachedGeo(buildBufferGeoFromTriangles(v));
+  _zacArchStrapGeoCache[key] = geo;
+  return geo;
+}
+
+function createZacchaeusLeg(isLeft) {
+  const zp = ZACCHAEUS_CLAY_PALETTE;
+  const legGrp = new THREE.Group();
+  legGrp.position.set(isLeft ? -0.135 : 0.135, 0.72, 0);
+
+  const skinOpt  = { roughness: 0.84, metalness: 0.02 };
+  const strapOpt = { roughness: 0.80, metalness: 0.05 };
+  const soleOpt  = { roughness: 0.88, metalness: 0.04 };
+
+  const thigh = createHeroClayMesh(new THREE.CylinderGeometry(0.078, 0.068, 0.34, 8), zp.skin, 0, -0.17, 0, skinOpt);
+  const kneePivot = new THREE.Group();
+  kneePivot.name = 'kneePivot';
+  kneePivot.position.set(0, -0.32, 0);
+
+  const shin       = createHeroClayMesh(new THREE.CylinderGeometry(0.068, 0.060, 0.31, 8), zp.skin, 0, -0.135, 0, skinOpt);
+  const ankleStrap = createHeroClayMesh(new THREE.CylinderGeometry(0.073, 0.070, 0.064, 8), zp.sandalStrap, 0, -0.138, 0, strapOpt);
+
+  // 경사진 발끝(y=-0.312)과 윤곽이 딱 맞는 아담한 소프트 로우폴리 밑창 (bottom: 0.72 - 0.32 - 0.378 - 0.022 = 0.000)
+  const foot       = createHeroClayMesh(getZacchaeusFootGeo(), zp.skin, 0, -0.312, 0.048, skinOpt);
+  const sole       = createHeroClayMesh(getZacchaeusSandalSoleGeo(), zp.sandalSole, 0, -0.378, 0.048, soleOpt);
+
+  // 발등 경사에 맞춘 곡면 가죽 스트랩
+  const foreStrap  = createHeroClayMesh(getZacchaeusArchStrapGeo(0.082, 0.022, -0.022, 0.044, 0.015), zp.sandalStrap, 0, -0.332, 0.168, { ...strapOpt, castShadow: false });
+  foreStrap.rotation.x = 0.24;
+  const midStrap   = createHeroClayMesh(getZacchaeusArchStrapGeo(0.074, 0.044, -0.024, 0.046, 0.015), zp.sandalStrap, 0, -0.312, 0.068, { ...strapOpt, castShadow: false });
+  midStrap.rotation.x = 0.14;
+  const tBridge    = createHeroClayMesh(new THREE.CylinderGeometry(0.015, 0.018, 0.135, 5), zp.sandalStrap, 0, -0.258, 0.078, { ...strapOpt, castShadow: false });
+  tBridge.rotation.x = 0.42;
+  const heelStrap  = createHeroClayMesh(new THREE.CylinderGeometry(0.070, 0.074, 0.068, 8, 1, false, Math.PI * 0.55, Math.PI * 0.90), zp.sandalStrap, 0, -0.326, -0.040, { ...strapOpt, castShadow: false });
+
+  kneePivot.add(shin, ankleStrap, foot, sole, foreStrap, midStrap, tBridge, heelStrap);
+  legGrp.add(thigh, kneePivot);
+  return legGrp;
+}
+
 window.createLowPolyPersonMesh = function (preset = 'disciple', idx = 0) {
   const lodGroup = new THREE.LOD();
 
@@ -3227,14 +3707,24 @@ window.createLowPolyPersonMesh = function (preset = 'disciple', idx = 0) {
     };
     sc = 1.0;
   } else if (preset === 'zacchaeus') {
+    // [턴어라운드 레퍼런스 기반] 매우 작은 키(0.66배)의 여리고 세리장 삭개오
     isFemale = false;
     cfg = {
-      ...ISRAELITE_MALE_VARIANTS[2],
-      robe: '#581c87', sleeve: '#581c87', shawl: '#f5efe6',
-      stripe1: '#eab308', stripe2: '#7e22ce',
-      beardStyle: 'trimmed', headwear: 'none'
+      robe: ZACCHAEUS_CLAY_PALETTE.tunic,
+      sleeve: ZACCHAEUS_CLAY_PALETTE.tunic,
+      shawl: ZACCHAEUS_CLAY_PALETTE.tunicHem,
+      stripe1: ZACCHAEUS_CLAY_PALETTE.tunicHem,
+      stripe2: ZACCHAEUS_CLAY_PALETTE.belt,
+      headcloth: null, agal1: null, agal2: null,
+      belt: ZACCHAEUS_CLAY_PALETTE.belt,
+      beltSub: ZACCHAEUS_CLAY_PALETTE.pouch,
+      hair: ZACCHAEUS_CLAY_PALETTE.hair,
+      skin: ZACCHAEUS_CLAY_PALETTE.skin,
+      sandal: ZACCHAEUS_CLAY_PALETTE.sandalStrap,
+      beardStyle: 'full',
+      headwear: 'none'
     };
-    sc = 0.82;
+    sc = 0.66;
   } else if (preset === 'child') {
     isFemale = (idx % 2 === 1);
     cfg = isFemale
@@ -3477,6 +3967,73 @@ window.createLowPolyPersonMesh = function (preset = 'disciple', idx = 0) {
     head.add(faceMesh, facialFeatures, earL, earR, createHeroBoyHairGroup());
 
     gHigh.add(lLeg, rLeg, tunicSkirtGrp, tunicBodiceGrp, neck, capeGroup, gearGroup, lArm, rArm, head);
+  } else if (preset === 'zacchaeus') {
+    const zp = ZACCHAEUS_CLAY_PALETTE;
+    const lLeg = createZacchaeusLeg(true);
+    const rLeg = createZacchaeusLeg(false);
+
+    // 크림색 무릎 길이 튜닉 치마 + 하단 황토금색 띠
+    const tunicSkirtGrp = new THREE.Group();
+    tunicSkirtGrp.name = 'zacTunicSkirt';
+    tunicSkirtGrp.add(
+      createHeroClayMesh(getHeroTunicSkirtGeo(), zp.tunic, 0, 0, 0, { roughness: 0.88, metalness: 0.02 }),
+      createHeroClayMesh(getHeroSkirtBandGeo(0.845, 0.985, 0.007), zp.tunicHem, 0, 0, 0, { roughness: 0.80, metalness: 0.06, castShadow: false })
+    );
+
+    // 크림색 반팔 튜닉 상체 + 앞목 V자 슬릿 피부 표현
+    const tunicBodiceGrp = new THREE.Group();
+    tunicBodiceGrp.name = 'zacTunicBodice';
+    tunicBodiceGrp.add(
+      createHeroClayMesh(getHeroTunicBodiceGeo(), zp.tunic, 0, 0, 0, { roughness: 0.88, metalness: 0.02 })
+    );
+    const vNeckWedge = createHeroClayMesh(new THREE.ConeGeometry(0.054, 0.142, 3), zp.skin, 0, 1.445, 0.128, { roughness: 0.84, metalness: 0.02, castShadow: false });
+    vNeckWedge.rotation.x = Math.PI;
+    vNeckWedge.scale.set(1.0, 1.0, 0.55);
+    const collarRimL = createHeroClayMesh(new THREE.CylinderGeometry(0.014, 0.016, 0.145, 5), zp.tunicTrim, -0.034, 1.452, 0.156, { roughness: 0.86, metalness: 0.02, castShadow: false });
+    collarRimL.rotation.set(0.32, 0, -0.36);
+    const collarRimR = createHeroClayMesh(new THREE.CylinderGeometry(0.014, 0.016, 0.145, 5), zp.tunicTrim,  0.034, 1.452, 0.156, { roughness: 0.86, metalness: 0.02, castShadow: false });
+    collarRimR.rotation.set(0.32, 0,  0.36);
+    tunicBodiceGrp.add(vNeckWedge, collarRimL, collarRimR);
+
+    const neck = createHeroClayMesh(new THREE.CylinderGeometry(0.088, 0.108, 0.22, 10), zp.skin, 0, 1.59, 0, { roughness: 0.84, metalness: 0.02, castShadow: false });
+    const gearGroup = createZacchaeusGearGroup();
+    const lArm = createZacchaeusArm(true);
+    const rArm = createZacchaeusArm(false);
+
+    // 짧은 키(0.66)에서도 이목구비·수염·미소가 돋보이도록 친근한 턴어라운드 비율(머리 ~1.08배)
+    const head = new THREE.Group();
+    head.position.set(0, 1.85, 0);
+    head.scale.set(1.08, 1.04, 1.06);
+
+    const faceMesh = createHeroClayMesh(getHeroBoyHeadGeo(), zp.skin, 0, 0, 0, { roughness: 0.84, metalness: 0.02 });
+    faceMesh.name = 'headBase';
+    const facialFeatures = new THREE.Group();
+    facialFeatures.name = 'facialFeatures';
+    const eyeOpt   = { roughness: 0.48, metalness: 0.05, castShadow: false };
+    const browOpt  = { roughness: 0.86, metalness: 0.03, castShadow: false };
+    const noseOpt  = { roughness: 0.84, metalness: 0.02, castShadow: false };
+    const mouthOpt = { roughness: 0.78, metalness: 0.02, castShadow: false };
+
+    const eyeL = createHeroClayMesh(getHeroEyeGeo(), zp.eye, -0.098, -0.028, 0.243, eyeOpt);
+    eyeL.rotation.y = -0.11;
+    const eyeR = createHeroClayMesh(getHeroEyeGeo(), zp.eye,  0.098, -0.028, 0.243, eyeOpt);
+    eyeR.rotation.y =  0.11;
+    const browL = createHeroClayMesh(getHeroBrowGeo(true),  zp.brow, -0.102, 0.062, 0.244, browOpt);
+    browL.rotation.set(0, -0.11, 0);
+    const browR = createHeroClayMesh(getHeroBrowGeo(false), zp.brow,  0.102, 0.062, 0.244, browOpt);
+    browR.rotation.set(0,  0.11, 0);
+    const nose = createHeroClayMesh(getSculptedNoseGeo(false), zp.skin, 0, -0.068, 0.249, noseOpt);
+    nose.scale.set(0.80, 0.68, 0.64);
+    const smileMesh = createHeroClayMesh(getHeroSmileGeo(), zp.mouth, 0, -0.140, 0.236, mouthOpt);
+    smileMesh.rotation.x = 0.26;
+    facialFeatures.add(eyeL, eyeR, browL, browR, nose, smileMesh);
+
+    const earL = createHeroClayMesh(getSculptedEarGeo(true),  zp.skin, -0.282, -0.042, -0.018, { roughness: 0.84, metalness: 0.02, castShadow: false });
+    const earR = createHeroClayMesh(getSculptedEarGeo(false), zp.skin,  0.282, -0.042, -0.018, { roughness: 0.84, metalness: 0.02, castShadow: false });
+    earL.name = 'ear'; earR.name = 'ear';
+
+    head.add(faceMesh, facialFeatures, earL, earR, createZacchaeusHairGroup(), createZacchaeusBeardGroup());
+    gHigh.add(lLeg, rLeg, tunicSkirtGrp, tunicBodiceGrp, neck, gearGroup, lArm, rArm, head);
   } else {
     const buildLeg = (isLeft) => {
       const legGrp = new THREE.Group();
@@ -3638,9 +4195,9 @@ window.createLowPolyPersonMesh = function (preset = 'disciple', idx = 0) {
   // High Mesh 기준으로 관절 제어 포인터 맵핑 (업데이트 함수용)
   const uLLeg = gHigh.children[0];
   const uRLeg = gHigh.children[1];
-  const uLArm = preset === 'jesus' ? gHigh.children[8] : gHigh.children[7];
-  const uRArm = preset === 'jesus' ? gHigh.children[9] : gHigh.children[8];
-  const uHead = preset === 'jesus' ? gHigh.children[10] : gHigh.children[9];
+  const uLArm = (preset === 'jesus') ? gHigh.children[8] : ((preset === 'zacchaeus') ? gHigh.children[6] : gHigh.children[7]);
+  const uRArm = (preset === 'jesus') ? gHigh.children[9] : ((preset === 'zacchaeus') ? gHigh.children[7] : gHigh.children[8]);
+  const uHead = (preset === 'jesus') ? gHigh.children[10] : ((preset === 'zacchaeus') ? gHigh.children[8] : gHigh.children[9]);
   lodGroup.userData = {
     lLeg: uLLeg,
     rLeg: uRLeg,
@@ -3673,10 +4230,11 @@ const _lowPolySilhouetteGeoCache = {};
 function getMergedLowPolySilhouetteGeo(preset, cfg, isFemale) {
   const isJesus = (preset === 'jesus');
   const isHero  = (preset === 'hero');
+  const isZac   = (preset === 'zacchaeus');
   const isClubKid = (preset === 'pathfinder' || preset === 'adventurer');
   const isHelmet = (!isJesus && !isFemale && cfg.headwear === 'helmet');
   const isHeadband = (!isJesus && !isFemale && cfg.headwear === 'headband');
-  const isHooded = (!isJesus && !isHelmet && !isHeadband && !isClubKid) && (isFemale || cfg.headwear !== 'none');
+  const isHooded = (!isJesus && !isZac && !isHelmet && !isHeadband && !isClubKid) && (isFemale || cfg.headwear !== 'none');
 
   const skinCol   = isJesus ? '#f2cfb4' : cfg.skin;
   const hairCol   = isJesus ? '#4e2f1e' : cfg.hair;
@@ -3684,13 +4242,13 @@ function getMergedLowPolySilhouetteGeo(preset, cfg, isFemale) {
   const bodiceCol = isJesus ? '#e8e6e2' : (isClubKid ? cfg.shirt : (isFemale ? cfg.bodice : cfg.robe));
   const skirtCol  = isJesus ? '#e8e6e2' : (isClubKid ? cfg.shorts : (isFemale ? cfg.skirt : cfg.robe));
   const shawlCol  = isJesus ? '#c83228' : (isClubKid ? cfg.scarf : cfg.shawl);
-  const sleeveCol = isJesus ? '#e8e6e2' : ((isClubKid || isHero) ? cfg.shirt || cfg.robe : cfg.shawl);
+  const sleeveCol = isJesus ? '#e8e6e2' : ((isClubKid || isHero || isZac) ? (cfg.shirt || cfg.robe) : cfg.shawl);
   const beltCol   = isJesus ? '#9c846b' : cfg.belt;
   const shoeCol   = isJesus ? '#3b2416' : (isClubKid ? cfg.shoe : (isFemale ? cfg.shoe : cfg.sandal));
   const hasWings  = Boolean(cfg.hasWings);
 
   const key = [
-    isJesus ? 'J' : (isHero ? 'E' : (isClubKid ? 'C' : (isFemale ? 'F' : 'M'))),
+    isJesus ? 'J' : (isHero ? 'E' : (isZac ? 'Z' : (isClubKid ? 'C' : (isFemale ? 'F' : 'M')))),
     isClubKid ? preset : '',
     isHooded ? 'H' : (isHelmet ? 'K' : (isHeadband ? 'B' : 'U')),
     hasWings ? 'W' : 'N',
@@ -3751,7 +4309,7 @@ function getMergedLowPolySilhouetteGeo(preset, cfg, isFemale) {
   appendPart(new THREE.CylinderGeometry(0.265, 0.21, 0.56, 6), bodiceCol, 0, 1.28, 0, 1.12, 1.0, 0.66);
   if (isJesus) {
     appendPart(new THREE.CylinderGeometry(0.085, 0.105, 0.88, 5), shawlCol, 0.0, 1.16, 0.15, 1.0, 1.0, 0.45, 0, 0, -0.44);
-  } else {
+  } else if (!isZac) {
     appendPart(new THREE.CylinderGeometry(0.19, 0.35, 0.22, 6), shawlCol, 0, 1.46, -0.01, 1.08, 1.0, 0.72);
   }
   appendPart(new THREE.CylinderGeometry(0.24, 0.25, 0.09, 6), beltCol, 0, 0.98, 0, 1.02, 1.0, 0.72);
@@ -3759,6 +4317,9 @@ function getMergedLowPolySilhouetteGeo(preset, cfg, isFemale) {
   if (isHero) {
     appendPart(new THREE.BoxGeometry(0.14, 0.20, 0.20), HERO_CLAY_PALETTE.pouchLeather, 0.30, 0.89, 0.05);
     appendPart(new THREE.CylinderGeometry(0.36, 0.42, 0.62, 6, 1, false, Math.PI * 0.55, Math.PI * 0.90), shawlCol, 0, 0.88, -0.05, 1.0, 1.0, 0.85);
+  } else if (isZac) {
+    appendPart(new THREE.BoxGeometry(0.14, 0.20, 0.20), ZACCHAEUS_CLAY_PALETTE.pouch, 0.30, 0.89, 0.05);
+    appendPart(new THREE.IcosahedronGeometry(0.16, 0), ZACCHAEUS_CLAY_PALETTE.beard, 0, 1.72, 0.11);
   }
 
   // 4) 자연스럽게 내려온 양팔 & 손
@@ -5454,3 +6015,263 @@ window.addLowPolyCactusAndScrub = function (x, z, scale = 1.0) {
   colliders.push({ minX: x - 0.52 * scale, maxX: x + 0.52 * scale, minZ: z - 0.52 * scale, maxZ: z + 0.52 * scale });
   return grp;
 };
+
+// [1세기 이스라엘 고유 식생 로우 폴리곤 에셋 6종] (외곽 산맥·기슭 자연화 식재용)
+//   - 올리브나무 · 무화과나무 · 대추야자 · 우슬초 · 아네모네 · 가시덤불 케이퍼 & 거친 풀
+// =========================================================================
+(function registerIsraelFirstCenturyFloraAssets() {
+  function seededRand(seed) {
+    const x = Math.sin(seed * 127.1 + 311.7) * 43758.5453;
+    return x - Math.floor(x);
+  }
+
+  function makeWoodenForkedTrunk(grp, trunkPts, radii, barkMain, barkAlt, seed, branches) {
+    if (typeof window.createOrganicWoodTrunkGeo === 'function') {
+      const geo = window.createOrganicWoodTrunkGeo(trunkPts, radii, 6, seed, true);
+      grp.add(createLowPolyMesh(geo, barkMain, 0, 0, 0, true));
+    } else {
+      for (let i = 0; i < trunkPts.length - 1; i++) {
+        const a = trunkPts[i], b = trunkPts[i + 1];
+        grp.add(createBranchSegmentMesh(
+          new THREE.Vector3(a[0], a[1], a[2]),
+          new THREE.Vector3(b[0], b[1], b[2]),
+          radii[i], radii[i + 1], i % 2 === 0 ? barkMain : barkAlt, seed + i * 7, i === 0
+        ));
+      }
+    }
+    branches.forEach((br, idx) => {
+      const seg = createBranchSegmentMesh(
+        new THREE.Vector3(br.from[0], br.from[1], br.from[2]),
+        new THREE.Vector3(br.to[0], br.to[1], br.to[2]),
+        br.r0, br.r1, idx % 2 === 0 ? barkMain : barkAlt, seed + 31 + idx * 11, false
+      );
+      grp.add(seg);
+    });
+  }
+
+  // 1) 1세기 이스라엘 올리브나무 (Olea europaea) — 뒤틀린 줄기 + 은빛 세이지 수관 + 작은 올리브 열매
+  window.createIsraelOliveTreeGroup = function (scale = 1.0, seed = 101) {
+    const grp = new THREE.Group();
+    const leanX = (seededRand(seed + 1) - 0.5) * 0.22;
+    const forkPt = [leanX * 0.6, 1.38, 0.04];
+    makeWoodenForkedTrunk(
+      grp,
+      [[0, -0.08, 0], [leanX * 0.35, 0.65, -0.04], forkPt],
+      [0.34, 0.24, 0.20],
+      '#6d4728', '#7d5432', seed,
+      [
+        { from: forkPt, to: [-0.88, 2.28,  0.34], r0: 0.16, r1: 0.09 },
+        { from: forkPt, to: [ 0.92, 2.34, -0.24], r0: 0.15, r1: 0.085 },
+        { from: forkPt, to: [-0.14, 2.66, -0.78], r0: 0.14, r1: 0.08 },
+        { from: forkPt, to: [ 0.18, 2.60,  0.80], r0: 0.14, r1: 0.08 }
+      ]
+    );
+
+    const sageCols = ['#8c9e78', '#9bae85', '#778b65', '#a8b895', '#82966e'];
+    const pods = [
+      [0.02, 2.98, 0.02, 1.06, 0.80, 1.02],
+      [-0.98, 2.48, 0.38, 0.86, 0.72, 0.84],
+      [ 1.02, 2.52,-0.28, 0.84, 0.72, 0.82],
+      [-0.22, 2.74,-0.88, 0.76, 0.68, 0.76],
+      [ 0.24, 2.68, 0.88, 0.78, 0.68, 0.78]
+    ];
+    pods.forEach(([px, py, pz, rx, ry, rz], i) => {
+      const m = createLowPolyMesh(new THREE.IcosahedronGeometry(0.95, 0), sageCols[(seed + i) % sageCols.length], px, py, pz, true);
+      m.scale.set(rx, ry, rz);
+      m.rotation.set(seededRand(seed + i * 3) * 0.4, i * 1.1, seededRand(seed + i * 5) * 0.3);
+      grp.add(m);
+
+      for (let t = 0; t < 2; t++) {
+        const ang = (i * 1.7 + t * 2.5 + seed * 0.4);
+        const olive = createLowPolyMesh(new THREE.DodecahedronGeometry(0.085, 0), (t % 2 === 0 ? '#2b381f' : '#404e2a'), px + Math.cos(ang) * 0.56 * rx, py - 0.32 * ry, pz + Math.sin(ang) * 0.56 * rz, false);
+        olive.scale.set(0.85, 1.25, 0.85);
+        grp.add(olive);
+      }
+    });
+    grp.scale.setScalar(scale);
+    return grp;
+  };
+
+  // 2) 무화과나무 (Ficus carica) — 넓게 퍼진 가지 + 풍성한 초록 잎 + 보라빛 무화과 열매
+  window.createIsraelFigTreeGroup = function (scale = 1.0, seed = 202) {
+    const grp = new THREE.Group();
+    const forkPt = [(seededRand(seed) - 0.5) * 0.16, 1.28, 0];
+    makeWoodenForkedTrunk(
+      grp,
+      [[0, -0.08, 0], [forkPt[0] * 0.5, 0.62, 0.04], forkPt],
+      [0.36, 0.25, 0.20],
+      '#6f4929', '#815734', seed,
+      [
+        { from: forkPt, to: [-1.18, 2.26,  0.46], r0: 0.17, r1: 0.09 },
+        { from: forkPt, to: [ 1.16, 2.30,  0.22], r0: 0.17, r1: 0.09 },
+        { from: forkPt, to: [ 0.12, 2.48, -1.12], r0: 0.15, r1: 0.085 },
+        { from: forkPt, to: [-0.28, 2.75,  0.15], r0: 0.15, r1: 0.08 }
+      ]
+    );
+
+    const figLeafCols = ['#5f8a3e', '#719e49', '#4f7832', '#6a9644'];
+    const padSpots = [
+      [ 0.00, 3.05,  0.00, 1.55, 0.82],
+      [-1.25, 2.48,  0.52, 1.18, 0.68],
+      [ 1.24, 2.52,  0.28, 1.15, 0.68],
+      [ 0.18, 2.66, -1.15, 1.12, 0.66],
+      [-0.65, 2.78, -0.62, 1.05, 0.64],
+      [ 0.72, 2.76,  0.78, 1.05, 0.64]
+    ];
+    padSpots.forEach(([px, py, pz, pr, ph], i) => {
+      const geo = (typeof createFlattenedFoliagePadGeo === 'function')
+        ? createFlattenedFoliagePadGeo(pr, ph, 1)
+        : new THREE.IcosahedronGeometry(pr, 0);
+      const pad = createLowPolyMesh(geo, figLeafCols[(seed + i) % figLeafCols.length], px, py, pz, true);
+      if (typeof createFlattenedFoliagePadGeo !== 'function') pad.scale.set(1.0, 0.56, 1.0);
+      pad.rotation.y = (seed + i) * 0.9;
+      grp.add(pad);
+
+      if (i > 0) {
+        const fig = createLowPolyMesh(new THREE.DodecahedronGeometry(0.11, 0), (i % 2 === 0 ? '#4c1d6e' : '#6b21a8'), px * 0.88, py - 0.36, pz * 0.88, false);
+        fig.scale.set(0.85, 1.35, 0.85);
+        grp.add(fig);
+      }
+    });
+    grp.scale.setScalar(scale);
+    return grp;
+  };
+
+  // 3) 대추야자 (Phoenix dactylifera) — 각진 마디 줄기 + 황금 대추열매 송이 + 방사형 야자 잎
+  window.createIsraelDatePalmGroup = function (scale = 1.0, seed = 303) {
+    const grp = new THREE.Group();
+    const leanX = (seededRand(seed) - 0.5) * 0.36;
+    const leanZ = (seededRand(seed + 2) - 0.5) * 0.28;
+    const segs = 7;
+    const hTotal = 4.35;
+    let topX = 0, topY = 0, topZ = 0;
+
+    for (let s = 0; s < segs; s++) {
+      const t = (s + 0.5) / segs;
+      const sx = leanX * Math.pow(t, 1.35);
+      const sz = leanZ * Math.pow(t, 1.35);
+      const sy = t * hTotal;
+      const rB = 0.29 - t * 0.11;
+      const seg = createLowPolyMesh(
+        new THREE.CylinderGeometry(rB * 1.08, rB * 0.82, (hTotal / segs) * 1.12, 6),
+        s % 2 === 0 ? '#7a5432' : '#8e6642',
+        sx, sy, sz, true
+      );
+      grp.add(seg);
+      topX = sx; topY = sy + 0.32; topZ = sz;
+    }
+
+    // 황금/호박색 대추 열매 송이
+    for (let d = 0; d < 4; d++) {
+      const ang = (d / 4) * Math.PI * 2 + seed * 0.3;
+      const dateCl = createLowPolyMesh(new THREE.DodecahedronGeometry(0.20, 0), (d % 2 === 0 ? '#d97706' : '#e58f24'), topX + Math.cos(ang) * 0.32, topY - 0.22, topZ + Math.sin(ang) * 0.32, false);
+      dateCl.scale.set(0.78, 1.45, 0.78);
+      grp.add(dateCl);
+    }
+
+    // 방사형 아치 야자 잎
+    const frondCols = ['#5f8c35', '#73a144', '#4a7328'];
+    for (let f = 0; f < 8; f++) {
+      const yaw = (f / 8) * Math.PI * 2 + seededRand(seed + f) * 0.25;
+      const frondPivot = new THREE.Group();
+      frondPivot.position.set(topX, topY + 0.06, topZ);
+      frondPivot.rotation.y = yaw;
+
+      const inner = createLowPolyMesh(new THREE.ConeGeometry(0.26, 1.35, 4), frondCols[f % frondCols.length], 0, 0.26, 0.58, true);
+      inner.rotation.x = 1.05;
+      inner.scale.set(1.25, 1.0, 0.32);
+
+      const outer = createLowPolyMesh(new THREE.ConeGeometry(0.22, 1.40, 4), frondCols[(f + 1) % frondCols.length], 0, 0.08, 1.62, true);
+      outer.rotation.x = 1.82;
+      outer.scale.set(1.18, 1.0, 0.28);
+
+      frondPivot.add(inner, outer);
+      grp.add(frondPivot);
+    }
+    grp.scale.setScalar(scale);
+    return grp;
+  };
+
+  // 4) 우슬초 (Origanum syriacum) — 둥근 허브 덤불 + 보라빛 작은 꽃대
+  window.createIsraelHyssopShrubGroup = function (scale = 1.0, seed = 404) {
+    const grp = new THREE.Group();
+    const herbCols = ['#63854c', '#74985a', '#537340'];
+    const tufts = [
+      [ 0.00, 0.34,  0.00, 0.44],
+      [-0.30, 0.26,  0.18, 0.34],
+      [ 0.32, 0.27, -0.14, 0.34],
+      [-0.12, 0.25, -0.28, 0.32],
+      [ 0.16, 0.26,  0.28, 0.32]
+    ];
+    tufts.forEach(([x, y, z, r], i) => {
+      const leaf = createLowPolyMesh(new THREE.IcosahedronGeometry(r, 0), herbCols[(seed + i) % herbCols.length], x, y, z, true);
+      leaf.scale.set(1.12, 0.85, 1.12);
+      grp.add(leaf);
+    });
+    for (let s = 0; s < 5; s++) {
+      const ang = (s / 5) * Math.PI * 2 + seed * 0.5;
+      const rDist = (s === 0 ? 0.05 : 0.26);
+      const sx = Math.cos(ang) * rDist;
+      const sz = Math.sin(ang) * rDist;
+      const spike = createLowPolyMesh(new THREE.DodecahedronGeometry(0.11, 0), (s % 2 === 0 ? '#a78bfa' : '#c4b5fd'), sx, 0.62 + (s % 2) * 0.10, sz, false);
+      spike.scale.set(0.85, 1.38, 0.85);
+      grp.add(spike);
+    }
+    grp.scale.setScalar(scale);
+    return grp;
+  };
+
+  // 5) 붉은 아네모네 군락 (Anemone coronaria) — 햇살 아래 붉은 꽃송이 + 검은 심지
+  window.createIsraelAnemoneClusterGroup = function (scale = 1.0, seed = 505) {
+    const grp = new THREE.Group();
+    const petalCols = ['#dc2626', '#ef4444', '#b91c1c'];
+    const baseLeaf = createLowPolyMesh(new THREE.IcosahedronGeometry(0.32, 0), '#4d7c0f', 0, 0.14, 0, false);
+    baseLeaf.scale.set(1.35, 0.45, 1.25);
+    grp.add(baseLeaf);
+
+    for (let i = 0; i < 4; i++) {
+      const ang = (i / 4) * Math.PI * 2 + seed * 0.7;
+      const fx = Math.cos(ang) * (0.14 + (i % 2) * 0.16);
+      const fz = Math.sin(ang) * (0.14 + (i % 2) * 0.16);
+      const fh = 0.48 + (i % 2) * 0.16;
+      const stem = createLowPolyMesh(new THREE.CylinderGeometry(0.025, 0.032, fh, 4), '#3f6212', fx, fh * 0.5, fz, false);
+      const cup = createLowPolyMesh(new THREE.CylinderGeometry(0.19, 0.07, 0.14, 6), petalCols[(seed + i) % petalCols.length], fx, fh + 0.04, fz, false);
+      const center = createLowPolyMesh(new THREE.DodecahedronGeometry(0.06, 0), '#1e1b18', fx, fh + 0.08, fz, false);
+      grp.add(stem, cup, center);
+    }
+    grp.scale.setScalar(scale);
+    return grp;
+  };
+
+  // 6) 바위 틈 케이퍼 관목 & 거친 풀 (Capparis spinosa & Mediterranean Scrub)
+  window.createIsraelCaperAndGrassGroup = function (scale = 1.0, seed = 606) {
+    const grp = new THREE.Group();
+    const stone = createLowPolyMesh(new THREE.DodecahedronGeometry(0.46, 0), '#a89f91', 0, 0.20, 0, true);
+    stone.scale.set(1.35, 0.58, 1.12);
+    stone.rotation.y = seed * 0.5;
+    grp.add(stone);
+
+    const shrubCols = ['#5d8739', '#719b48', '#88a64d'];
+    [[-0.34, 0.24, 0.16], [0.36, 0.22, -0.14], [0.06, 0.28, 0.34], [-0.14, 0.24, -0.32]].forEach(([bx, by, bz], idx) => {
+      const bush = createLowPolyMesh(new THREE.IcosahedronGeometry(0.28, 0), shrubCols[(seed + idx) % shrubCols.length], bx, by, bz, false);
+      bush.scale.set(1.25, 0.62, 1.18);
+      grp.add(bush);
+      if (idx < 3) {
+        const bloom = createLowPolyMesh(new THREE.DodecahedronGeometry(0.085, 0), '#f5e4f7', bx * 1.08, by + 0.14, bz * 1.08, false);
+        grp.add(bloom);
+      }
+    });
+
+    // 거친 풀잎 칼날
+    const grassCols = ['#7d9645', '#9ba856', '#b89f5d'];
+    for (let g = 0; g < 6; g++) {
+      const ang = (g / 6) * Math.PI * 2 + seed * 0.3;
+      const blade = createLowPolyMesh(new THREE.ConeGeometry(0.075, 0.55 + (g % 2) * 0.18, 3), grassCols[g % grassCols.length], Math.cos(ang) * 0.52, 0.22, Math.sin(ang) * 0.52, false);
+      blade.rotation.z = -Math.cos(ang) * 0.38;
+      blade.rotation.x = Math.sin(ang) * 0.38;
+      grp.add(blade);
+    }
+    grp.scale.setScalar(scale);
+    return grp;
+  };
+})();

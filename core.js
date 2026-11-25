@@ -5,7 +5,7 @@
 // =========================================================================
 
 window.__GAME_BUILD_VERSIONS__ = window.__GAME_BUILD_VERSIONS__ || {};
-window.__GAME_BUILD_VERSIONS__.core = '20261124_v32';
+window.__GAME_BUILD_VERSIONS__.core = '20261125_v41';
 
 // 퀴즈 선택지 순서 무작위 셔플 공용 헬퍼 (정답이 항상 1번에 고정되지 않도록 보장)
 function shuffleQuizOptions(opts, ansIdx = 0) {
@@ -576,7 +576,9 @@ function syncOverlayModalBodyClass() {
     'retry-modal',
     'ending-modal',
     'adventure-badges-modal',
-    'ending-map-choice-modal'
+    'ending-map-choice-modal',
+    'game-exit-confirm-modal',
+    'game-closed-screen'
   ];
   let anyOpen = fullModalIds.some(id => {
     const el = document.getElementById(id);
@@ -665,6 +667,100 @@ if (typeof document !== 'undefined') {
   document.addEventListener('webkitfullscreenchange', syncHudMenuInfo);
 }
 
+let _exitModalWasPlaying = false;
+function openGameExitConfirmModal() {
+  setHudMenuOpen(false);
+  if (typeof playSfx === 'function') playSfx('switch');
+  _exitModalWasPlaying = Boolean(isPlaying);
+  isPlaying = false;
+  joyX = 0; joyY = 0; currentMoveSpeed = 0;
+  if (typeof keys !== 'undefined' && keys) Object.keys(keys).forEach(k => { keys[k] = false; });
+  const modal = document.getElementById('game-exit-confirm-modal');
+  if (modal) {
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+  }
+  syncOverlayModalBodyClass();
+}
+window.openGameExitConfirmModal = openGameExitConfirmModal;
+
+function closeGameExitConfirmModal() {
+  const modal = document.getElementById('game-exit-confirm-modal');
+  if (modal) {
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+  }
+  if (_exitModalWasPlaying) {
+    isPlaying = true;
+    _exitModalWasPlaying = false;
+  }
+  syncOverlayModalBodyClass();
+}
+window.closeGameExitConfirmModal = closeGameExitConfirmModal;
+
+function confirmExitBibleAdventureGame() {
+  const modal = document.getElementById('game-exit-confirm-modal');
+  if (modal) {
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+  }
+  _exitModalWasPlaying = false;
+  isPlaying = false;
+  isTimeAttackActive = false;
+  joyX = 0; joyY = 0; currentMoveSpeed = 0;
+  if (typeof keys !== 'undefined' && keys) Object.keys(keys).forEach(k => { keys[k] = false; });
+
+  try {
+    if (typeof saveMiracleNotebookProgress === 'function') saveMiracleNotebookProgress();
+    if (typeof saveLocalPlayerProgress === 'function' && typeof explorerName !== 'undefined' && explorerName) {
+      saveLocalPlayerProgress(explorerName);
+    }
+  } catch (e) {}
+
+  try {
+    if (typeof stopStageBgm === 'function') stopStageBgm();
+    if (typeof window.stopMiracleOpenWorldOgg === 'function') window.stopMiracleOpenWorldOgg(true);
+    if (typeof window.speechSynthesis !== 'undefined' && window.speechSynthesis) window.speechSynthesis.cancel();
+  } catch (e) {}
+
+  try {
+    if (window.MiracleMultiplayer && window.MiracleMultiplayer.active && typeof window.MiracleMultiplayer.leaveRoom === 'function') {
+      window.MiracleMultiplayer.leaveRoom();
+    }
+  } catch (e) {}
+
+  try {
+    if (document.fullscreenElement && document.exitFullscreen) {
+      document.exitFullscreen().catch(() => {});
+    } else if (document.webkitFullscreenElement && document.webkitExitFullscreen) {
+      document.webkitExitFullscreen();
+    }
+  } catch (e) {}
+
+  try {
+    if (window.Android && typeof window.Android.closeApp === 'function') {
+      window.Android.closeApp();
+    } else if (window.ReactNativeWebView && typeof window.ReactNativeWebView.postMessage === 'function') {
+      window.ReactNativeWebView.postMessage('EXIT_APP');
+    }
+    window.close();
+    window.open('', '_self');
+    window.close();
+  } catch (e) {}
+
+  setTimeout(() => {
+    if (!window.closed) {
+      const closedEl = document.getElementById('game-closed-screen');
+      if (closedEl) {
+        closedEl.classList.remove('hidden');
+        closedEl.classList.add('flex');
+        syncOverlayModalBodyClass();
+      }
+    }
+  }, 260);
+}
+window.confirmExitBibleAdventureGame = confirmExitBibleAdventureGame;
+
 function toggleBgm() {
   bgmEnabled = !bgmEnabled;
   syncHudMenuInfo();
@@ -687,6 +783,8 @@ const MiracleGuideUI = {
   isBubbleOpen: false,
   isTyping: false,
   isSucking: false,
+  openedAt: 0,
+  onCloseCallbacks: [],
   activeFieldInfo: null,
   activeStageInfo: null,
   lastAutoKey: '',
@@ -704,6 +802,62 @@ function _clearMiracleGuideTimers() {
   if (MiracleGuideUI.autoCloseTimerId) { clearTimeout(MiracleGuideUI.autoCloseTimerId); MiracleGuideUI.autoCloseTimerId = null; }
   if (MiracleGuideUI.suckTimerId) { clearTimeout(MiracleGuideUI.suckTimerId); MiracleGuideUI.suckTimerId = null; }
 }
+
+function _flushMiracleGuideCloseCallbacks(clearOnly = false) {
+  const cbs = Array.isArray(MiracleGuideUI.onCloseCallbacks) ? MiracleGuideUI.onCloseCallbacks.splice(0) : [];
+  if (clearOnly || cbs.length === 0) return;
+  cbs.forEach(fn => {
+    if (typeof fn === 'function') {
+      try { fn(); } catch (e) {}
+    }
+  });
+}
+
+window.isMissionGuideBubbleBlockingAction = function () {
+  if (window.isMiracleMultiplayerMode) return false;
+  if (!MiracleGuideUI.isBubbleOpen) return false;
+  const bubble = document.getElementById('miracle-guide-bubble');
+  if (!bubble || bubble.classList.contains('hidden')) {
+    _clearMiracleGuideTimers();
+    MiracleGuideUI.isBubbleOpen = false;
+    MiracleGuideUI.isTyping = false;
+    MiracleGuideUI.isSucking = false;
+    _flushMiracleGuideCloseCallbacks(false);
+    return false;
+  }
+  if (MiracleGuideUI.isSucking && !MiracleGuideUI.suckTimerId) {
+    _clearMiracleGuideTimers();
+    bubble.classList.add('hidden');
+    bubble.style.pointerEvents = '';
+    bubble.style.transition = 'none';
+    bubble.style.transform = 'translate(-50%, -50%) scale(1)';
+    bubble.style.opacity = '1';
+    MiracleGuideUI.isBubbleOpen = false;
+    MiracleGuideUI.isTyping = false;
+    MiracleGuideUI.isSucking = false;
+    _flushMiracleGuideCloseCallbacks(false);
+    return false;
+  }
+  if (
+    !MiracleGuideUI.isTyping &&
+    !MiracleGuideUI.isSucking &&
+    !MiracleGuideUI.autoCloseTimerId &&
+    MiracleGuideUI.openedAt > 0 &&
+    (performance.now() - MiracleGuideUI.openedAt) > 12000
+  ) {
+    window.dismissMiracleGuideBubbleToButton();
+  }
+  return true;
+};
+
+window.runAfterMissionGuideBubble = function (cb) {
+  if (typeof cb !== 'function') return;
+  if (!window.isMissionGuideBubbleBlockingAction()) {
+    cb();
+    return;
+  }
+  MiracleGuideUI.onCloseCallbacks.push(cb);
+};
 
 function positionMiracleGuideButton() {
   // 우측 상단 구석(#hud-top-right 내부)에 정식 배치되었으므로 멀티플레이 HUD 간격만 동기화
@@ -725,7 +879,7 @@ function setInGameHudControlsVisible(visible) {
     if (joy) joy.style.display = 'none';
     if (camBar) camBar.style.display = 'none';
     if (actZone) actZone.style.display = 'none';
-    ['miracle-hud-left', 'miracle-mini-nav', 'miracle-guide-btn', 'david-st1-panel', 'david-st3-quest-tracker'].forEach(id => {
+    ['miracle-hud-left', 'miracle-mini-nav', 'miracle-guide-btn', 'miracle-return-openworld-btn', 'david-st1-panel', 'david-st3-quest-tracker'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.classList.add('hidden');
     });
@@ -739,6 +893,9 @@ function setInGameHudControlsVisible(visible) {
     updateMiracleGuideButtonVisibility();
     if (currentEpisode === 'miracle' && typeof updateMiracleNotebookHudBadge === 'function') {
       updateMiracleNotebookHudBadge();
+    } else {
+      const retBtn = document.getElementById('miracle-return-openworld-btn');
+      if (retBtn) retBtn.classList.add('hidden');
     }
     if (currentEpisode === 'david') {
       if (currentStage === 1 && typeof updateDavidStage1UI === 'function') updateDavidStage1UI();
@@ -802,18 +959,21 @@ function updateMiracleGuideButtonVisibility() {
 }
 window.updateMiracleGuideButtonVisibility = updateMiracleGuideButtonVisibility;
 
-function hideMissionGuideBubbleImmediately() {
+function hideMissionGuideBubbleImmediately(opts = {}) {
   _clearMiracleGuideTimers();
   MiracleGuideUI.isBubbleOpen = false;
   MiracleGuideUI.isTyping = false;
   MiracleGuideUI.isSucking = false;
+  MiracleGuideUI.openedAt = 0;
   const bubble = document.getElementById('miracle-guide-bubble');
   if (bubble) {
     bubble.classList.add('hidden');
+    bubble.style.pointerEvents = '';
     bubble.style.transition = 'none';
     bubble.style.transform = 'translate(-50%, -50%) scale(1)';
     bubble.style.opacity = '1';
   }
+  _flushMiracleGuideCloseCallbacks(!(opts && opts.runCallbacks));
 }
 window.hideMissionGuideBubbleImmediately = hideMissionGuideBubbleImmediately;
 
@@ -834,10 +994,18 @@ window.showMiracleGuideBubble = function (opts = {}) {
 
   const title = opts.title || '✨ 탐험 안내';
   const text = String(opts.text || '').trim() || '목표를 향해 모험을 시작해 보세요!';
+  const toastBox = document.getElementById('toast-box');
+  if (
+    toastBox &&
+    toastBox.style.opacity === '1' &&
+    ((performance.now() - _lastToastAt) < 400 || _isToastDuplicateOfGuideBubble(_lastToastText, text))
+  ) {
+    hideToastImmediately();
+  }
   const progressText = opts.progressText || '';
   const extraText = opts.extraText || '';
   const canCancel = Boolean(opts.canCancel);
-  const autoCloseMs = typeof opts.autoCloseMs === 'number' ? opts.autoCloseMs : 2300;
+  const autoCloseMs = (typeof opts.autoCloseMs === 'number' && opts.autoCloseMs > 0) ? opts.autoCloseMs : 2500;
 
   if (titleEl) titleEl.textContent = title;
   if (progRow) {
@@ -863,6 +1031,7 @@ window.showMiracleGuideBubble = function (opts = {}) {
     }
   } catch (e) {}
 
+  bubble.style.pointerEvents = '';
   bubble.style.transition = 'none';
   bubble.style.transform = `translate(calc(-50% + ${dx.toFixed(1)}px), calc(-50% + ${dy.toFixed(1)}px)) scale(0.08) rotate(10deg)`;
   bubble.style.opacity = '0';
@@ -877,8 +1046,12 @@ window.showMiracleGuideBubble = function (opts = {}) {
   MiracleGuideUI.isBubbleOpen = true;
   MiracleGuideUI.isSucking = false;
   MiracleGuideUI.isTyping = true;
+  MiracleGuideUI.openedAt = performance.now();
   MiracleGuideUI.fullText = text;
   MiracleGuideUI.typedIdx = 0;
+  if (typeof joyX !== 'undefined') joyX = 0;
+  if (typeof joyY !== 'undefined') joyY = 0;
+  if (typeof currentMoveSpeed !== 'undefined') currentMoveSpeed = 0;
   textEl.textContent = '';
   if (cursorEl) cursorEl.classList.remove('hidden');
 
@@ -916,7 +1089,7 @@ window.onMiracleGuideBubbleClick = function () {
     if (MiracleGuideUI.autoCloseTimerId) clearTimeout(MiracleGuideUI.autoCloseTimerId);
     MiracleGuideUI.autoCloseTimerId = setTimeout(() => {
       window.dismissMiracleGuideBubbleToButton();
-    }, 1100);
+    }, 900);
   } else {
     window.dismissMiracleGuideBubbleToButton();
   }
@@ -925,11 +1098,20 @@ window.onMiracleGuideBubbleClick = function () {
 window.dismissMiracleGuideBubbleToButton = function () {
   const bubble = document.getElementById('miracle-guide-bubble');
   const btn = document.getElementById('miracle-guide-btn');
-  if (!bubble || bubble.classList.contains('hidden') || MiracleGuideUI.isSucking) return;
+  if (!bubble || bubble.classList.contains('hidden')) {
+    _clearMiracleGuideTimers();
+    MiracleGuideUI.isBubbleOpen = false;
+    MiracleGuideUI.isTyping = false;
+    MiracleGuideUI.isSucking = false;
+    _flushMiracleGuideCloseCallbacks(false);
+    return;
+  }
+  if (MiracleGuideUI.isSucking) return;
 
   _clearMiracleGuideTimers();
   MiracleGuideUI.isTyping = false;
   MiracleGuideUI.isSucking = true;
+  bubble.style.pointerEvents = 'none';
 
   let dx = Math.round((window.innerWidth || 1000) * 0.42);
   let dy = -Math.round((window.innerHeight || 700) * 0.38);
@@ -942,12 +1124,14 @@ window.dismissMiracleGuideBubbleToButton = function () {
     }
   } catch (e) {}
 
-  bubble.style.transition = 'transform 0.52s cubic-bezier(0.45, -0.15, 0.85, 0.35), opacity 0.46s ease-in';
+  bubble.style.transition = 'transform 0.30s cubic-bezier(0.45, -0.15, 0.85, 0.35), opacity 0.26s ease-in';
   bubble.style.transform = `translate(calc(-50% + ${dx.toFixed(1)}px), calc(-50% + ${dy.toFixed(1)}px)) scale(0.08) rotate(10deg)`;
   bubble.style.opacity = '0';
 
   MiracleGuideUI.suckTimerId = setTimeout(() => {
+    MiracleGuideUI.suckTimerId = null;
     bubble.classList.add('hidden');
+    bubble.style.pointerEvents = '';
     bubble.style.transition = 'none';
     bubble.style.transform = 'translate(-50%, -50%) scale(1)';
     bubble.style.opacity = '1';
@@ -958,7 +1142,8 @@ window.dismissMiracleGuideBubbleToButton = function () {
       void btn.offsetWidth;
       btn.classList.add('absorb-pop');
     }
-  }, 530);
+    _flushMiracleGuideCloseCallbacks(false);
+  }, 320);
 };
 
 window.openMiracleGuideFromButton = function () {
@@ -1109,7 +1294,7 @@ function _getStageProgressTutorialDesc() {
   }
   if (currentEpisode === 'miracle') {
     if (typeof miracleSubMode !== 'undefined' && miracleSubMode === 'openworld') {
-      return '클리어한 주요사건(0/4)과 모은 탐험수첩 기록(0/36)을 실시간으로 보여줘요!';
+      return '클리어한 주요사건(0/4) 진행 현황을 실시간으로 보여줘요!';
     }
     return '현재 진행 중인 복음서 스테이지의 목표 달성 현황을 보여줘요!';
   }
@@ -1123,7 +1308,7 @@ function buildUiTutorialSteps(isManual = false) {
     steps.push({
       id: 'hud-menu-btn',
       title: '☰ 메뉴 버튼',
-      desc: '내 이름이 적힌 메뉴 버튼을 누르면 현재 맵·레벨 확인, 월드맵 이동, 모험의 증표, 화면안내, 음악 끄기·전체화면을 열 수 있어요!',
+      desc: '내 이름이 적힌 메뉴 버튼을 누르면 현재 맵·레벨 확인, 월드맵 이동, 모험의 증표, 화면안내, 음악 끄기·전체화면, 게임 종료를 열 수 있어요!',
       shape: 'pill'
     });
     if (document.getElementById('hud-badges-btn')) {
@@ -1156,10 +1341,11 @@ function buildUiTutorialSteps(isManual = false) {
   }
 
   if (_isTutorialTargetVisible('miracle-notebook-btn')) {
+    const nbTotal = (typeof getMiracleNotebookTotalCount === 'function') ? getMiracleNotebookTotalCount() : 36;
     steps.push({
       id: 'miracle-notebook-btn',
       title: '📖 탐험 수첩',
-      desc: '오픈월드를 걸으며 들은 소문, 직접 목격한 기적과 비유, 예수님의 말씀을 모아 읽어볼 수 있는 수첩이에요!',
+      desc: `오픈월드를 걸으며 들은 소문, 직접 목격한 기적과 비유, 예수님의 말씀을 모아 읽어보고 수집 개수(0/${nbTotal})도 바로 확인할 수 있어요!`,
       shape: 'box'
     });
   }
@@ -1589,6 +1775,37 @@ function formatKoreanBibleTextForTTS(text) {
 }
 window.formatKoreanBibleTextForTTS = formatKoreanBibleTextForTTS;
 
+function stripEmojisAndSymbolsForTTS(text) {
+  if (!text) return '';
+  let out = String(text);
+  out = out
+    .replace(/&/g, '과')
+    .replace(/[→➡➜➔➤⇒]/g, ', ')
+    .replace(/·/g, ' ')
+    .replace(/\[([^\]]+)\]/g, '$1, ');
+  // 키캡 이모티콘(1️⃣ 등), 국기(지역 코드 쌍), 결합자·변이선택자 제거
+  out = out
+    .replace(/[0-9#*]\uFE0F?\u20E3/g, ' ')
+    .replace(/[\uD83C][\uDDE6-\uDDFF]/g, ' ')
+    .replace(/[\u200D\u20E3\uFE0E\uFE0F]/g, '');
+  // 유니코드 확장 그림문자(📖, ✨, 🌈 등 모든 이모티콘) 일괄 제거
+  try {
+    out = out.replace(/\p{Extended_Pictographic}/gu, ' ');
+  } catch (e) {}
+  // 보조 영역(U+1F000~) 및 화살표·도형·원문자·딩뱃 기호 제거 (한글·영문·숫자·기본 문장부호 유지)
+  out = out
+    .replace(/[\uD83C-\uDBFF][\uDC00-\uDFFF]/g, ' ')
+    .replace(/[\u2190-\u2BFF]/g, ' ')
+    .replace(/\(\s*\)/g, '')
+    .replace(/\s+/g, ' ')
+    .replace(/\s+([.,!?])/g, '$1')
+    .replace(/,\s*,+/g, ',')
+    .replace(/^[\s,·•\-]+/, '')
+    .trim();
+  return out;
+}
+window.stripEmojisAndSymbolsForTTS = stripEmojisAndSymbolsForTTS;
+
 let melodyTimer = null;
 function speakText(text, onEndOrOpts) {
   const onEnd = (typeof onEndOrOpts === 'function')
@@ -1606,7 +1823,7 @@ function speakText(text, onEndOrOpts) {
   };
   if (!text) { finish(); return; }
   const formattedText = formatKoreanBibleTextForTTS(text);
-  const cleanText = formattedText.replace(/⚡/g, '').replace(/&/g, '과').trim();
+  const cleanText = stripEmojisAndSymbolsForTTS(formattedText);
   if (!cleanText) { finish(); return; }
   if (melodyTimer) { clearInterval(melodyTimer); melodyTimer = null; }
   let ttsWorked = false;
@@ -1655,9 +1872,58 @@ function speakCurrentMission() {
   if (el) speakText(el.textContent);
 }
 
-function showToast(msg) {
+let _lastToastText = '';
+let _lastToastAt = 0;
+
+function _normalizeGuideDedupText(str) {
+  return String(str || '')
+    .replace(/\[[^\]]*단계[^\]]*\]/g, ' ')
+    .replace(/[^\uAC00-\uD7A3a-zA-Z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+function _isToastDuplicateOfGuideBubble(toastMsg, bubbleText) {
+  const a = _normalizeGuideDedupText(toastMsg);
+  const b = _normalizeGuideDedupText(bubbleText);
+  if (!a || !b) return false;
+  if (a === b) return true;
+  if (a.length >= 6 && b.length >= 6 && (a.includes(b) || b.includes(a))) return true;
+  const aTokens = new Set(a.split(' ').filter(w => w.length >= 2));
+  const bTokens = new Set(b.split(' ').filter(w => w.length >= 2));
+  if (aTokens.size === 0 || bTokens.size === 0) return false;
+  let overlap = 0;
+  aTokens.forEach(w => { if (bTokens.has(w)) overlap++; });
+  return overlap >= 2 && (overlap / Math.min(aTokens.size, bTokens.size)) >= 0.45;
+}
+
+function hideToastImmediately() {
   const box = document.getElementById('toast-box');
-  document.getElementById('toast-text').textContent = msg;
+  if (box) {
+    clearTimeout(box._t);
+    box.style.opacity = '0';
+  }
+  _lastToastText = '';
+  _lastToastAt = 0;
+}
+window.hideToastImmediately = hideToastImmediately;
+
+function showToast(msg) {
+  if (
+    typeof MiracleGuideUI !== 'undefined' &&
+    MiracleGuideUI &&
+    (MiracleGuideUI.isBubbleOpen || (MiracleGuideUI.openedAt > 0 && (performance.now() - MiracleGuideUI.openedAt) < 900)) &&
+    _isToastDuplicateOfGuideBubble(msg, MiracleGuideUI.fullText)
+  ) {
+    return;
+  }
+  const box = document.getElementById('toast-box');
+  const textEl = document.getElementById('toast-text');
+  if (!box || !textEl) return;
+  _lastToastText = String(msg || '');
+  _lastToastAt = performance.now();
+  textEl.textContent = _lastToastText;
   box.style.opacity = '1';
   clearTimeout(box._t);
   box._t = setTimeout(() => { box.style.opacity = '0'; }, 2300);
@@ -1929,7 +2195,6 @@ const FOOTSTEPS_CARD_META = {
     requiredCount: 3,
     isAllClear: false,
     title: '갈릴리의 길벗',
-    borderLabel: '따뜻한 황토색',
     borderColor: '#c87a32',
     innerBorder: '#f7d7a8',
     badgeBg: '#9a4f16',
@@ -1949,7 +2214,6 @@ const FOOTSTEPS_CARD_META = {
     requiredCount: 5,
     isAllClear: false,
     title: '기적의 목격자',
-    borderLabel: '맑은 하늘색',
     borderColor: '#38bdf8',
     innerBorder: '#e0f2fe',
     badgeBg: '#0284c7',
@@ -1969,7 +2233,6 @@ const FOOTSTEPS_CARD_META = {
     requiredCount: 7,
     isAllClear: false,
     title: '말씀을 품은 제자',
-    borderLabel: '싱그러운 초록색',
     borderColor: '#22c55e',
     innerBorder: '#dcfce7',
     badgeBg: '#15803d',
@@ -1989,7 +2252,6 @@ const FOOTSTEPS_CARD_META = {
     requiredCount: 10,
     isAllClear: false,
     title: '신실한 동행자',
-    borderLabel: '깊은 보라색',
     borderColor: '#7c3aed',
     innerBorder: '#ede9fe',
     badgeBg: '#5b21b6',
@@ -2009,7 +2271,6 @@ const FOOTSTEPS_CARD_META = {
     requiredCount: 21,
     isAllClear: true,
     title: '부활의 기쁜 증인',
-    borderLabel: '찬란한 황금빛',
     borderColor: '#f59e0b',
     innerBorder: '#fef9c3',
     badgeBg: '#b45309',
@@ -2270,6 +2531,9 @@ function ensureEndingWorldMapChoiceModal() {
 }
 
 function showEndingWorldMapChoiceModal() {
+  joyX = 0; joyY = 0; keys = {}; currentMoveSpeed = 0;
+  const knobEl = document.getElementById('joystick-knob');
+  if (knobEl) knobEl.style.transform = 'translate(0,0)';
   const modal = ensureEndingWorldMapChoiceModal();
   const iconEl = document.getElementById('ending-choice-icon');
   const titleEl = document.getElementById('ending-choice-title');
@@ -2707,6 +2971,8 @@ function openWorldMapFromGame() {
       miracleS1: isElVisible('miracle-s1-ui'),
       miracleSower: isElVisible('miracle-sower-btn-wrap'),
       miracleBreakfast: isElVisible('miracle-breakfast-ui'),
+    miracleZacchaeus: isElVisible('miracle-zacchaeus-ui'),
+    miracleZacDrag: isElVisible('miracle-zac-drag-layer'),
       miracleMiniNav: isElVisible('miracle-mini-nav'),
       davidSt1Panel: isElVisible('david-st1-panel'),
       davidSt3Tracker: isElVisible('david-st3-quest-tracker'),
@@ -2736,7 +3002,7 @@ function openWorldMapFromGame() {
   if (labelsEl) labelsEl.style.visibility = 'hidden';
 
   [
-    'miracle-hud-left', 'miracle-s1-ui', 'miracle-sower-btn-wrap', 'miracle-breakfast-ui',
+    'miracle-hud-left', 'miracle-s1-ui', 'miracle-sower-btn-wrap', 'miracle-breakfast-ui', 'miracle-zacchaeus-ui', 'miracle-zac-drag-layer',
     'david-st1-panel', 'david-st3-quest-tracker',
     'mp-online-badge', 'miracle-mp-hud', 'mp-harvest-btn-wrap', 'mp-local-bubble'
   ].forEach(id => {
@@ -2827,6 +3093,8 @@ function resumeGameFromWorldMap() {
     restoreVis('miracle-s1-ui', v.miracleS1);
     restoreVis('miracle-sower-btn-wrap', v.miracleSower);
     restoreVis('miracle-breakfast-ui', v.miracleBreakfast);
+  restoreVis('miracle-zacchaeus-ui', v.miracleZacchaeus);
+  restoreVis('miracle-zac-drag-layer', v.miracleZacDrag);
     if (typeof updateMiracleNotebookHudBadge === 'function') updateMiracleNotebookHudBadge();
     if (snap.wasMultiplayer) {
       restoreVis('mp-online-badge', v.mpOnlineBadge);
@@ -2837,6 +3105,8 @@ function resumeGameFromWorldMap() {
       }
     }
   } else if (snap.episode === 'david') {
+    const retBtn = document.getElementById('miracle-return-openworld-btn');
+    if (retBtn) retBtn.classList.add('hidden');
     if (snap.stage === 1 && typeof updateDavidStage1UI === 'function') {
       updateDavidStage1UI();
     } else {
@@ -2847,6 +3117,9 @@ function resumeGameFromWorldMap() {
     } else {
       restoreVis('david-st3-quest-tracker', v.davidSt3Tracker);
     }
+  } else {
+    const retBtn = document.getElementById('miracle-return-openworld-btn');
+    if (retBtn) retBtn.classList.add('hidden');
   }
 
   syncHudMenuInfo();
@@ -4109,7 +4382,6 @@ function buildEndingWorld() {
       if (allowCert && currentEpisode !== 'david') certBtn.classList.remove('hidden');
       else certBtn.classList.add('hidden');
     }
-    if (epPlugin.endingToast) showToast(epPlugin.endingToast);
     return;
   }
   if (currentEpisode === 'david' && typeof buildDavidEndingWorld === 'function') {
@@ -4256,18 +4528,8 @@ function buildEndingWorld() {
 
   const certBtn = document.getElementById('cert-open-btn');
   if (certBtn) {
-    if (allowCert) certBtn.classList.remove('hidden');
+    if (allowCert && currentEpisode !== 'noah') certBtn.classList.remove('hidden');
     else certBtn.classList.add('hidden');
-  }
-
-  if (isExodus) {
-    showToast('🌴 홍해와 시내산을 모두 통과했어요! 기뻐 뛰는 백성들 가운데 십계명으로 가보세요!');
-  } else {
-    showToast(
-      allowCert
-        ? '🌈 엔딩 세상에 도착했어요! 방주를 둘러보거나 무지개 언약의 제단으로 가보세요!'
-        : '🌈 무지개 언약의 엔딩 세상이에요! 방주를 둘러보거나 제단으로 가보세요!'
-    );
   }
 }
 
@@ -4905,6 +5167,8 @@ function startVoxelGame(mode, targetStage = 1, fromMapSelect = false) {
   MiracleGuideUI.suppressedDuringIntro = false;
   const miniNavEl = document.getElementById('miracle-mini-nav');
   if (miniNavEl) miniNavEl.classList.add('hidden');
+  const retOwBtn = document.getElementById('miracle-return-openworld-btn');
+  if (retOwBtn) retOwBtn.classList.add('hidden');
 
   isMenuBgmActive = false;
   currentMode = mode; currentStage = targetStage; isPlaying = true;
@@ -6676,22 +6940,25 @@ function setEndingCertCardFlipped(flipped, withSfx = false) {
   const card = document.getElementById('ending-cert-card');
   const hint = document.getElementById('ending-card-flip-hint');
   if (!card) return;
+  card.classList.remove('is-dragging');
+  card.style.transform = '';
   card.classList.toggle('is-flipped', Boolean(flipped));
   if (hint) {
     if (window.__endingModalMode === 'footsteps') {
       hint.textContent = flipped
-        ? '✨ 카드를 터치하면 앞면 그림을 다시 볼 수 있어요!'
-        : '✨ 카드를 터치하면 뒷면 발자취 카드를 볼 수 있어요!';
+        ? '✨ 좌우 스와이프 · 터치해서 앞면 그림 보기 ↻'
+        : '✨ 좌우 스와이프 · 터치해서 발자취 카드 보기 ↻';
     } else {
       hint.textContent = flipped
-        ? '✨ 카드를 터치하면 앞면 그림을 다시 볼 수 있어요!'
-        : '✨ 카드를 터치하면 뒷면 공식 인증서를 볼 수 있어요!';
+        ? '✨ 좌우 스와이프 · 터치해서 앞면 그림 보기 ↻'
+        : '✨ 좌우 스와이프 · 터치해서 뒷면 인증서 보기 ↻';
     }
   }
   if (withSfx) playSfx('switch');
 }
 
 function toggleEndingCertCardFlip() {
+  if (Date.now() < (window._endingDragSuppressClickUntil || 0)) return;
   clearEndingCardFlipTimer();
   const card = document.getElementById('ending-cert-card');
   if (!card) return;
@@ -6700,8 +6967,91 @@ function toggleEndingCertCardFlip() {
 }
 window.toggleEndingCertCardFlip = toggleEndingCertCardFlip;
 
+function bindEndingCertCardSwipeInteraction() {
+  const scene = document.getElementById('ending-cert-scene');
+  const card = document.getElementById('ending-cert-card');
+  if (!scene || !card || scene._swipeBound) return;
+  scene._swipeBound = true;
+
+  let active = false;
+  let activePointerId = null;
+  let startX = 0;
+  let startY = 0;
+  let lastX = 0;
+  let lastT = 0;
+  let vx = 0;
+  let baseAngle = 0;
+  let movedHoriz = false;
+
+  const finishDrag = (endX) => {
+    if (!active) return;
+    active = false;
+    activePointerId = null;
+    card.classList.remove('is-dragging');
+    card.style.transform = '';
+
+    const dx = endX - startX;
+    if (movedHoriz || Math.abs(dx) > 8) {
+      window._endingDragSuppressClickUntil = Date.now() + 360;
+      const wasFlipped = card.classList.contains('is-flipped');
+      if (Math.abs(dx) > 38 || Math.abs(vx) > 0.32) {
+        setEndingCertCardFlipped(!wasFlipped, true);
+      } else {
+        setEndingCertCardFlipped(wasFlipped, false);
+      }
+    }
+  };
+
+  scene.addEventListener('dragstart', (e) => e.preventDefault());
+  scene.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    active = true;
+    activePointerId = e.pointerId;
+    startX = e.clientX;
+    startY = e.clientY;
+    lastX = e.clientX;
+    lastT = performance.now();
+    vx = 0;
+    movedHoriz = false;
+    baseAngle = card.classList.contains('is-flipped') ? 180 : 0;
+  });
+
+  window.addEventListener('pointermove', (e) => {
+    if (!active || (activePointerId !== null && e.pointerId !== activePointerId)) return;
+    const now = performance.now();
+    const dt = Math.max(8, now - lastT);
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+    vx = (e.clientX - lastX) / dt;
+    lastX = e.clientX;
+    lastT = now;
+
+    if (!movedHoriz && Math.abs(dx) > 6 && Math.abs(dx) >= Math.abs(dy) * 0.75) {
+      movedHoriz = true;
+      clearEndingCardFlipTimer();
+      card.classList.add('is-dragging');
+    }
+    if (movedHoriz) {
+      const rotY = baseAngle + Math.max(-195, Math.min(195, dx * 0.68));
+      const tiltX = Math.max(-10, Math.min(10, -dy * 0.12));
+      card.style.transform = `rotateY(${rotY.toFixed(1)}deg) rotateX(${tiltX.toFixed(1)}deg)`;
+    }
+  });
+
+  window.addEventListener('pointerup', (e) => {
+    if (!active || (activePointerId !== null && e.pointerId !== activePointerId)) return;
+    finishDrag(e.clientX);
+  });
+
+  window.addEventListener('pointercancel', (e) => {
+    if (!active || (activePointerId !== null && e.pointerId !== activePointerId)) return;
+    finishDrag(lastX);
+  });
+}
+
 function _applyEndingModalVisualMode(mode, footstepsMeta = null) {
   window.__endingModalMode = mode;
+  bindEndingCertCardSwipeInteraction();
   const frontFace = document.getElementById('ending-card-front-face');
   const backFace = document.getElementById('ending-card-back-face');
   const frontPill = document.getElementById('ending-card-front-pill');
@@ -6739,6 +7089,9 @@ function showEndingCertificate(opts = {}) {
   setHudMenuOpen(false);
   hideMissionGuideBubbleImmediately();
   clearEndingCardFlipTimer();
+  joyX = 0; joyY = 0; keys = {}; currentMoveSpeed = 0;
+  const knobEl = document.getElementById('joystick-knob');
+  if (knobEl) knobEl.style.transform = 'translate(0,0)';
 
   const epKey = (opts && opts.episode && EPISODE_ORDER.includes(opts.episode)) ? opts.episode : currentEpisode;
   const forceShow = Boolean(opts && opts.forceShow);
@@ -6753,6 +7106,11 @@ function showEndingCertificate(opts = {}) {
   }
 
   certShownInCurrentRun = true;
+  const certBtnShown = document.getElementById('cert-open-btn');
+  if (certBtnShown) certBtnShown.classList.add('hidden');
+  if (epKey === 'noah' && targetObject && targetObject.type === 'altar' && targetObject.label) {
+    targetObject.label.innerHTML = '🪨 감사의 제단 (다가가면 월드맵 이동 선택창이 열려요!)';
+  }
   _applyEndingModalVisualMode('episode');
 
   // 에피소드당 1장의 인증서를 발급·보존하고, 이번 클리어 레벨을 누적 추가!
@@ -6940,12 +7298,157 @@ window.closeFootstepsAwardModal = closeFootstepsAwardModal;
 let currentAdventureBadgesTab = 'episodes';
 
 function toggleBadgeGalleryCardFlip(cardDomKey) {
+  if (Date.now() < (window._badgeTrackSuppressClickUntil || 0)) return;
   const card = document.getElementById(`badge-gallery-card-${cardDomKey}`);
   if (!card) return;
   card.classList.toggle('is-flipped');
   playSfx('switch');
 }
 window.toggleBadgeGalleryCardFlip = toggleBadgeGalleryCardFlip;
+
+function bindBadgesTrackSwipeInteraction(track) {
+  if (!track || track._swipeBound) return;
+  track._swipeBound = true;
+
+  track.addEventListener('wheel', (e) => {
+    if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+      track.scrollLeft += e.deltaY;
+      e.preventDefault();
+    }
+  }, { passive: false });
+
+  let isDown = false;
+  let pointerId = null;
+  let startX = 0;
+  let startY = 0;
+  let startScrollLeft = 0;
+  let lastX = 0;
+  let lastT = 0;
+  let velocity = 0;
+  let didDrag = false;
+  let momentumRaf = 0;
+
+  const setTrackTilt = (deg) => {
+    track.style.setProperty('--swipe-tilt', `${deg.toFixed(1)}deg`);
+  };
+
+  const stopMomentum = () => {
+    if (momentumRaf) {
+      cancelAnimationFrame(momentumRaf);
+      momentumRaf = 0;
+    }
+  };
+
+  const snapToNearestCard = () => {
+    const slots = track.querySelectorAll('.badge-gallery-slot');
+    if (!slots || slots.length === 0) return;
+    const center = track.scrollLeft + track.clientWidth * 0.5;
+    let bestTarget = track.scrollLeft;
+    let bestDist = Infinity;
+    slots.forEach((slot) => {
+      const slotCenter = slot.offsetLeft + slot.offsetWidth * 0.5;
+      const d = Math.abs(slotCenter - center);
+      if (d < bestDist) {
+        bestDist = d;
+        bestTarget = Math.max(0, slotCenter - track.clientWidth * 0.5);
+      }
+    });
+    track.classList.remove('is-pointer-dragging');
+    setTrackTilt(0);
+    if (typeof track.scrollTo === 'function') {
+      track.scrollTo({ left: bestTarget, behavior: 'smooth' });
+    } else {
+      track.scrollLeft = bestTarget;
+    }
+  };
+
+  track.addEventListener('dragstart', (e) => e.preventDefault());
+  track.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    stopMomentum();
+    isDown = true;
+    pointerId = e.pointerId;
+    startX = e.clientX;
+    startY = e.clientY;
+    lastX = e.clientX;
+    lastT = performance.now();
+    startScrollLeft = track.scrollLeft;
+    velocity = 0;
+    didDrag = false;
+  });
+
+  window.addEventListener('pointermove', (e) => {
+    if (!isDown || (pointerId !== null && e.pointerId !== pointerId)) return;
+    const now = performance.now();
+    const dt = Math.max(8, now - lastT);
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+    const stepDx = e.clientX - lastX;
+    lastX = e.clientX;
+    lastT = now;
+
+    if (!didDrag && Math.abs(dx) > 6 && Math.abs(dx) >= Math.abs(dy) * 0.8) {
+      didDrag = true;
+      track.classList.add('is-pointer-dragging');
+    }
+    if (didDrag) {
+      track.scrollLeft = startScrollLeft - dx;
+      velocity = stepDx / dt;
+      setTrackTilt(Math.max(-9, Math.min(9, stepDx * 0.45)));
+    }
+  });
+
+  const endSwipe = () => {
+    if (!isDown) return;
+    isDown = false;
+    pointerId = null;
+    if (!didDrag) {
+      setTrackTilt(0);
+      return;
+    }
+    window._badgeTrackSuppressClickUntil = Date.now() + 380;
+
+    let coastV = Math.max(-2.6, Math.min(2.6, velocity)) * 16;
+    if (Math.abs(coastV) < 1.2) {
+      snapToNearestCard();
+      return;
+    }
+    const tick = () => {
+      track.scrollLeft -= coastV;
+      setTrackTilt(Math.max(-8, Math.min(8, coastV * 0.35)));
+      coastV *= 0.90;
+      if (Math.abs(coastV) > 0.65 && track.scrollLeft > 0 && track.scrollLeft < track.scrollWidth - track.clientWidth) {
+        momentumRaf = requestAnimationFrame(tick);
+      } else {
+        momentumRaf = 0;
+        snapToNearestCard();
+      }
+    };
+    momentumRaf = requestAnimationFrame(tick);
+  };
+
+  window.addEventListener('pointerup', (e) => {
+    if (!isDown || (pointerId !== null && e.pointerId !== pointerId)) return;
+    endSwipe();
+  });
+  window.addEventListener('pointercancel', (e) => {
+    if (!isDown || (pointerId !== null && e.pointerId !== pointerId)) return;
+    endSwipe();
+  });
+
+  const badgesModal = document.getElementById('adventure-badges-modal');
+  if (badgesModal && !badgesModal._arrowNavBound) {
+    badgesModal._arrowNavBound = true;
+    document.addEventListener('keydown', (e) => {
+      if (badgesModal.classList.contains('hidden')) return;
+      if (e.key === 'ArrowRight') {
+        track.scrollBy({ left: 230, behavior: 'smooth' });
+      } else if (e.key === 'ArrowLeft') {
+        track.scrollBy({ left: -230, behavior: 'smooth' });
+      }
+    });
+  }
+}
 
 function setAdventureBadgesTab(tabKey) {
   currentAdventureBadgesTab = (tabKey === 'footsteps') ? 'footsteps' : 'episodes';
@@ -6978,22 +7481,27 @@ function _renderEpisodesBadgesHTML() {
     if (!cert) {
       return `
         <div class="badge-gallery-slot" data-badge-ep="${epId}" data-collected="0">
-          <div class="badge-card-locked">
-            <div class="w-full flex items-center justify-between text-[10px] font-jua text-amber-300/75">
-              <span>${meta.epLabel}</span>
-              <span>🔒 미획득</span>
-            </div>
-            <div class="flex flex-col items-center justify-center gap-2 my-auto">
-              <div class="relative flex items-center justify-center">
-                <span class="text-5xl sm:text-6xl select-none" style="filter: brightness(0) opacity(0.32);">${meta.icon}</span>
-                <span class="badge-locked-q font-jua absolute">?</span>
+          <div class="badge-card-frame">
+            <div class="badge-card-locked">
+              <div class="w-full flex items-center justify-between text-[10px] font-jua text-amber-300/75">
+                <span>${meta.epLabel}</span>
+                <span>🔒 미획득</span>
               </div>
-              <div class="font-jua text-sm sm:text-base text-slate-200 tracking-wide mt-1">???</div>
-              <p class="text-[10px] sm:text-[10.5px] text-slate-400 leading-snug px-1">${meta.silhouetteHint}</p>
+              <div class="flex flex-col items-center justify-center gap-2 my-auto">
+                <div class="relative flex items-center justify-center">
+                  <span class="text-5xl sm:text-6xl select-none" style="filter: brightness(0) opacity(0.32);">${meta.icon}</span>
+                  <span class="badge-locked-q font-jua absolute">?</span>
+                </div>
+                <div class="font-jua text-sm sm:text-base text-slate-200 tracking-wide mt-1">???</div>
+                <p class="text-[10px] sm:text-[10.5px] text-slate-400 leading-snug px-1">${meta.silhouetteHint}</p>
+              </div>
+              <div class="w-full px-2 py-1 rounded-xl bg-slate-900/80 border border-slate-700/80 text-[10px] text-amber-200/85 font-jua">
+                에피소드 ${meta.epNum} 완주 시 획득!
+              </div>
             </div>
-            <div class="w-full px-2 py-1 rounded-xl bg-slate-900/80 border border-slate-700/80 text-[10px] text-amber-200/85 font-jua">
-              에피소드 ${meta.epNum} 완주 시 획득!
-            </div>
+          </div>
+          <div class="badge-card-below-pill" style="opacity:0.72;">
+            ${meta.epLabel} · 미획득
           </div>
         </div>
       `;
@@ -7006,41 +7514,43 @@ function _renderEpisodesBadgesHTML() {
 
     return `
       <div class="badge-gallery-slot" data-badge-ep="${epId}" data-collected="1">
-        <div class="cert-card-scene w-full h-full" style="width:100%;height:100%;">
-          <div id="badge-gallery-card-${domKey}" class="cert-card-inner" role="button" tabindex="0"
-               onclick="toggleBadgeGalleryCardFlip('${domKey}')"
-               onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleBadgeGalleryCardFlip('${domKey}');}"
-               aria-label="${meta.shortTitle} 인증 카드 앞·뒷면 전환">
-            <div class="cert-card-face cert-card-front">
-              <img src="${frontUrl}" class="cert-card-front-img" alt="${meta.shortTitle} 모험의 증표 앞면" />
-              <div class="cert-card-sheen"></div>
-              <div class="absolute bottom-2 left-1/2 -translate-x-1/2 px-2.5 py-0.5 rounded-full bg-slate-950/78 border border-amber-300/80 text-amber-200 font-jua text-[10px] whitespace-nowrap pointer-events-none">
-                🏅 ${modeCount}개 레벨 클리어 · 터치 ↻
+        <div class="badge-card-frame">
+          <div class="cert-card-scene w-full h-full" style="width:100%;height:100%;">
+            <div id="badge-gallery-card-${domKey}" class="cert-card-inner" role="button" tabindex="0"
+                 onclick="toggleBadgeGalleryCardFlip('${domKey}')"
+                 onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleBadgeGalleryCardFlip('${domKey}');}"
+                 aria-label="${meta.shortTitle} 인증 카드 앞·뒷면 전환">
+              <div class="cert-card-face cert-card-front">
+                <img src="${frontUrl}" class="cert-card-front-img" alt="${meta.shortTitle} 모험의 증표 앞면" />
+                <div class="cert-card-sheen"></div>
               </div>
-            </div>
-            <div class="cert-card-face cert-card-back">
-              <div>
-                <div class="cert-back-badge inline-block px-2 py-0.5 rounded-full bg-amber-300 text-amber-950 font-jua text-[9.5px] mb-1">
-                  ${meta.badge}
+              <div class="cert-card-face cert-card-back">
+                <div>
+                  <div class="cert-back-badge inline-block px-2 py-0.5 rounded-full bg-amber-300 text-amber-950 font-jua text-[9.5px] mb-1">
+                    ${meta.badge}
+                  </div>
+                  <h3 class="cert-back-title font-jua text-sm sm:text-base text-amber-900 leading-tight mb-0.5">${meta.title}</h3>
+                  <p class="cert-back-verse text-[9px] text-slate-600 leading-snug mb-1.5 line-clamp-2">${meta.verse}</p>
                 </div>
-                <h3 class="cert-back-title font-jua text-sm sm:text-base text-amber-900 leading-tight mb-0.5">${meta.title}</h3>
-                <p class="cert-back-verse text-[9px] text-slate-600 leading-snug mb-1.5 line-clamp-2">${meta.verse}</p>
-              </div>
-              <div class="cert-back-box bg-white/95 border-2 border-amber-400 rounded-xl p-2 text-left text-[10px] space-y-1">
-                <div class="cert-back-row flex justify-between gap-1"><span class="text-slate-500 shrink-0">대원</span><span class="font-bold text-slate-900 truncate">${cert.playerName}</span></div>
-                <div class="pt-0.5 border-t border-amber-100">
-                  <div class="cert-back-row text-[9px] text-slate-500 mb-0.5">클리어 레벨 (누적)</div>
-                  <div class="flex flex-wrap gap-1">${levelPills}</div>
+                <div class="cert-back-box bg-white/95 border-2 border-amber-400 rounded-xl p-2 text-left text-[10px] space-y-1">
+                  <div class="cert-back-row flex justify-between gap-1"><span class="text-slate-500 shrink-0">대원</span><span class="font-bold text-slate-900 truncate">${cert.playerName}</span></div>
+                  <div class="pt-0.5 border-t border-amber-100">
+                    <div class="cert-back-row text-[9px] text-slate-500 mb-0.5">클리어 레벨 (누적)</div>
+                    <div class="flex flex-wrap gap-1">${levelPills}</div>
+                  </div>
+                  <div class="cert-back-row flex justify-between gap-1 pt-0.5 border-t border-amber-100"><span class="text-slate-500 shrink-0">인증코드</span><span class="cert-back-code font-jua text-xs text-rose-600">${cert.code}</span></div>
+                  <div class="cert-back-row flex justify-between gap-1 text-[9px] text-slate-400"><span>획득/갱신</span><span>${cert.updatedAt}</span></div>
                 </div>
-                <div class="cert-back-row flex justify-between gap-1 pt-0.5 border-t border-amber-100"><span class="text-slate-500 shrink-0">인증코드</span><span class="cert-back-code font-jua text-xs text-rose-600">${cert.code}</span></div>
-                <div class="cert-back-row flex justify-between gap-1 text-[9px] text-slate-400"><span>획득/갱신</span><span>${cert.updatedAt}</span></div>
-              </div>
-              <div class="cert-back-footer pt-1 flex items-center justify-between text-[9px] font-jua text-amber-900/80">
-                <span>광릉내 재림교회 어린이부</span>
-                <span class="text-amber-700">↻ 앞면</span>
+                <div class="cert-back-footer pt-1 flex items-center justify-between text-[9px] font-jua text-amber-900/80">
+                  <span>광릉내 재림교회 어린이부</span>
+                  <span class="text-amber-700">↻ 스와이프·터치</span>
+                </div>
               </div>
             </div>
           </div>
+        </div>
+        <div class="badge-card-below-pill">
+          🏅 ${modeCount}개 레벨 클리어 · 터치 뒤집기 ↻
         </div>
       </div>
     `;
@@ -7048,7 +7558,7 @@ function _renderEpisodesBadgesHTML() {
 }
 
 function _renderFootstepsBadgesHTML() {
-  const totalMissions = typeof window.getMiracleTotalMissionCount === 'function' ? window.getMiracleTotalMissionCount() : 21;
+  const totalMissions = typeof window.getMiracleTotalMissionCount === 'function' ? window.getMiracleTotalMissionCount() : 22;
   const completedMissions = typeof window.getMiracleCompletedMissionCount === 'function' ? window.getMiracleCompletedMissionCount() : 0;
 
   return FOOTSTEPS_CARD_ORDER.map(tierId => {
@@ -7061,28 +7571,33 @@ function _renderFootstepsBadgesHTML() {
       const pct = Math.min(100, Math.round((completedMissions / Math.max(1, reqCount)) * 100));
       return `
         <div class="badge-gallery-slot" data-badge-fp="${tierId}" data-collected="0">
-          <div class="badge-card-locked" style="border-color: ${meta.borderColor};">
-            <div class="w-full flex items-center justify-between text-[10px] font-jua" style="color: ${meta.innerBorder};">
-              <span>${meta.stageLabel} · ${meta.borderLabel}</span>
-              <span>🔒 미획득</span>
-            </div>
-            <div class="flex flex-col items-center justify-center gap-1.5 my-auto">
-              <div class="relative flex items-center justify-center">
-                <span class="text-5xl sm:text-6xl select-none" style="filter: brightness(0) opacity(0.32);">${meta.symbolIcon}</span>
-                <span class="badge-locked-q font-jua absolute">?</span>
+          <div class="badge-card-frame">
+            <div class="badge-card-locked" style="border-color: ${meta.borderColor};">
+              <div class="w-full flex items-center justify-between text-[10px] font-jua" style="color: ${meta.innerBorder};">
+                <span>${meta.stageLabel}</span>
+                <span>🔒 미획득</span>
               </div>
-              <div class="font-jua text-sm sm:text-base text-slate-200 tracking-wide mt-0.5">???</div>
-              <p class="text-[10px] text-slate-300 leading-snug px-1">상징: ${meta.symbolName}</p>
-              <div class="w-full px-2 mt-0.5">
-                <div class="w-full h-1.5 rounded-full bg-slate-800 overflow-hidden border border-slate-600/80">
-                  <div class="h-full rounded-full" style="width:${pct}%; background-color:${meta.borderColor};"></div>
+              <div class="flex flex-col items-center justify-center gap-1.5 my-auto">
+                <div class="relative flex items-center justify-center">
+                  <span class="text-5xl sm:text-6xl select-none" style="filter: brightness(0) opacity(0.32);">${meta.symbolIcon}</span>
+                  <span class="badge-locked-q font-jua absolute">?</span>
                 </div>
-                <div class="text-[9.5px] font-bold text-amber-200 mt-0.5">진행도 ${Math.min(completedMissions, reqCount)} / ${reqCount}</div>
+                <div class="font-jua text-sm sm:text-base text-slate-200 tracking-wide mt-0.5">???</div>
+                <p class="text-[10px] text-slate-300 leading-snug px-1">상징: ${meta.symbolName}</p>
+                <div class="w-full px-2 mt-0.5">
+                  <div class="w-full h-1.5 rounded-full bg-slate-800 overflow-hidden border border-slate-600/80">
+                    <div class="h-full rounded-full" style="width:${pct}%; background-color:${meta.borderColor};"></div>
+                  </div>
+                  <div class="text-[9.5px] font-bold text-amber-200 mt-0.5">진행도 ${Math.min(completedMissions, reqCount)} / ${reqCount}</div>
+                </div>
+              </div>
+              <div class="w-full px-2 py-1 rounded-xl bg-slate-900/85 border border-slate-700/80 text-[10px] text-amber-200/90 font-jua">
+                EP4 ${reqLabel} 시 획득!
               </div>
             </div>
-            <div class="w-full px-2 py-1 rounded-xl bg-slate-900/85 border border-slate-700/80 text-[10px] text-amber-200/90 font-jua">
-              EP4 ${reqLabel} 시 획득!
-            </div>
+          </div>
+          <div class="badge-card-below-pill" style="border-color: ${meta.borderColor}; opacity: 0.78;">
+            ${meta.stageLabel} · ${Math.min(completedMissions, reqCount)}/${reqCount}
           </div>
         </div>
       `;
@@ -7094,39 +7609,41 @@ function _renderFootstepsBadgesHTML() {
 
     return `
       <div class="badge-gallery-slot" data-badge-fp="${tierId}" data-collected="1">
-        <div class="cert-card-scene w-full h-full" style="width:100%;height:100%;">
-          <div id="badge-gallery-card-${domKey}" class="cert-card-inner" role="button" tabindex="0"
-               onclick="toggleBadgeGalleryCardFlip('${domKey}')"
-               onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleBadgeGalleryCardFlip('${domKey}');}"
-               aria-label="${meta.title} 발자취 카드 앞·뒷면 전환">
-            <div class="cert-card-face cert-card-front" style="border-color: ${meta.borderColor};">
-              <img src="${frontUrl}" class="cert-card-front-img" alt="${meta.title} 예수님의 발자취 앞면" />
-              <div class="cert-card-sheen"></div>
-              <div class="absolute bottom-2 left-1/2 -translate-x-1/2 px-2.5 py-0.5 rounded-full bg-slate-950/78 border text-amber-100 font-jua text-[10px] whitespace-nowrap pointer-events-none" style="border-color: ${meta.borderColor};">
-                ${meta.symbolIcon} ${meta.title} · 터치 ↻
+        <div class="badge-card-frame">
+          <div class="cert-card-scene w-full h-full" style="width:100%;height:100%;">
+            <div id="badge-gallery-card-${domKey}" class="cert-card-inner" role="button" tabindex="0"
+                 onclick="toggleBadgeGalleryCardFlip('${domKey}')"
+                 onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleBadgeGalleryCardFlip('${domKey}');}"
+                 aria-label="${meta.title} 발자취 카드 앞·뒷면 전환">
+              <div class="cert-card-face cert-card-front" style="border-color: ${meta.borderColor};">
+                <img src="${frontUrl}" class="cert-card-front-img" alt="${meta.title} 예수님의 발자취 앞면" />
+                <div class="cert-card-sheen"></div>
               </div>
-            </div>
-            <div class="cert-card-face cert-card-back" style="border-color: ${meta.borderColor}; background: ${meta.backGrad};">
-              <div>
-                <div class="cert-back-badge inline-block px-2 py-0.5 rounded-full text-white font-jua text-[9.5px] mb-1" style="background-color: ${meta.badgeBg};">
-                  👣 ${meta.stageLabel} · 예수님의 발자취
+              <div class="cert-card-face cert-card-back" style="border-color: ${meta.borderColor}; background: ${meta.backGrad};">
+                <div>
+                  <div class="cert-back-badge inline-block px-2 py-0.5 rounded-full text-white font-jua text-[9.5px] mb-1" style="background-color: ${meta.badgeBg};">
+                    👣 ${meta.stageLabel} · 예수님의 발자취
+                  </div>
+                  <h3 class="cert-back-title font-jua text-sm sm:text-base text-slate-900 leading-tight mb-0.5">${meta.title}</h3>
+                  <p class="cert-back-verse text-[9px] text-slate-700 leading-snug mb-1.5 line-clamp-2">${meta.desc}</p>
                 </div>
-                <h3 class="cert-back-title font-jua text-sm sm:text-base text-slate-900 leading-tight mb-0.5">${meta.title}</h3>
-                <p class="cert-back-verse text-[9px] text-slate-700 leading-snug mb-1.5 line-clamp-2">${meta.desc}</p>
-              </div>
-              <div class="cert-back-box bg-white/95 border-2 rounded-xl p-2 text-left text-[10px] space-y-1" style="border-color: ${meta.borderColor};">
-                <div class="cert-back-row flex justify-between gap-1"><span class="text-slate-500 shrink-0">대원</span><span class="font-bold text-slate-900 truncate">${cert.playerName}</span></div>
-                <div class="cert-back-row flex justify-between gap-1 pt-0.5 border-t border-slate-100"><span class="text-slate-500 shrink-0">상징</span><span class="font-bold text-amber-800 truncate">${meta.symbolIcon} ${meta.symbolName}</span></div>
-                <div class="cert-back-row flex justify-between gap-1 pt-0.5 border-t border-slate-100"><span class="text-slate-500 shrink-0">달성</span><span class="font-bold text-emerald-700 truncate">${milestoneShort}</span></div>
-                <div class="cert-back-row flex justify-between gap-1 pt-0.5 border-t border-slate-100"><span class="text-slate-500 shrink-0">카드코드</span><span class="cert-back-code font-jua text-xs text-rose-600">${cert.code}</span></div>
-                <div class="cert-back-row flex justify-between gap-1 text-[9px] text-slate-400"><span>획득일</span><span>${cert.issuedAt}</span></div>
-              </div>
-              <div class="cert-back-footer pt-1 flex items-center justify-between text-[9px] font-jua text-slate-700">
-                <span>광릉내 재림교회 어린이부</span>
-                <span class="text-amber-700">↻ 앞면</span>
+                <div class="cert-back-box bg-white/95 border-2 rounded-xl p-2 text-left text-[10px] space-y-1" style="border-color: ${meta.borderColor};">
+                  <div class="cert-back-row flex justify-between gap-1"><span class="text-slate-500 shrink-0">대원</span><span class="font-bold text-slate-900 truncate">${cert.playerName}</span></div>
+                  <div class="cert-back-row flex justify-between gap-1 pt-0.5 border-t border-slate-100"><span class="text-slate-500 shrink-0">상징</span><span class="font-bold text-amber-800 truncate">${meta.symbolIcon} ${meta.symbolName}</span></div>
+                  <div class="cert-back-row flex justify-between gap-1 pt-0.5 border-t border-slate-100"><span class="text-slate-500 shrink-0">달성</span><span class="font-bold text-emerald-700 truncate">${milestoneShort}</span></div>
+                  <div class="cert-back-row flex justify-between gap-1 pt-0.5 border-t border-slate-100"><span class="text-slate-500 shrink-0">카드코드</span><span class="cert-back-code font-jua text-xs text-rose-600">${cert.code}</span></div>
+                  <div class="cert-back-row flex justify-between gap-1 text-[9px] text-slate-400"><span>획득일</span><span>${cert.issuedAt}</span></div>
+                </div>
+                <div class="cert-back-footer pt-1 flex items-center justify-between text-[9px] font-jua text-slate-700">
+                  <span>광릉내 재림교회 어린이부</span>
+                  <span class="text-amber-700">↻ 스와이프·터치</span>
+                </div>
               </div>
             </div>
           </div>
+        </div>
+        <div class="badge-card-below-pill" style="border-color: ${meta.borderColor};">
+          ${meta.symbolIcon} ${meta.title} · 터치 뒤집기 ↻
         </div>
       </div>
     `;
@@ -7147,15 +7664,9 @@ function renderAdventureBadgesGallery() {
   }
   if (!track) return;
 
-  if (!track._wheelBound) {
-    track._wheelBound = true;
-    track.addEventListener('wheel', (e) => {
-      if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
-        track.scrollLeft += e.deltaY;
-        e.preventDefault();
-      }
-    }, { passive: false });
-  }
+  bindBadgesTrackSwipeInteraction(track);
+  track.classList.remove('is-pointer-dragging');
+  track.style.setProperty('--swipe-tilt', '0deg');
 
   track.innerHTML = currentAdventureBadgesTab === 'footsteps'
     ? _renderFootstepsBadgesHTML()
@@ -7241,7 +7752,6 @@ window.closeAdventureBadgesModal = closeAdventureBadgesModal;
 
 function showEp4PostCertificateNewMeetingMessage() {
   const msg = '새로운 만남을 찾아보세요!';
-  showToast(`✨ ${msg}`);
   if (typeof window.showMiracleGuideBubble === 'function') {
     window.showMiracleGuideBubble({
       title: '🌿 복음서 오픈월드',
@@ -7250,6 +7760,8 @@ function showEp4PostCertificateNewMeetingMessage() {
       canCancel: false,
       autoCloseMs: 4200
     });
+  } else {
+    showToast(`✨ ${msg}`);
   }
 }
 
@@ -7317,6 +7829,12 @@ function setupControls() {
 
   zone.addEventListener('pointerdown', e => {
     e.preventDefault(); e.stopPropagation();
+    if (typeof window.isMissionGuideBubbleBlockingAction === 'function' && window.isMissionGuideBubbleBlockingAction()) {
+      if ((performance.now() - (MiracleGuideUI.openedAt || 0)) >= 260) {
+        window.dismissMiracleGuideBubbleToButton();
+      }
+      return;
+    }
     joyPointerId = e.pointerId;
     const r = zone.getBoundingClientRect();
     cx = r.left + r.width / 2; cy = r.top + r.height / 2;
@@ -7324,7 +7842,13 @@ function setupControls() {
   });
 
   document.getElementById('canvas-container').addEventListener('pointerdown', e => {
-    if (!isPlaying || doveCutscene.active || pillarCutscene.active || seaPartingCutscene.active || sinaiCutscene.active) return;
+    if (typeof window.isMissionGuideBubbleBlockingAction === 'function' && window.isMissionGuideBubbleBlockingAction()) {
+      if ((performance.now() - (MiracleGuideUI.openedAt || 0)) >= 260) {
+        window.dismissMiracleGuideBubbleToButton();
+      }
+      return;
+    }
+    if (!isPlaying || doveCutscene.active || pillarCutscene.active || seaPartingCutscene.active || sinaiCutscene.active || (typeof miracleActiveFieldEvent !== 'undefined' && miracleActiveFieldEvent && miracleActiveFieldEvent.cutsceneActive)) return;
     if (e.pointerId === joyPointerId) return;
     camPointerId = e.pointerId; lastCamX = e.clientX;
   });
@@ -7332,7 +7856,7 @@ function setupControls() {
   window.addEventListener('pointermove', e => {
     if (e.pointerId === joyPointerId) {
       handleJoyMove(e.clientX, e.clientY);
-    } else if (e.pointerId === camPointerId && isPlaying && !doveCutscene.active && !pillarCutscene.active && !seaPartingCutscene.active && !sinaiCutscene.active) {
+    } else if (e.pointerId === camPointerId && isPlaying && !doveCutscene.active && !pillarCutscene.active && !seaPartingCutscene.active && !sinaiCutscene.active && !(typeof miracleActiveFieldEvent !== 'undefined' && miracleActiveFieldEvent && miracleActiveFieldEvent.cutsceneActive)) {
       const dx = e.clientX - lastCamX; lastCamX = e.clientX;
       cameraTargetYaw -= dx * 0.0075;
     }
@@ -7345,6 +7869,29 @@ function setupControls() {
   window.addEventListener('pointerup', endPointer);
   window.addEventListener('pointercancel', endPointer);
   window.addEventListener('keydown', e => {
+    const activeTag = (document.activeElement && document.activeElement.tagName) ? document.activeElement.tagName.toUpperCase() : '';
+    if (activeTag !== 'INPUT' && activeTag !== 'TEXTAREA' && typeof window.isMissionGuideBubbleBlockingAction === 'function' && window.isMissionGuideBubbleBlockingAction()) {
+      const elapsed = performance.now() - (MiracleGuideUI.openedAt || 0);
+      if (e.code === 'Escape') {
+        e.preventDefault();
+        window.dismissMiracleGuideBubbleToButton();
+        return;
+      }
+      if (e.code === 'Space' || e.code === 'Enter') {
+        e.preventDefault();
+        if (elapsed >= 180) {
+          if (MiracleGuideUI.isTyping) window.onMiracleGuideBubbleClick();
+          else window.dismissMiracleGuideBubbleToButton();
+        }
+        return;
+      }
+      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'KeyW', 'KeyA', 'KeyS', 'KeyD'].includes(e.code)) {
+        if (elapsed >= 260) window.dismissMiracleGuideBubbleToButton();
+        keys[e.code] = false;
+        return;
+      }
+      return;
+    }
     keys[e.code] = true;
     if (e.code === 'Space') { e.preventDefault(); playerJump(); }
     if (e.code === 'KeyQ') rotateCameraDeg(-15);
@@ -7354,6 +7901,7 @@ function setupControls() {
 }
 
 function playerJump() {
+  if (typeof window.isMissionGuideBubbleBlockingAction === 'function' && window.isMissionGuideBubbleBlockingAction()) return;
   if (!isPlaying || stage2CountdownActive || doveCutscene.active || pillarCutscene.active || seaPartingCutscene.active || sinaiCutscene.active) return;
   if (typeof window.isPlayerMovementLocked === 'function' && window.isPlayerMovementLocked()) return;
   if (isGrounded || playerPos.y <= getSupportHeight(playerPos.x, playerPos.z, playerPos.y) + 0.18) {
@@ -7691,8 +8239,9 @@ function initEngine(skipInitialPreview = false) {
     }
 
     const epPlugin = getActiveEpisodePlugin();
+    const guideBubblePaused = (typeof window.isMissionGuideBubbleBlockingAction === 'function') && window.isMissionGuideBubbleBlockingAction();
 
-    if (isPlaying && isTimeAttackActive && !doveCutscene.active && !pillarCutscene.active && !seaPartingCutscene.active && !sinaiCutscene.active) {
+    if (isPlaying && isTimeAttackActive && !guideBubblePaused && !doveCutscene.active && !pillarCutscene.active && !seaPartingCutscene.active && !sinaiCutscene.active) {
       timeRemaining -= dt;
       if (timeRemaining <= 0) {
         if (!timeAttackFirstRechargeUsed) {
@@ -7754,6 +8303,16 @@ function initEngine(skipInitialPreview = false) {
     }
 
     if (isPlaying) {
+      if (guideBubblePaused) {
+        currentMoveSpeed = 0;
+        joyX = 0;
+        joyY = 0;
+        playerGroup.position.copy(playerPos);
+        applyCoreCameraByMode();
+        updateWallTransparency();
+        renderer.render(scene, camera);
+        return;
+      }
       cameraYaw = lerpAngle(cameraYaw, cameraTargetYaw, dt * 12);
       const prevGrounded = isGrounded;
       const prevVelY = playerVelY;
@@ -7883,23 +8442,31 @@ function initEngine(skipInitialPreview = false) {
         checkAndFadeEndingArkIfBlocking(dt);
       }
 
-      // [전체 에피소드 공통 요청사항] 1차 시도일 때는 인증서를 띄우고, 2회차/재선택 엔딩일 때는 제단 접근 시 월드맵 이동 선택창 오픈!
+      // [전체 에피소드 공통 요청사항] 1차 시도 제단 첫 방문 시에만 인증서를 1회 띄우고, 재방문/2회차부터는 월드맵 이동 선택창 오픈!
       if (currentStage === 4 && targetObject && currentEpisode !== 'david') {
         const td = Math.hypot(playerPos.x - targetObject.pos.x, playerPos.z - targetObject.pos.z);
         updateWorldLabelPos(targetObject.label, targetObject.pos, td < 26);
         if (guideArrowGroup.visible) {
           guideArrowGroup.rotation.y = Math.atan2(targetObject.pos.x - playerPos.x, targetObject.pos.z - playerPos.z) - playerGroup.rotation.y;
         }
-        if (td < 4.2 && !certAutoShown) {
-          certAutoShown = true;
-          if (canShowCertificateForCurrentRun()) {
-            showEndingCertificate();
-          } else {
-            showEndingWorldMapChoiceModal();
+        const endingModalEl = document.getElementById('ending-modal');
+        const choiceModalEl = document.getElementById('ending-map-choice-modal');
+        const isEndingUiOpen = Boolean(
+          (endingModalEl && !endingModalEl.classList.contains('hidden')) ||
+          (choiceModalEl && !choiceModalEl.classList.contains('hidden'))
+        );
+        if (!isEndingUiOpen && targetObject.type === 'altar' && Math.abs(playerPos.y) < 3.5) {
+          if (td < 4.2 && !certAutoShown) {
+            certAutoShown = true;
+            if (canShowCertificateForCurrentRun() && !certShownInCurrentRun) {
+              showEndingCertificate();
+            } else {
+              showEndingWorldMapChoiceModal();
+            }
+          } else if (td > 6.2 && (!canShowCertificateForCurrentRun() || certShownInCurrentRun)) {
+            // [세상 둘러보기] 후 제단에서 멀어졌다가 다시 제단으로 오면 월드맵 이동 선택창이 열리도록 리셋
+            certAutoShown = false;
           }
-        } else if (td > 6.2 && !canShowCertificateForCurrentRun()) {
-          // 2회차 엔딩에서 [계속 둘러보기] 후 제단에서 멀어졌다가 다시 제단으로 오면 다시 선택창이 열리도록 리셋
-          certAutoShown = false;
         }
       }
     }
