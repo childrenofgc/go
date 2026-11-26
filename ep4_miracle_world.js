@@ -2062,7 +2062,10 @@ function spawnMiracleMainStageSpots() {
       title: '⛵ [메인 스테이지 1] 갈릴리 바다: 물고기 잡기와 폭풍우',
       introSpeaker: '어부 시몬 베드로',
       introText: '"선생님께서 배에 오르셨네! 함께 갈릴리 바다 깊은 곳으로 나가 그물을 내리고 항해를 시작해 볼까?"',
-      greetingText: '"할렐루야! 그때 거센 폭풍우를 말씀 한마디로 잠잠하게 하신 예수님의 권능은 정말 놀라웠어! 다음 여정도 힘내서 다녀오게!"'
+      audioUrl: 'assets/voice/ep4_stage01_petro01.mp3',
+      greetingText: '"할렐루야! 그때 거센 폭풍우를 말씀 한마디로 잠잠하게 하신 예수님의 권능은 정말 놀라웠어! 다음 여정도 힘내서 다녀오게!"', // <== 끝에 쉼표(,) 추가!
+      greetingAudioUrl: 'assets/voice/ep4_stage01_petro02.mp3', // <== 오타 수정 (greetingaAdioUrl -> greetingAudioUrl)
+      verseAudioUrl: 'assets/voice/ep4_stage01_bible.mp3'
     },
     {
       stageNum: 2,
@@ -2073,7 +2076,10 @@ function spawnMiracleMainStageSpots() {
       title: '🍞 [메인 스테이지 2] 오병이어 사건: 마을이 내려다보이는 벳새다 언덕',
       introSpeaker: '제자 빌립과 안드레',
       introText: '"이 높은 언덕 위에서 내려다보니 마을과 갈릴리 바다가 한눈에 보이는구나! 예수님의 말씀을 들으러 모인 큰 무리를 먹이시는 오병이어 기적을 시작해 볼까?"',
-      greetingText: '"반가워! 어린아이의 작은 도시락 하나로 오천 명이 배불리 먹고 열두 광주리나 남았던 기적을 우리 모두 잊지 못할 거야!"'
+      audioUrl: 'assets/voice/ep4_stage02_philip01.mp3',
+      greetingText: '"반가워! 어린아이의 작은 도시락 하나로 오천 명이 배불리 먹고 열두 광주리나 남았던 기적을 우리 모두 잊지 못할 거야!"', // <== 끝에 쉼표(,) 추가!
+      greetingAudioUrl: 'assets/voice/ep4_stage02_philip02.mp3', // <== 오타 수정
+      verseAudioUrl: 'assets/voice/ep4_stage02_bible.mp3'
     },
     {
       stageNum: 3,
@@ -2084,7 +2090,10 @@ function spawnMiracleMainStageSpots() {
       title: '✝️ [메인 스테이지 3] 십자가 사건: 골고다로 가는 길',
       introSpeaker: '예루살렘 여인들',
       introText: '"예수님께서 무거운 십자가를 지고 골고다 언덕으로 가고 계셔! 어서 그분이 가시는 길을 찾아가 도와드리자!"',
-      greetingText: '"구레네 시몬처럼 예수님과 함께 골고다 언덕까지 십자가를 지고 올라가 주어서 정말 고마워요! 우리를 향한 예수님의 크신 사랑을 기억해요."'
+      audioUrl: 'assets/voice/ep4_stage03_girls01.mp3',
+      greetingText: '"구레네 시몬처럼 예수님과 함께 골고다 언덕까지 십자가를 지고 올라가 주어서 정말 고마워요! 우리를 향한 예수님의 크신 사랑을 기억해요."', // <== 끝에 쉼표(,) 추가!
+      greetingAudioUrl: 'assets/voice/ep4_stage03_girls02.mp3', // <== 오타 수정
+      verseAudioUrl: 'assets/voice/ep4_stage03_bible.mp3'
     },
     {
       stageNum: 4,
@@ -2095,7 +2104,10 @@ function spawnMiracleMainStageSpots() {
       title: '🌅 [메인 스테이지 4] 빈 무덤 찾기: 안식일 후 첫날 새벽',
       introSpeaker: '막달라 마리아',
       introText: '"안식일이 지나고 새벽이 밝았어요! 마을 사람들의 단서를 따라 예수님이 묻히신 동산 무덤을 찾아가요!"',
-      greetingText: '"예수님께서 말씀하시던 대로 다시 살아나셨어요! 이제 부활하신 예수님의 증언들을 만나고 동남쪽 감람산으로 올라가 보세요!"'
+      audioUrl: 'assets/voice/ep4_stage04_maria01.mp3',
+      greetingText: '"예수님께서 말씀하시던 대로 다시 살아나셨어요! 이제 부활하신 예수님의 증언들을 만나고 동남쪽 감람산으로 올라가 보세요!"', // <== 끝에 쉼표(,) 추가!
+      greetingAudioUrl: 'assets/voice/ep4_stage04_maria02.mp3', // <== 오타 수정
+      verseAudioUrl: 'assets/voice/ep4_stage04_bible.mp3'
     }
   ];
 
@@ -2153,7 +2165,15 @@ function spawnMiracleMainStageSpots() {
       introText: isPostAsc
         ? '"예수님께서 구름을 타고 하늘로 승천하셨어요! 천사들이 \'하늘로 가심을 본 그대로 다시 오시리라\'고 약속해 주었답니다. 승천 이후의 감람산 엔딩 세상으로 가보시겠어요?"'
         : '"하늘과 땅의 모든 권세를 내게 주셨으니, 그러므로 너희는 가서 모든 민족을 제자로 삼으라! 볼지어다 내가 세상 끝날까지 너희와 항상 함께 있으리라!"',
+      
+      // ▼ 새로 추가된 부분: isPostAsc 상태에 따라 오디오 파일 경로도 분기 처리합니다.
+      audioUrl: isPostAsc
+        ? 'assets/voice/ep4_stage05_diciples.mp3' // 승천 완료 후 재방문 음성 (파일명을 원하시는 대로 수정하세요)
+        : 'assets/voice/ep4_stage05_jesus01.mp3',    // 최초 입장 안내 음성
+
       greetingText: '"볼지어다 내가 세상 끝날까지 너희와 항상 함께 있으리라!"',
+      greetingAudioUrl: 'assets/voice/ep4_stage05_greeting.mp3', // 클리어 후 짧은 인사 음성
+      
       ...ascMarker,
       cleared: false,
       _requireLeaveZone: false
@@ -8650,6 +8670,7 @@ function updateMiracleOpenWorldFrame(dt, now) {
           speaker: sp.introSpeaker,
           category: 'story',
           text: sp.introText,
+          audioUrl: sp.audioUrl,
           showCancel: true,
           cancelText: '오픈월드 계속 둘러보기 ✕',
           btnText: '☁️ 승천 이후 엔딩 세상 보기 ▶',
@@ -8661,6 +8682,7 @@ function updateMiracleOpenWorldFrame(dt, now) {
           speaker: sp.introSpeaker,
           category: 'greeting',
           text: sp.greetingText || `"반가워요! 함께 완수했던 메인 스테이지 ${sp.stageNum}의 감동이 아직도 생생하네요!"`,
+          audioUrl: sp.greetingAudioUrl, // <== 이 줄을 추가하세요! (다시 만났을 때 음성)
           btnText: '반갑게 인사 나누기 👋',
           replayText: `🔄 스테이지 ${sp.stageNum} 다시하기`,
           onReplay: launchThisStage
@@ -8679,6 +8701,7 @@ function updateMiracleOpenWorldFrame(dt, now) {
           speaker: sp.introSpeaker,
           category: 'story',
           text: sp.introText,
+          audioUrl: sp.audioUrl, // <== 이 줄을 추가하세요! (처음 만났을 때 음성)
           showCancel: true,
           cancelText: '거절 (나중에 하기) ✕',
           btnText: sp.stageNum === 5 ? '👑 감람산 승천·재림 언약 보기 ▶' : `🚀 메인 스테이지 ${sp.stageNum} 시작하기 ▶`,

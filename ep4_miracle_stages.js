@@ -4567,12 +4567,25 @@ function updateMiracleEndingFrame(dt, now) {
     };
 
     if (bf) {
+      // 1. 요청하신 새로운 문구로 변수 텍스트 수정
+      const newAngelPromiseLine = "하늘로 올라가신 예수님께서는 여러분이 본 그대로 다시 오실것입니다.";
       document.getElementById('black-fade-icon').textContent = '☁️';
-      document.getElementById('black-fade-title').textContent = `"${angelPromiseLine}"`;
+      // 2. 화면에 수정된 문구 반영
+      document.getElementById('black-fade-title').textContent = `"${newAngelPromiseLine}"`;
       document.getElementById('black-fade-sub').textContent = '사도행전 1장 11절';
       bf.style.opacity = '1';
-      speakText(angelPromiseLine, {
-        onEnd: () => { markTtsDoneWithBuffer(); }
+      
+      // TTS 대신 mp3 파일 재생
+      const actsAudio = new Audio('assets/voice/voice_ending.mp3'); // 실제 파일 경로로 수정
+      window.__activeNpcAudio.volume = window.EP4_VOICE_VOLUME;
+      actsAudio.onended = () => { markTtsDoneWithBuffer(); };
+      actsAudio.onerror = () => { 
+        // 오디오 로드 실패 시 TTS로 폴백
+        speakText(angelPromiseLine, { onEnd: () => { markTtsDoneWithBuffer(); } }); 
+      };
+      actsAudio.play().catch(() => {
+        // 브라우저 정책 등으로 재생이 막힐 경우 TTS로 폴백
+        speakText(angelPromiseLine, { onEnd: () => { markTtsDoneWithBuffer(); } });
       });
     } else {
       ttsFinished = true;

@@ -5598,7 +5598,29 @@ function openStageClearModal(st) {
   document.getElementById('modal-title').textContent = info.title;
   document.getElementById('modal-desc').textContent = info.desc;
   document.getElementById('modal-scripture-text').textContent = info.verse;
+  
   if (currentEpisode === 'noah') {
+    speakText(info.verse);
+  } else if (currentEpisode === 'miracle' && info.audioUrl) {
+    // ---------------------------------------------------------
+    // [수정된 부분] 퀴즈 팝업창이 뜨자마자 성경절 음성 즉시 재생
+    // ---------------------------------------------------------
+    if (window.__activeVerseAudio) {
+      window.__activeVerseAudio.pause();
+    }
+    
+    // 데이터에 verseAudioUrl로 넣었든 audioUrl로 넣었든 모두 대응하도록 처리
+    const targetAudioUrl = info.verseAudioUrl || info.audioUrl;
+    window.__activeVerseAudio = new Audio(targetAudioUrl);
+    window.__activeVerseAudio.volume = window.EP4_VOICE_VOLUME ?? 0.8; 
+    
+    window.__activeVerseAudio.play().catch(() => {
+      if (typeof speakText === 'function' && info.verse) {
+        speakText(info.verse);
+      }
+    });
+    // ---------------------------------------------------------
+  } else if (currentEpisode === 'miracle') {
     speakText(info.verse);
   }
 
@@ -5645,6 +5667,13 @@ function openStageClearModal(st) {
 function proceedNextStage() {
   const modal = document.getElementById('stage-modal');
   modal.classList.add('hidden'); modal.classList.remove('flex');
+  
+  // 모달이 닫힐 때 성경절 오디오 재생 중단
+  if (window.__activeVerseAudio) {
+    window.__activeVerseAudio.pause();
+    window.__activeVerseAudio = null;
+  }
+  
   syncOverlayModalBodyClass();
   setHudMenuOpen(false);
   hideMissionGuideBubbleImmediately();
