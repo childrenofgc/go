@@ -5,7 +5,7 @@
 // =========================================================================
 
 window.__GAME_BUILD_VERSIONS__ = window.__GAME_BUILD_VERSIONS__ || {};
-window.__GAME_BUILD_VERSIONS__.core = '20261125_v41';
+window.__GAME_BUILD_VERSIONS__.core = '3.5.3';
 
 // 퀴즈 선택지 순서 무작위 셔플 공용 헬퍼 (정답이 항상 1번에 고정되지 않도록 보장)
 function shuffleQuizOptions(opts, ansIdx = 0) {
@@ -711,15 +711,19 @@ function confirmExitBibleAdventureGame() {
   if (typeof keys !== 'undefined' && keys) Object.keys(keys).forEach(k => { keys[k] = false; });
 
   try {
-    if (typeof saveMiracleNotebookProgress === 'function') saveMiracleNotebookProgress();
+    if (typeof saveMiracleNotebookProgress === 'function') saveMiracleNotebookProgress({ skipSheetSync: true });
     if (typeof saveLocalPlayerProgress === 'function' && typeof explorerName !== 'undefined' && explorerName) {
       saveLocalPlayerProgress(explorerName);
+    }
+    if (typeof schedulePlayerProfileSheetSync === 'function' && typeof explorerName !== 'undefined' && explorerName) {
+      schedulePlayerProfileSheetSync('exit', true);
     }
   } catch (e) {}
 
   try {
     if (typeof stopStageBgm === 'function') stopStageBgm();
     if (typeof window.stopMiracleOpenWorldOgg === 'function') window.stopMiracleOpenWorldOgg(true);
+    if (typeof window.stopAllEp4VoiceAudio === 'function') window.stopAllEp4VoiceAudio();
     if (typeof window.speechSynthesis !== 'undefined' && window.speechSynthesis) window.speechSynthesis.cancel();
   } catch (e) {}
 
@@ -1146,6 +1150,29 @@ window.dismissMiracleGuideBubbleToButton = function () {
   }, 320);
 };
 
+window.syncStageHudCounter = function (counterText) {
+  const txt = String(counterText == null ? '' : counterText);
+  const countEl = document.getElementById('hud-counter-text');
+  if (countEl) countEl.textContent = txt;
+  if (MiracleGuideUI && MiracleGuideUI.activeStageInfo) {
+    MiracleGuideUI.activeStageInfo.badge = txt;
+  }
+  if (
+    MiracleGuideUI &&
+    MiracleGuideUI.isBubbleOpen &&
+    !(currentEpisode === 'miracle' && MiracleGuideUI.activeFieldInfo)
+  ) {
+    const progRow = document.getElementById('miracle-guide-bubble-progress-row');
+    const progEl = document.getElementById('miracle-guide-bubble-progress');
+    const extraEl = document.getElementById('miracle-guide-bubble-extra');
+    if (progEl) progEl.textContent = txt;
+    if (progRow) {
+      const hasExtra = Boolean(extraEl && String(extraEl.textContent || '').trim());
+      progRow.classList.toggle('hidden', !Boolean(txt || hasExtra));
+    }
+  }
+};
+
 window.openMiracleGuideFromButton = function () {
   setHudMenuOpen(false);
   if (typeof playSfx === 'function') playSfx('switch');
@@ -1161,10 +1188,13 @@ window.openMiracleGuideFromButton = function () {
     });
   } else if (MiracleGuideUI.activeStageInfo) {
     const s = MiracleGuideUI.activeStageInfo;
+    const liveCounterEl = document.getElementById('hud-counter-text');
+    const liveCounter = liveCounterEl ? String(liveCounterEl.textContent || '').trim() : '';
+    const progressText = (currentEpisode !== 'miracle' && liveCounter) ? liveCounter : (s.badge || liveCounter || '');
     window.showMiracleGuideBubble({
       title: `💬 ${s.title || '현재 목표'}`,
       text: s.text || '',
-      progressText: s.badge || '',
+      progressText,
       canCancel: false,
       autoCloseMs: 3600
     });
@@ -1959,7 +1989,9 @@ window.isEffectiveSeniorMode = isEffectiveSeniorMode;
 
 const MODE_CLEAR_ORDER = ['kinder', 'junior', 'senior', 'timeattack'];
 
-const EPISODE_CARD_META = {
+const EPISODE_CARD_META = (typeof window !== 'undefined' && window.BIBLE_GAME_CATALOG && window.BIBLE_GAME_CATALOG.episodeCardMeta)
+  ? window.BIBLE_GAME_CATALOG.episodeCardMeta
+  : {
   noah: {
     epNum: 1,
     epLabel: 'EPISODE 01',
@@ -2075,6 +2107,9 @@ function saveAdventureCerts(uniquePlayerId) {
   try {
     localStorage.setItem(getAdventureCertsStorageKey(uniquePlayerId || explorerName), JSON.stringify(adventureCertsData));
   } catch (e) {}
+  if (!window.__suppressProfileSheetSync && typeof schedulePlayerProfileSheetSync === 'function') {
+    schedulePlayerProfileSheetSync('cert', true);
+  }
 }
 
 function loadAdventureCerts(uniquePlayerId) {
@@ -2184,10 +2219,14 @@ function renderClearedLevelPillsHTML(clearedModes) {
 }
 
 // =========================================================================
-// [에피소드 4 공통] 예수님의 발자취 카드 시스템 (누적 3·5·7·10·전체 완료)
+// [에피소드 4 공통] 예수님의 발자취 카드 시스템 (game_catalog.js 우선 로드 + 폴백)
 // =========================================================================
-const FOOTSTEPS_CARD_ORDER = ['fp_1', 'fp_2', 'fp_3', 'fp_4', 'fp_5'];
-const FOOTSTEPS_CARD_META = {
+const FOOTSTEPS_CARD_ORDER = (typeof window !== 'undefined' && window.BIBLE_GAME_CATALOG && Array.isArray(window.BIBLE_GAME_CATALOG.footstepsOrder))
+  ? window.BIBLE_GAME_CATALOG.footstepsOrder.slice()
+  : ['fp_1', 'fp_2', 'fp_3', 'fp_4', 'fp_5'];
+const FOOTSTEPS_CARD_META = (typeof window !== 'undefined' && window.BIBLE_GAME_CATALOG && window.BIBLE_GAME_CATALOG.footstepsMeta)
+  ? window.BIBLE_GAME_CATALOG.footstepsMeta
+  : {
   fp_1: {
     id: 'fp_1',
     stageNum: 1,
@@ -2312,6 +2351,34 @@ function saveFootstepsCerts(uniquePlayerId) {
   try {
     localStorage.setItem(getFootstepsCertsStorageKey(uniquePlayerId || explorerName), JSON.stringify(footstepsCertsData));
   } catch (e) {}
+  if (!window.__suppressProfileSheetSync && typeof schedulePlayerProfileSheetSync === 'function') {
+    schedulePlayerProfileSheetSync('footsteps', true);
+  }
+}
+
+function _collectOrderedKeys(baseOrder, ...objects) {
+  const seen = new Set();
+  const out = [];
+  (Array.isArray(baseOrder) ? baseOrder : []).forEach(k => {
+    const clean = String(k || '').trim();
+    if (clean && !seen.has(clean)) {
+      seen.add(clean);
+      out.push(clean);
+    }
+  });
+  const extras = [];
+  objects.forEach(obj => {
+    if (!obj || typeof obj !== 'object') return;
+    Object.keys(obj).forEach(k => {
+      const clean = String(k || '').trim();
+      if (clean && !seen.has(clean)) {
+        seen.add(clean);
+        extras.push(clean);
+      }
+    });
+  });
+  extras.sort();
+  return out.concat(extras);
 }
 
 function loadFootstepsCerts(uniquePlayerId) {
@@ -2322,7 +2389,8 @@ function loadFootstepsCerts(uniquePlayerId) {
     if (raw) {
       const parsed = JSON.parse(raw);
       const fallbackTotal = typeof window.getMiracleTotalMissionCount === 'function' ? window.getMiracleTotalMissionCount() : 21;
-      FOOTSTEPS_CARD_ORDER.forEach(tierId => {
+      const keys = _collectOrderedKeys(FOOTSTEPS_CARD_ORDER, parsed);
+      keys.forEach(tierId => {
         const entry = parsed && parsed[tierId];
         if (entry && entry.code) {
           footstepsCertsData[tierId] = {
@@ -2447,9 +2515,15 @@ function loadLocalPlayerProgress(uniquePlayerId) {
       });
     }
   } catch (e) {}
-  loadAdventureCerts(uniquePlayerId);
-  if (typeof loadMiracleNotebookProgress === 'function') {
-    loadMiracleNotebookProgress();
+  const prevSuppress = Boolean(window.__suppressProfileSheetSync);
+  window.__suppressProfileSheetSync = true;
+  try {
+    loadAdventureCerts(uniquePlayerId);
+    if (typeof loadMiracleNotebookProgress === 'function') {
+      loadMiracleNotebookProgress();
+    }
+  } finally {
+    window.__suppressProfileSheetSync = prevSuppress;
   }
 }
 
@@ -2475,6 +2549,9 @@ function recordPlayerStageClear(epKey, stageNum) {
   }
   saveLocalPlayerProgress(explorerName);
   updateWorldMapEpisodePinsUI();
+  if (!window.__suppressProfileSheetSync && typeof schedulePlayerProfileSheetSync === 'function') {
+    schedulePlayerProfileSheetSync('stage_clear', true);
+  }
 }
 
 // 현재 플레이에서 인증서 출력이 허용되는지 확인
@@ -2583,6 +2660,413 @@ function closeEndingWorldMapChoiceModal(showLookAroundToast = false) {
   }
 }
 
+// =========================================================================
+// [통합 구글 시트 동기화] 에피소드 진행·인증서 + 탐험수첩 + 발자취 5단계
+// =========================================================================
+let _profileSyncTimer = null;
+let _profileSyncInFlight = false;
+let _profileSyncPendingResync = false;
+
+function getProfileSyncMetaKey(uniquePlayerId) {
+  return 'bible_profile_sync_meta_v1_' + (uniquePlayerId || 'guest');
+}
+
+function loadProfileSyncMeta(uniquePlayerId) {
+  const pid = uniquePlayerId || explorerName || 'guest';
+  try {
+    const raw = localStorage.getItem(getProfileSyncMetaKey(pid));
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return {
+        revision: Math.max(0, parseInt(parsed.revision || 0, 10) || 0),
+        appliedAdminRev: Math.max(0, parseInt(parsed.appliedAdminRev || 0, 10) || 0),
+        lastSyncedAt: String(parsed.lastSyncedAt || '')
+      };
+    }
+  } catch (e) {}
+  return { revision: 0, appliedAdminRev: 0, lastSyncedAt: '' };
+}
+
+function saveProfileSyncMeta(uniquePlayerId, meta) {
+  const pid = uniquePlayerId || explorerName || 'guest';
+  try {
+    localStorage.setItem(getProfileSyncMetaKey(pid), JSON.stringify({
+      revision: Math.max(0, parseInt((meta && meta.revision) || 0, 10) || 0),
+      appliedAdminRev: Math.max(0, parseInt((meta && meta.appliedAdminRev) || 0, 10) || 0),
+      lastSyncedAt: String((meta && meta.lastSyncedAt) || '')
+    }));
+  } catch (e) {}
+}
+
+function _readNotebookStateForProfile(pid) {
+  if (typeof window.exportMiracleNotebookState === 'function') {
+    return window.exportMiracleNotebookState();
+  }
+  const fallback = {
+    collected: [],
+    completedMissions: [],
+    clearedStages: { 1: false, 2: false, 3: false, 4: false },
+    postResurrection: false,
+    ascensionSeen: false
+  };
+  try {
+    const raw = localStorage.getItem('bible_ep4_notebook_' + (pid || 'guest'));
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        fallback.collected = parsed.filter(Boolean).map(String);
+      } else if (parsed && typeof parsed === 'object') {
+        if (Array.isArray(parsed.collected)) fallback.collected = parsed.collected.filter(Boolean).map(String);
+        if (Array.isArray(parsed.completedMissions)) fallback.completedMissions = parsed.completedMissions.filter(Boolean).map(String);
+        if (parsed.clearedStages && typeof parsed.clearedStages === 'object') {
+          [1, 2, 3, 4].forEach(n => { fallback.clearedStages[n] = Boolean(parsed.clearedStages[n]); });
+        }
+        fallback.postResurrection = Boolean(parsed.postResurrection);
+        fallback.ascensionSeen = Boolean(parsed.ascensionSeen);
+      }
+    }
+  } catch (e) {}
+  return fallback;
+}
+
+function buildPlayerProfileSnapshot(uniquePlayerId) {
+  const pid = String(uniquePlayerId || explorerName || '').trim();
+  const meta = loadProfileSyncMeta(pid);
+  const defaultTotalMissions = typeof window.getMiracleTotalMissionCount === 'function' ? window.getMiracleTotalMissionCount() : 21;
+  const progressCopy = {};
+  _collectOrderedKeys(EPISODE_ORDER, playerProgressData).forEach(ep => {
+    const p = (playerProgressData && playerProgressData[ep]) || {};
+    progressCopy[ep] = {
+      maxClearedStage: Math.max(0, parseInt(p.maxClearedStage || 0, 10) || 0),
+      completed: Boolean(p.completed),
+      certIssued: Boolean(p.certIssued),
+      attempts: Math.max(0, parseInt(p.attempts || 0, 10) || 0)
+    };
+  });
+  const certsCopy = {};
+  _collectOrderedKeys(EPISODE_ORDER, adventureCertsData).forEach(ep => {
+    const c = adventureCertsData && adventureCertsData[ep];
+    if (c && c.code) {
+      certsCopy[ep] = {
+        epId: ep,
+        code: String(c.code),
+        playerName: String(c.playerName || pid),
+        issuedAt: String(c.issuedAt || formatAdventureCertDate()),
+        updatedAt: String(c.updatedAt || c.issuedAt || formatAdventureCertDate()),
+        clearedModes: normalizeClearedModesList(c.clearedModes)
+      };
+    }
+  });
+  const footstepsCopy = {};
+  _collectOrderedKeys(FOOTSTEPS_CARD_ORDER, footstepsCertsData).forEach(tierId => {
+    const f = footstepsCertsData && footstepsCertsData[tierId];
+    if (f && f.code) {
+      footstepsCopy[tierId] = {
+        tierId,
+        code: String(f.code),
+        playerName: String(f.playerName || pid),
+        issuedAt: String(f.issuedAt || formatAdventureCertDate()),
+        completedCount: Math.max(0, parseInt(f.completedCount || 0, 10) || 0),
+        totalCount: Math.max(1, parseInt(f.totalCount || defaultTotalMissions, 10) || defaultTotalMissions)
+      };
+    }
+  });
+  const notebookState = _readNotebookStateForProfile(pid);
+  return {
+    playerId: pid,
+    updatedAt: typeof getKoreanNowTimestamp === 'function' ? getKoreanNowTimestamp() : new Date().toISOString(),
+    revision: meta.revision,
+    adminOverrideRev: meta.appliedAdminRev,
+    lastModifiedBy: 'player',
+    episodes: {
+      progress: progressCopy,
+      certs: certsCopy
+    },
+    notebook: notebookState,
+    footsteps: footstepsCopy
+  };
+}
+window.buildPlayerProfileSnapshot = buildPlayerProfileSnapshot;
+
+function applyServerPlayerProfile(serverProfile) {
+  if (!serverProfile || typeof serverProfile !== 'object') {
+    return { mode: 'none', localHadExtra: false };
+  }
+  const pid = String(explorerName || serverProfile.playerId || '').trim() || 'guest';
+  const localMeta = loadProfileSyncMeta(pid);
+  const serverRev = Math.max(0, parseInt(serverProfile.revision || 0, 10) || 0);
+  const serverAdminRev = Math.max(0, parseInt(serverProfile.adminOverrideRev || 0, 10) || 0);
+  const isAdminOverwrite = serverAdminRev > localMeta.appliedAdminRev;
+  const defaultTotalMissions = typeof window.getMiracleTotalMissionCount === 'function' ? window.getMiracleTotalMissionCount() : 21;
+  let localHadExtra = false;
+
+  const sEp = serverProfile.episodes || {};
+  const sProg = sEp.progress || {};
+  const sCerts = sEp.certs || {};
+  const sNotebook = serverProfile.notebook || {};
+  const sFootsteps = serverProfile.footsteps || {};
+
+  window.__suppressProfileSheetSync = true;
+  try {
+    if (isAdminOverwrite) {
+      playerProgressData = {
+        noah:    { maxClearedStage: 0, completed: false, certIssued: false, attempts: 0 },
+        exodus:  { maxClearedStage: 0, completed: false, certIssued: false, attempts: 0 },
+        david:   { maxClearedStage: 0, completed: false, certIssued: false, attempts: 0 },
+        miracle: { maxClearedStage: 0, completed: false, certIssued: false, attempts: 0 }
+      };
+      _collectOrderedKeys(EPISODE_ORDER, sProg).forEach(ep => {
+        const sp = sProg[ep];
+        if (sp) {
+          const mc = Math.max(0, parseInt(sp.maxClearedStage || 0, 10) || 0);
+          playerProgressData[ep] = {
+            maxClearedStage: mc,
+            completed: Boolean(sp.completed || mc >= 3),
+            certIssued: Boolean(sp.certIssued || mc >= 4),
+            attempts: Math.max(0, parseInt(sp.attempts || 0, 10) || 0)
+          };
+        }
+      });
+
+      adventureCertsData = {};
+      _collectOrderedKeys(EPISODE_ORDER, sCerts).forEach(ep => {
+        const sc = sCerts[ep];
+        if (sc && sc.code) {
+          adventureCertsData[ep] = {
+            epId: ep,
+            code: String(sc.code),
+            playerName: String(sc.playerName || pid),
+            issuedAt: String(sc.issuedAt || formatAdventureCertDate()),
+            updatedAt: String(sc.updatedAt || sc.issuedAt || formatAdventureCertDate()),
+            clearedModes: normalizeClearedModesList(sc.clearedModes)
+          };
+        }
+      });
+
+      footstepsCertsData = {};
+      _collectOrderedKeys(FOOTSTEPS_CARD_ORDER, sFootsteps).forEach(tierId => {
+        const sf = sFootsteps[tierId];
+        if (sf && sf.code) {
+          footstepsCertsData[tierId] = {
+            tierId,
+            code: String(sf.code),
+            playerName: String(sf.playerName || pid),
+            issuedAt: String(sf.issuedAt || formatAdventureCertDate()),
+            completedCount: Math.max(0, parseInt(sf.completedCount || 0, 10) || 0),
+            totalCount: Math.max(1, parseInt(sf.totalCount || defaultTotalMissions, 10) || defaultTotalMissions)
+          };
+        }
+      });
+
+      if (typeof window.applyMiracleNotebookState === 'function') {
+        window.applyMiracleNotebookState(sNotebook, 'overwrite');
+      } else {
+        try {
+          localStorage.setItem('bible_ep4_notebook_' + pid, JSON.stringify({
+            collected: Array.isArray(sNotebook.collected) ? sNotebook.collected : [],
+            completedMissions: Array.isArray(sNotebook.completedMissions) ? sNotebook.completedMissions : [],
+            clearedStages: sNotebook.clearedStages || { 1: false, 2: false, 3: false, 4: false },
+            postResurrection: Boolean(sNotebook.postResurrection),
+            ascensionSeen: Boolean(sNotebook.ascensionSeen)
+          }));
+        } catch (e) {}
+      }
+    } else {
+      // 기기 간 일반 접속: 합집합(Union) 병합
+      _collectOrderedKeys(EPISODE_ORDER, playerProgressData, sProg, adventureCertsData, sCerts).forEach(ep => {
+        const lp = playerProgressData[ep] || { maxClearedStage: 0, completed: false, certIssued: false, attempts: 0 };
+        const sp = sProg[ep] || { maxClearedStage: 0, completed: false, certIssued: false, attempts: 0 };
+        const lMax = Math.max(0, parseInt(lp.maxClearedStage || 0, 10) || 0);
+        const sMax = Math.max(0, parseInt(sp.maxClearedStage || 0, 10) || 0);
+        if (lMax > sMax || (lp.completed && !sp.completed) || (lp.certIssued && !sp.certIssued)) {
+          localHadExtra = true;
+        }
+        const mergedMax = Math.max(lMax, sMax);
+        playerProgressData[ep] = {
+          maxClearedStage: mergedMax,
+          completed: Boolean(lp.completed || sp.completed || mergedMax >= 3),
+          certIssued: Boolean(lp.certIssued || sp.certIssued || mergedMax >= 4),
+          attempts: Math.max(parseInt(lp.attempts || 0, 10) || 0, parseInt(sp.attempts || 0, 10) || 0)
+        };
+
+        const lc = adventureCertsData[ep];
+        const sc = sCerts[ep];
+        if (lc && !sc) localHadExtra = true;
+        if (sc && sc.code) {
+          const lModes = lc ? normalizeClearedModesList(lc.clearedModes) : [];
+          const sModes = normalizeClearedModesList(sc.clearedModes);
+          if (lModes.some(m => !sModes.includes(m))) localHadExtra = true;
+          const mergedModes = normalizeClearedModesList(lModes.concat(sModes));
+          adventureCertsData[ep] = {
+            epId: ep,
+            code: (lc && lc.code && lc.code !== '-') ? String(lc.code) : String(sc.code),
+            playerName: String((lc && lc.playerName) || sc.playerName || pid),
+            issuedAt: String((lc && lc.issuedAt) || sc.issuedAt || formatAdventureCertDate()),
+            updatedAt: String(sc.updatedAt || (lc && lc.updatedAt) || formatAdventureCertDate()),
+            clearedModes: mergedModes
+          };
+        }
+      });
+
+      _collectOrderedKeys(FOOTSTEPS_CARD_ORDER, footstepsCertsData, sFootsteps).forEach(tierId => {
+        const lf = footstepsCertsData[tierId];
+        const sf = sFootsteps[tierId];
+        if (lf && !sf) localHadExtra = true;
+        if (sf && sf.code && !lf) {
+          footstepsCertsData[tierId] = {
+            tierId,
+            code: String(sf.code),
+            playerName: String(sf.playerName || pid),
+            issuedAt: String(sf.issuedAt || formatAdventureCertDate()),
+            completedCount: Math.max(0, parseInt(sf.completedCount || 0, 10) || 0),
+            totalCount: Math.max(1, parseInt(sf.totalCount || defaultTotalMissions, 10) || defaultTotalMissions)
+          };
+        }
+      });
+
+      const localNb = _readNotebookStateForProfile(pid);
+      const sCollectedSet = new Set(Array.isArray(sNotebook.collected) ? sNotebook.collected.map(String) : []);
+      const sMissionsSet = new Set(Array.isArray(sNotebook.completedMissions) ? sNotebook.completedMissions.map(String) : []);
+      if (localNb.collected.some(id => !sCollectedSet.has(id))) localHadExtra = true;
+      if (localNb.completedMissions.some(id => !sMissionsSet.has(id))) localHadExtra = true;
+      if ((localNb.postResurrection && !sNotebook.postResurrection) || (localNb.ascensionSeen && !sNotebook.ascensionSeen)) {
+        localHadExtra = true;
+      }
+
+      if (typeof window.applyMiracleNotebookState === 'function') {
+        window.applyMiracleNotebookState(sNotebook, 'merge');
+      } else {
+        try {
+          const mergedCollected = Array.from(new Set([...localNb.collected, ...Array.from(sCollectedSet)]));
+          const mergedMissions = Array.from(new Set([...localNb.completedMissions, ...Array.from(sMissionsSet)]));
+          const mergedStages = {};
+          [1, 2, 3, 4].forEach(n => {
+            mergedStages[n] = Boolean((localNb.clearedStages && localNb.clearedStages[n]) || (sNotebook.clearedStages && sNotebook.clearedStages[n]));
+          });
+          localStorage.setItem('bible_ep4_notebook_' + pid, JSON.stringify({
+            collected: mergedCollected,
+            completedMissions: mergedMissions,
+            clearedStages: mergedStages,
+            postResurrection: Boolean(localNb.postResurrection || sNotebook.postResurrection),
+            ascensionSeen: Boolean(localNb.ascensionSeen || sNotebook.ascensionSeen)
+          }));
+        } catch (e) {}
+      }
+    }
+
+    saveLocalPlayerProgress(pid);
+    saveAdventureCerts(pid);
+    saveFootstepsCerts(pid);
+  } finally {
+    window.__suppressProfileSheetSync = false;
+  }
+
+  saveProfileSyncMeta(pid, {
+    revision: serverRev,
+    appliedAdminRev: Math.max(localMeta.appliedAdminRev, serverAdminRev),
+    lastSyncedAt: typeof getKoreanNowTimestamp === 'function' ? getKoreanNowTimestamp() : ''
+  });
+
+  if (typeof updateWorldMapEpisodePinsUI === 'function') updateWorldMapEpisodePinsUI();
+  if (typeof syncHudMenuInfo === 'function') syncHudMenuInfo();
+  if (typeof updateMiracleNotebookHudBadge === 'function') updateMiracleNotebookHudBadge();
+  if (playerProgressData.miracle && (playerProgressData.miracle.completed || playerProgressData.miracle.certIssued)) {
+    if (typeof markEp4EndingCompletedForLogo === 'function') markEp4EndingCompletedForLogo(pid);
+  }
+
+  return { mode: isAdminOverwrite ? 'overwrite' : 'merge', localHadExtra };
+}
+window.applyServerPlayerProfile = applyServerPlayerProfile;
+
+async function flushPlayerProfileSheetSync(reason = 'auto', opts = {}) {
+  if (typeof GOOGLE_SHEET_WEBAPP_URL === 'undefined' || !GOOGLE_SHEET_WEBAPP_URL || GOOGLE_SHEET_WEBAPP_URL.includes('여기에_')) {
+    return;
+  }
+  const pid = String(explorerName || '').trim();
+  if (!pid || pid === 'guest' || window.__suppressProfileSheetSync) return;
+
+  if (_profileSyncInFlight && !opts.keepalive) {
+    _profileSyncPendingResync = true;
+    return;
+  }
+
+  _profileSyncInFlight = true;
+  try {
+    const snapshot = buildPlayerProfileSnapshot(pid);
+    const meta = loadProfileSyncMeta(pid);
+    const bodyStr = JSON.stringify({
+      action: 'sync_profile',
+      reason,
+      time: snapshot.updatedAt,
+      playerId: pid,
+      appliedAdminRev: meta.appliedAdminRev,
+      profile: snapshot
+    });
+    const res = await fetch(GOOGLE_SHEET_WEBAPP_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: bodyStr,
+      keepalive: Boolean(opts.keepalive)
+    });
+    const txt = await res.text();
+    try {
+      const data = JSON.parse(txt);
+      if (data && data.adminOverride && data.profile) {
+        applyServerPlayerProfile(data.profile);
+      } else if (data && data.ok && typeof data.revision === 'number') {
+        saveProfileSyncMeta(pid, {
+          revision: data.revision,
+          appliedAdminRev: Math.max(meta.appliedAdminRev, parseInt(data.adminOverrideRev || 0, 10) || 0),
+          lastSyncedAt: snapshot.updatedAt
+        });
+      }
+    } catch (e) {}
+  } catch (e) {
+  } finally {
+    _profileSyncInFlight = false;
+    if (_profileSyncPendingResync) {
+      _profileSyncPendingResync = false;
+      schedulePlayerProfileSheetSync('queued_resync', false);
+    }
+  }
+}
+
+function schedulePlayerProfileSheetSync(reason = 'auto', immediate = false) {
+  if (typeof GOOGLE_SHEET_WEBAPP_URL === 'undefined' || !GOOGLE_SHEET_WEBAPP_URL || GOOGLE_SHEET_WEBAPP_URL.includes('여기에_')) {
+    return;
+  }
+  const pid = String(explorerName || '').trim();
+  if (!pid || pid === 'guest' || window.__suppressProfileSheetSync) return;
+
+  if (_profileSyncTimer) {
+    clearTimeout(_profileSyncTimer);
+    _profileSyncTimer = null;
+  }
+  if (immediate) {
+    flushPlayerProfileSheetSync(reason, { keepalive: reason === 'pagehide' || reason === 'exit' || reason === 'hidden' });
+    return;
+  }
+  _profileSyncTimer = setTimeout(() => {
+    _profileSyncTimer = null;
+    flushPlayerProfileSheetSync(reason, { keepalive: false });
+  }, 1500);
+}
+window.schedulePlayerProfileSheetSync = schedulePlayerProfileSheetSync;
+
+if (typeof window !== 'undefined' && !window.__profileSyncLifecycleBound) {
+  window.__profileSyncLifecycleBound = true;
+  window.addEventListener('pagehide', () => {
+    if (typeof explorerName !== 'undefined' && explorerName) {
+      schedulePlayerProfileSheetSync('pagehide', true);
+    }
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden' && typeof explorerName !== 'undefined' && explorerName) {
+      schedulePlayerProfileSheetSync('hidden', true);
+    }
+  });
+}
+
 async function syncPlayerProgressFromSheet() {
   loadLocalPlayerProgress(explorerName);
   updateWorldMapEpisodePinsUI();
@@ -2592,66 +3076,88 @@ async function syncPlayerProgressFromSheet() {
   }
 
   try {
-    const res = await fetch(GOOGLE_SHEET_WEBAPP_URL, { redirect: 'follow' });
-    const data = await res.json();
-    const list = (data && data.list) ? data.list : [];
-    const targetId = (explorerName || '').trim().toLowerCase();
+    const pid = String(explorerName || '').trim();
+    const targetId = pid.toLowerCase();
     if (!targetId) return;
 
+    const querySep = GOOGLE_SHEET_WEBAPP_URL.includes('?') ? '&' : '?';
+    const url = `${GOOGLE_SHEET_WEBAPP_URL}${querySep}mode=player&name=${encodeURIComponent(pid)}`;
+    const res = await fetch(url, { redirect: 'follow' });
+    const data = await res.json();
+
+    let mergeResult = { mode: 'none', localHadExtra: false };
+    let adminHasOverridden = false;
+    if (data && data.profile && typeof data.profile === 'object') {
+      mergeResult = applyServerPlayerProfile(data.profile);
+      adminHasOverridden = Number(data.profile.adminOverrideRev || 0) > 0;
+    }
+
+    const list = (data && data.list) ? data.list : [];
     let updated = false;
     const sheetAttemptCounts = { noah: 0, exodus: 0, david: 0, miracle: 0 };
 
-    list.forEach(row => {
-      const rowName = String(row.name || '').trim().toLowerCase();
-      if (rowName !== targetId) return;
+    if (!adminHasOverridden) {
+      window.__suppressProfileSheetSync = true;
+      try {
+        list.forEach(row => {
+          const rowName = String(row.name || '').trim().toLowerCase();
+          if (rowName !== targetId) return;
 
-      const ep = String(row.episode || 'noah').trim();
-      if (!playerProgressData[ep]) return;
+          const ep = String(row.episode || 'noah').trim();
+          if (!playerProgressData[ep]) return;
 
-      const statusStr = String(row.status || '');
-      const stNum = parseInt(row.stage || 0, 10);
-      const certStr = String(row.certCode || '-').trim();
-      const rowModeKey = mapModeTextToKey(row.mode || row.dept || row.level || '');
+          const statusStr = String(row.status || '');
+          const stNum = parseInt(row.stage || 0, 10);
+          const certStr = String(row.certCode || '-').trim();
+          const rowModeKey = mapModeTextToKey(row.mode || row.dept || row.level || '');
 
-      if (statusStr.includes('게임시작') || statusStr.includes('재도전') || statusStr.includes('바로진입')) {
-        sheetAttemptCounts[ep] = (sheetAttemptCounts[ep] || 0) + 1;
-      }
+          if (statusStr.includes('게임시작') || statusStr.includes('재도전') || statusStr.includes('바로진입')) {
+            sheetAttemptCounts[ep] = (sheetAttemptCounts[ep] || 0) + 1;
+          }
 
-      if (statusStr.includes('완주') || stNum >= 4 || (certStr !== '-' && certStr.length >= 4)) {
-        if (playerProgressData[ep].maxClearedStage < 4 || !playerProgressData[ep].completed || !playerProgressData[ep].certIssued) {
-          playerProgressData[ep].maxClearedStage = 4;
-          playerProgressData[ep].completed = true;
-          playerProgressData[ep].certIssued = true;
-          updated = true;
+          if (statusStr.includes('완주') || stNum >= 4 || (certStr !== '-' && certStr.length >= 4)) {
+            if (playerProgressData[ep].maxClearedStage < 4 || !playerProgressData[ep].completed || !playerProgressData[ep].certIssued) {
+              playerProgressData[ep].maxClearedStage = 4;
+              playerProgressData[ep].completed = true;
+              playerProgressData[ep].certIssued = true;
+              updated = true;
+            }
+            upsertEpisodeAdventureCert(ep, rowModeKey || currentMode || 'junior', certStr);
+          } else if (statusStr.includes('클리어') && stNum >= 1 && stNum <= 3) {
+            if (stNum > playerProgressData[ep].maxClearedStage) {
+              playerProgressData[ep].maxClearedStage = stNum;
+              updated = true;
+            }
+            if (stNum >= 3 && !playerProgressData[ep].completed) {
+              playerProgressData[ep].completed = true;
+              updated = true;
+            }
+          }
+        });
+
+        EPISODE_ORDER.forEach(ep => {
+          if (sheetAttemptCounts[ep] > (playerProgressData[ep].attempts || 0)) {
+            playerProgressData[ep].attempts = sheetAttemptCounts[ep];
+            updated = true;
+          }
+        });
+
+        if (updated) {
+          saveLocalPlayerProgress(explorerName);
+          updateWorldMapEpisodePinsUI();
         }
-        upsertEpisodeAdventureCert(ep, rowModeKey || currentMode || 'junior', certStr);
-      } else if (statusStr.includes('클리어') && stNum >= 1 && stNum <= 3) {
-        if (stNum > playerProgressData[ep].maxClearedStage) {
-          playerProgressData[ep].maxClearedStage = stNum;
-          updated = true;
+        if (playerProgressData.miracle && (playerProgressData.miracle.completed || playerProgressData.miracle.certIssued)) {
+          if (typeof markEp4EndingCompletedForLogo === 'function') {
+            markEp4EndingCompletedForLogo(explorerName);
+          }
         }
-        if (stNum >= 3 && !playerProgressData[ep].completed) {
-          playerProgressData[ep].completed = true;
-          updated = true;
-        }
+      } finally {
+        window.__suppressProfileSheetSync = false;
       }
-    });
-
-    EPISODE_ORDER.forEach(ep => {
-      if (sheetAttemptCounts[ep] > (playerProgressData[ep].attempts || 0)) {
-        playerProgressData[ep].attempts = sheetAttemptCounts[ep];
-        updated = true;
-      }
-    });
-
-    if (updated) {
-      saveLocalPlayerProgress(explorerName);
-      updateWorldMapEpisodePinsUI();
     }
-    if (playerProgressData.miracle && (playerProgressData.miracle.completed || playerProgressData.miracle.certIssued)) {
-      if (typeof markEp4EndingCompletedForLogo === 'function') {
-        markEp4EndingCompletedForLogo(explorerName);
-      }
+
+    if (data && data.profileSupported && (!data.profile || mergeResult.localHadExtra || updated)) {
+      schedulePlayerProfileSheetSync('initial_backfill', false);
     }
   } catch (e) {}
 }
@@ -2736,6 +3242,43 @@ function closeEpisodeStageSelectModal() {
   }
 }
 
+window.HIDDEN_STAGE_LAUNCHERS = window.HIDDEN_STAGE_LAUNCHERS || {};
+function isAllEpisodesThroughEp4Completed() {
+  if (typeof isEpisodeClearedForUnlock === 'function') {
+    if (isEpisodeClearedForUnlock('miracle')) return true;
+  } else {
+    const prog = (typeof playerProgressData !== 'undefined' && playerProgressData) ? playerProgressData.miracle : null;
+    const cert = (typeof adventureCertsData !== 'undefined' && adventureCertsData) ? adventureCertsData.miracle : null;
+    if ((cert && cert.code) || (prog && (prog.completed || prog.certIssued))) return true;
+  }
+  if (typeof miracleAscensionSeen !== 'undefined' && miracleAscensionSeen) return true;
+  if (typeof isMiracleAllStagesUnlocked === 'function' && isMiracleAllStagesUnlocked()) return true;
+  return false;
+}
+function openEpisodeHiddenStage(epKey) {
+  const launcher = window.HIDDEN_STAGE_LAUNCHERS && window.HIDDEN_STAGE_LAUNCHERS[epKey];
+  if (typeof launcher === 'function') {
+    closeEpisodeStageSelectModal();
+    launcher();
+    return;
+  }
+  const meta = EPISODE_META_INFO[epKey] || { num: 1, title: '성경 탐험' };
+  playSfx('switch');
+  showToast(`✨ 에피소드 ${meta.num} 숨겨진 스테이지는 곧 업데이트될 예정이에요!`);
+}
+function appendEpisodeHiddenStageButton(btnsEl, epKey) {
+  if (!btnsEl || !isAllEpisodesThroughEp4Completed()) return;
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'stage-select-hidden-btn mc-btn w-full py-2.5 px-4 rounded-2xl bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white border border-amber-300/60 font-jua text-sm flex items-center justify-between';
+  btn.innerHTML = `
+    <span>✨ 숨겨진 스테이지</span>
+    <span class="text-xs px-2 py-0.5 rounded-full bg-amber-300 text-slate-950">🚧 준비 중</span>
+  `;
+  btn.onclick = () => openEpisodeHiddenStage(epKey);
+  btnsEl.appendChild(btn);
+}
+
 function openEpisodeStageSelectModal(epKey) {
   const modal = document.getElementById('episode-stage-select-modal');
   const iconEl = document.getElementById('ep-select-icon');
@@ -2817,6 +3360,7 @@ function openEpisodeStageSelectModal(epKey) {
       }
       btnsEl.appendChild(btn);
     });
+    appendEpisodeHiddenStageButton(btnsEl, epKey);
     modal.classList.remove('hidden');
     modal.classList.add('flex');
     return;
@@ -2864,6 +3408,7 @@ function openEpisodeStageSelectModal(epKey) {
     }
     btnsEl.appendChild(btn);
   }
+  appendEpisodeHiddenStageButton(btnsEl, epKey);
 
   modal.classList.remove('hidden');
   modal.classList.add('flex');
@@ -2882,7 +3427,9 @@ window.updateMapReturnButtonVisibility = updateMapReturnButtonVisibility;
 function discardPausedGameSession(runPluginCleanup = true) {
   const wasActive = Boolean(pausedGameSession.active);
   const wasMp = Boolean(pausedGameSession.wasMultiplayer);
+  const prevEpisode = pausedGameSession.episode;
   pausedGameSession.active = false;
+  pausedGameSession.episode = null;
   pausedGameSession.wasMultiplayer = false;
   updateMapReturnButtonVisibility();
 
@@ -2890,7 +3437,7 @@ function discardPausedGameSession(runPluginCleanup = true) {
   if (labelsEl) labelsEl.style.visibility = '';
 
   if (wasActive && runPluginCleanup) {
-    const epPlugin = getActiveEpisodePlugin();
+    const epPlugin = (prevEpisode && EPISODE_REGISTRY[prevEpisode]) ? EPISODE_REGISTRY[prevEpisode] : getActiveEpisodePlugin();
     if (epPlugin && typeof epPlugin.onCloseScreen === 'function') epPlugin.onCloseScreen();
     if (wasMp && window.MiracleMultiplayer && typeof window.MiracleMultiplayer.leaveRoom === 'function') {
       window.MiracleMultiplayer.leaveRoom();
@@ -3025,6 +3572,9 @@ function openWorldMapFromGame() {
   }
   updateWorldMapEpisodePinsUI();
   updateMapReturnButtonVisibility();
+  if (typeof schedulePlayerProfileSheetSync === 'function') {
+    schedulePlayerProfileSheetSync('worldmap', true);
+  }
   playSfx('switch');
   startMenuAdventureBgm();
 }
@@ -3821,15 +4371,148 @@ function updateCarriedBlocksVisual() {
   }
 }
 
+let _guideArrowGeoCache = null;
+const _guideArrowWorldTmp = new THREE.Vector3();
+
+function getGuideArrowChevronGeos() {
+  if (_guideArrowGeoCache) return _guideArrowGeoCache;
+
+  const buildChevronGeo = (pts, depth, bevelSize, bevelThick) => {
+    const sh = new THREE.Shape();
+    sh.moveTo(pts[0][0], pts[0][1]);
+    for (let i = 1; i < pts.length; i++) sh.lineTo(pts[i][0], pts[i][1]);
+    sh.closePath();
+    const geo = new THREE.ExtrudeGeometry(sh, {
+      depth,
+      bevelEnabled: bevelSize > 0,
+      bevelThickness: bevelThick,
+      bevelSize,
+      bevelSegments: 1,
+      curveSegments: 1
+    });
+    geo.translate(0, 0, -depth * 0.5);
+    geo.rotateX(Math.PI * 0.5);
+    geo.computeVertexNormals();
+    return geo;
+  };
+
+  const rimPts = [
+    [ 0.00,  0.62],
+    [-0.56, -0.14],
+    [-0.18, -0.02],
+    [-0.14, -0.44],
+    [ 0.00, -0.30],
+    [ 0.14, -0.44],
+    [ 0.18, -0.02],
+    [ 0.56, -0.14]
+  ];
+  const corePts = [
+    [ 0.00,  0.50],
+    [-0.41, -0.07],
+    [-0.12,  0.03],
+    [-0.09, -0.33],
+    [ 0.00, -0.22],
+    [ 0.09, -0.33],
+    [ 0.12,  0.03],
+    [ 0.41, -0.07]
+  ];
+  const tipPts = [
+    [ 0.00,  0.46],
+    [-0.16,  0.18],
+    [ 0.00,  0.25],
+    [ 0.16,  0.18]
+  ];
+
+  _guideArrowGeoCache = {
+    rimGeo:  buildChevronGeo(rimPts,  0.11, 0.022, 0.022),
+    coreGeo: buildChevronGeo(corePts, 0.165, 0.015, 0.015),
+    tipGeo:  buildChevronGeo(tipPts,  0.016, 0, 0)
+  };
+  return _guideArrowGeoCache;
+}
+
 function createGuideArrowMesh() {
   const g = new THREE.Group();
-  const m = new THREE.MeshBasicMaterial({ color: 0xfde047 });
-  g.add(createBox(0.28, 0.22, 0.75, m, 0, 0, -0.1, false));
-  const tip = new THREE.Mesh(new THREE.ConeGeometry(0.42, 0.6, 4), m);
-  tip.rotation.x = Math.PI / 2; tip.position.set(0, 0, 0.45);
-  g.add(tip);
+  const geos = getGuideArrowChevronGeos();
+
+  const tiltCarrier = new THREE.Group();
+  tiltCarrier.rotation.order = 'YXZ';
+
+  const arrowSpin = new THREE.Group();
+  const pulseGroup = new THREE.Group();
+
+  const rimMat = new THREE.MeshLambertMaterial({
+    color: 0xea580c,
+    emissive: 0xb45309,
+    emissiveIntensity: 0.38,
+    flatShading: true
+  });
+  const coreMat = new THREE.MeshLambertMaterial({
+    color: 0xfde047,
+    emissive: 0xfacc15,
+    emissiveIntensity: 0.48,
+    flatShading: true
+  });
+  const tipMat = new THREE.MeshBasicMaterial({ color: 0xfef9c3 });
+
+  const rimMesh  = new THREE.Mesh(geos.rimGeo, rimMat);
+  const coreMesh = new THREE.Mesh(geos.coreGeo, coreMat);
+  const tipTop   = new THREE.Mesh(geos.tipGeo, tipMat);
+  tipTop.position.y = 0.104;
+
+  pulseGroup.add(rimMesh, coreMesh, tipTop);
+  arrowSpin.add(pulseGroup);
+  tiltCarrier.add(arrowSpin);
+  g.add(tiltCarrier);
+
+  g.userData.tiltCarrier = tiltCarrier;
+  g.userData.arrowSpin = arrowSpin;
+  g.userData.pulseGroup = pulseGroup;
   g.position.set(0, 3.35, 0);
   return g;
+}
+
+function updateGuideArrowVisuals(now) {
+  if (!guideArrowGroup) return;
+  // [필수 보호] 소년반(EP1~EP4 senior, EP4 timeattack) · EP4 스테이지1 · 멀티플레이 · 대화창에서는 절대 미표시!
+  const isSeniorHidden = (typeof isEffectiveSeniorMode === 'function')
+    ? isEffectiveSeniorMode(currentEpisode, currentMode)
+    : (currentMode === 'senior');
+  const isMiracleNoArrow = (currentEpisode === 'miracle') && (
+    Boolean(window.isMiracleMultiplayerMode) ||
+    (typeof miracleSubMode !== 'undefined' && miracleSubMode === 'main1_galilee') ||
+    (typeof miracleDialogState !== 'undefined' && miracleDialogState && miracleDialogState.active)
+  );
+  if (isSeniorHidden || isMiracleNoArrow) {
+    guideArrowGroup.visible = false;
+    return;
+  }
+  if (!guideArrowGroup.visible || !camera || !playerGroup) return;
+
+  const tiltCarrier = guideArrowGroup.userData && guideArrowGroup.userData.tiltCarrier;
+  const arrowSpin   = guideArrowGroup.userData && guideArrowGroup.userData.arrowSpin;
+  const pulseGroup  = guideArrowGroup.userData && guideArrowGroup.userData.pulseGroup;
+  if (!tiltCarrier || !arrowSpin || !pulseGroup) return;
+
+  guideArrowGroup.updateWorldMatrix(true, false);
+  guideArrowGroup.getWorldPosition(_guideArrowWorldTmp);
+
+  const toCamX = camera.position.x - _guideArrowWorldTmp.x;
+  const toCamY = camera.position.y - _guideArrowWorldTmp.y;
+  const toCamZ = camera.position.z - _guideArrowWorldTmp.z;
+  const horizD = Math.hypot(toCamX, toCamZ);
+  const camAz  = (horizD > 0.001) ? Math.atan2(toCamX, toCamZ) : (typeof cameraYaw === 'number' ? cameraYaw : 0);
+  const camElev = Math.atan2(toCamY, Math.max(0.001, horizD));
+
+  const tiltX = Math.max(0.0, Math.min(0.52, 0.56 - camElev));
+  const worldArrowYaw = (playerGroup.rotation.y || 0) + (guideArrowGroup.rotation.y || 0);
+
+  tiltCarrier.rotation.set(tiltX, camAz - worldArrowYaw, 0);
+  arrowSpin.rotation.y = worldArrowYaw - camAz;
+
+  const t = (now || performance.now()) * 0.001;
+  pulseGroup.position.z = Math.sin(t * 5.2) * 0.085;
+  pulseGroup.position.y = Math.cos(t * 3.4) * 0.04;
 }
 
 function rebuildPlayerAppearance() {
@@ -3841,7 +4524,11 @@ function rebuildPlayerAppearance() {
     playerGroup = createHeroMesh(currentEpisode === 'exodus');
   }
   guideArrowGroup = createGuideArrowMesh();
-  guideArrowGroup.visible = !isEffectiveSeniorMode(currentEpisode, currentMode);
+  const isMiracleStage1Hide = (currentEpisode === 'miracle') && (
+    Boolean(window.isMiracleMultiplayerMode) ||
+    (typeof miracleSubMode !== 'undefined' && miracleSubMode === 'main1_galilee')
+  );
+  guideArrowGroup.visible = !isEffectiveSeniorMode(currentEpisode, currentMode) && !isMiracleStage1Hide;
   playerGroup.add(guideArrowGroup);
   playerGroup.position.copy(playerPos);
   scene.add(playerGroup);
@@ -4675,7 +5362,12 @@ function setPlayerMeshVisibilityForCamera(isFpsMode) {
   if (!playerGroup) return;
   playerGroup.children.forEach(child => {
     if (child === guideArrowGroup) {
-      child.visible = !isEffectiveSeniorMode(currentEpisode, currentMode);
+      const hideForStage1OrDialog = (currentEpisode === 'miracle') && (
+        Boolean(window.isMiracleMultiplayerMode) ||
+        (typeof miracleSubMode !== 'undefined' && miracleSubMode === 'main1_galilee') ||
+        (typeof miracleDialogState !== 'undefined' && miracleDialogState && miracleDialogState.active)
+      );
+      child.visible = !isEffectiveSeniorMode(currentEpisode, currentMode) && !hideForStage1OrDialog;
       if (isFpsMode) {
         child.position.set(0, 1.35, 2.2);
       } else {
@@ -4770,7 +5462,6 @@ function applyCoreCameraByMode() {
   const cosY = Math.cos(cameraYaw);
 
   // [에피소드 4 스테이지 1 시점 고정 & 반응형 카메라]
-  // 어떤 시점(1인칭·올려봄·기본)으로 입장했더라도 그물 던지기·풍랑 균형 잡기·예수님 깨우기·잔잔케 하심은 항상 전용 기본 카메라로 고정!
   const isMiracleBoatStage = (
     currentEpisode === 'miracle' &&
     typeof miracleSubMode !== 'undefined' &&
@@ -4781,54 +5472,9 @@ function applyCoreCameraByMode() {
     const vw = Math.max(1, window.innerWidth || 1280);
     const vh = Math.max(1, window.innerHeight || 720);
     const aspect = Math.max(0.45, Math.min(2.2, vw / vh));
-    const st = (typeof miracleActiveMiniState !== 'undefined') ? miracleActiveMiniState : null;
-    const phase = st ? st.phase : 'cast_net';
-
-    if (phase === 'cast_net') {
-      // 1단계 그물 던지기: 배 위 플레이어와 헤엄치는 물고기 떼가 모든 화면비에서 함께 보이도록 대각선 조망
-      const distScale = aspect < 1.0
-        ? Math.min(1.58, 0.88 + 0.44 / aspect)
-        : (aspect < 1.3 ? 1.10 : 0.98);
-      const fx = (st && st.targetFishPos) ? st.targetFishPos.x : -16.5;
-      const fz = (st && st.targetFishPos) ? st.targetFishPos.z : -1.5;
-      const midX = playerPos.x * 0.40 + fx * 0.60;
-      const midZ = playerPos.z * 0.55 + fz * 0.45;
-      camera.position.set(
-        playerPos.x + 11.4 * distScale,
-        playerPos.y + 11.2 * distScale,
-        playerPos.z + 14.2 * distScale
-      );
-      camera.lookAt(midX, 0.25, midZ);
-    } else if (phase === 'calm') {
-      // 4단계 풍랑이 멈춘 뒤: 카메라가 예수님(-Z 정면 방향) 앞쪽으로 부드럽게 이동하여 일어나신 예수님의 정면 모습을 클로즈업!
-      const calmScale = aspect < 1.0 ? Math.min(1.36, 0.95 + 0.22 / aspect) : 1.0;
-      const jx = (st && st.jesusMesh) ? st.jesusMesh.position.x : 0;
-      const jz = (st && st.jesusMesh) ? st.jesusMesh.position.z : 8.2;
-      const targetCam = new THREE.Vector3(
-        jx + 2.1 * calmScale,
-        2.55 + 0.48 * calmScale,
-        jz - 5.4 * calmScale
-      );
-      const cTimer = (typeof miracleStageCutscene !== 'undefined' && miracleStageCutscene.active)
-        ? miracleStageCutscene.timer
-        : 2.0;
-      const alpha = Math.min(1.0, 0.14 + cTimer * 0.18);
-      camera.position.lerp(targetCam, alpha);
-      camera.lookAt(jx, 1.78, jz);
-    } else {
-      // 2~3단계 풍랑 균형 잡기 & 예수님 깨우기: 반대쪽(고물 뒤쪽 +Z)에서 배 앞쪽(-Z)을 바라보아
-      // 돛 가림 없이 고물에 누워 계신 예수님(전경)과 균형 잡는 캐릭터의 정면(중경)을 한 화면에 함께 표시!
-      const stormScale = aspect < 1.0
-        ? Math.min(1.52, 0.92 + 0.40 / aspect)
-        : (aspect < 1.3 ? 1.10 : 1.0);
-      camera.position.set(
-        4.8 * stormScale,
-        5.8 + 2.8 * stormScale,
-        11.6 + 9.2 * stormScale
-      );
-      camera.lookAt(0, 1.05, 3.6);
+    if (typeof window.applyMiracleStage1Camera === 'function' && window.applyMiracleStage1Camera(camera, aspect)) {
+      return;
     }
-    return;
   }
 
   // [에피소드 4 스테이지 2·3 기본 시점 고정 + 스테이지 2 시작 버드뷰 언덕 스윕 인트로]
@@ -5454,7 +6100,7 @@ function updateStageHUD() {
       countIcon.textContent = '🌉';
       const builtCnt = buildZones.filter(b => b.built).length;
       badge.textContent = '홍해 · 스테이지 1'; countText.textContent = `다리 ${builtCnt}/${buildZones.length}`;
-      missionText.textContent = '🪵 통나무 수집과 나무 도끼질로 다리를 짓고 홍해 바다 앞으로 가세요!';
+      missionText.textContent = '🪵 모세가 백성들을 데리고 이집트를 탈출했어요. 나무를 구해서 다리를 짓고 서둘러 홍해바다 앞으로 가세요.';
     } else if (currentStage === 2) {
       countIcon.textContent = '❤️';
       const remainLives = Math.max(0, 3 - soldierHitCount);
@@ -5490,9 +6136,17 @@ function updateStageHUD() {
   const isBlocked = isAnyGlobalIntroOrCutsceneBlockingGuide();
 
   // 인트로·암전·카운트다운·대화창이 모두 끝났을 때만 음성을 출력하도록 조건 통합
+  // (에피소드 4 스테이지 1 "깊은 곳으로!"는 전용 녹음 MP3 음성만 사용하므로 HUD 자동 TTS 억제)
+  const suppressStage1HudTts = (
+    currentEpisode === 'miracle' &&
+    typeof miracleSubMode !== 'undefined' &&
+    miracleSubMode === 'main1_galilee'
+  );
   if (isHudVisible && lastSpokenStageKey !== stageKey && !isBlocked) {
     lastSpokenStageKey = stageKey;
-    speakText(missionText.textContent);
+    if (!suppressStage1HudTts) {
+      speakText(missionText.textContent);
+    }
   }
 }
 
@@ -5668,8 +6322,10 @@ function proceedNextStage() {
   const modal = document.getElementById('stage-modal');
   modal.classList.add('hidden'); modal.classList.remove('flex');
   
-  // 모달이 닫힐 때 성경절 오디오 재생 중단
-  if (window.__activeVerseAudio) {
+  // 모달이 닫힐 때 성경절 및 음성 오디오 재생 중단
+  if (typeof window.stopAllEp4VoiceAudio === 'function') {
+    window.stopAllEp4VoiceAudio();
+  } else if (window.__activeVerseAudio) {
     window.__activeVerseAudio.pause();
     window.__activeVerseAudio = null;
   }
@@ -8444,14 +9100,17 @@ function initEngine(skipInitialPreview = false) {
 
       // [에피소드 4 전용] updateStageFrame 이후에 애니메이터를 실행해 스테이지/오픈월드 고유 포즈 스킵 플래그를 당 프레임에 즉시 반영
       if (currentEpisode === 'miracle' && window.ep4CharacterAnimator) {
+        const forcedWalkSpd = Number(window.__ep4ForcedWalkSpeed) || 0;
+        const animSpeed = Math.max(currentMoveSpeed, forcedWalkSpd);
+        const animMoving = (inputMag > 0.08 && currentMoveSpeed > 0.15) || forcedWalkSpd > 0.15;
         window.ep4CharacterAnimator.update(dt, now, {
           isGrounded,
           prevGrounded,
           velY: playerVelY,
           prevVelY,
-          moveSpeed: currentMoveSpeed,
+          moveSpeed: animSpeed,
           maxSpeed: baseSpeed,
-          isMoving: (inputMag > 0.08 && currentMoveSpeed > 0.15),
+          isMoving: animMoving,
           playerGroup,
           limbs: playerLimbs,
           skipArms: Boolean(window.__ep4SkipArmAnimThisFrame),
@@ -8462,6 +9121,7 @@ function initEngine(skipInitialPreview = false) {
         window.__ep4SkipArmAnimThisFrame = false;
         window.__ep4SkipLegAnimThisFrame = false;
         window.__ep4SkipBodyScaleThisFrame = false;
+        window.__ep4ForcedWalkSpeed = 0;
       }
 
       playerGroup.position.copy(playerPos);
@@ -8498,6 +9158,7 @@ function initEngine(skipInitialPreview = false) {
           }
         }
       }
+      updateGuideArrowVisuals(now);
     }
 
     renderer.render(scene, camera);
@@ -8607,7 +9268,8 @@ function applyAdminDirectJump(jump) {
       rebuildPlayerAppearance();
       window.globalCameraViewMode = 'default';
       ensureGlobalCameraViewToggleUI();
-      if (guideArrowGroup) guideArrowGroup.visible = !isEffectiveSeniorMode('miracle', jump.mode);
+      const isJumpStage1NoArrow = (jump.sub === 'main1_galilee');
+      if (guideArrowGroup) guideArrowGroup.visible = !isEffectiveSeniorMode('miracle', jump.mode) && !isJumpStage1NoArrow;
       window.startMiracleDirectSubStage(jump.sub);
       return;
     }
